@@ -48,8 +48,9 @@ impl XaiConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct XaiProvider {
-    config: XaiConfig,
+    pub config: XaiConfig,
     client: Client,
 }
 
@@ -194,6 +195,14 @@ impl Provider for XaiProvider {
         let byte_stream = response.bytes_stream();
         let sse = SseStream::new(byte_stream);
         Ok(Box::pin(sse))
+    }
+}
+
+impl XaiProvider {
+    /// Embed a text string using the xAI embeddings endpoint.
+    /// Returns a float vector suitable for cosine-similarity search.
+    pub async fn embed(&self, model: &str, text: &str) -> anyhow::Result<Vec<f32>> {
+        crate::embed::embed_text(&self.client, &self.config.api_key, &self.config.base_url, model, text).await
     }
 }
 
