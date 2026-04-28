@@ -180,6 +180,7 @@ async fn chat(
         )
         .await;
 
+        agent::auto_name_session(&provider, &mut session).await;
         let _ = store.save(&session);
 
         if let (Some(m), Some(em)) = (mem_store, em2) {

@@ -14,6 +14,16 @@ pub struct Config {
     pub memory: MemoryConfig,
     #[serde(default)]
     pub mcp: McpConfigSection,
+    #[serde(default)]
+    pub browser: BrowserConfig,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct BrowserConfig {
+    /// Set to true to enable the browser tool automatically (no --browser flag needed).
+    pub enabled: Option<bool>,
+    /// Chrome DevTools remote URL (default: http://localhost:9222).
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
