@@ -1,0 +1,18 @@
+[package]
+name = "harness-provider-xai"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+harness-provider-core = { path = "../harness-provider-core" }
+tokio = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tokio-stream = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }

@@ -1,0 +1,26 @@
+# Harness configuration — copy to ~/.harness/config.toml or .harness/config.toml
+
+[provider]
+# Your xAI API key. Can also be set via XAI_API_KEY environment variable.
+# api_key = "xai-..."
+
+# Model choices: grok-3, grok-3-fast, grok-3-mini, grok-3-mini-fast
+model = "grok-3-fast"
+
+max_tokens = 8192
+temperature = 0.7
+
+# Override the API base URL (useful for local proxies or testing)
+# base_url = "https://api.x.ai/v1"
+
+[agent]
+system_prompt = """
+You are a powerful coding assistant running in a terminal.
+You have access to tools to read and write files, run shell commands, and search code.
+Be concise and precise. Prefer making changes over explaining; show diffs when you edit files.
+Always verify your changes work by running relevant tests or build commands.
+"""
+
+[session]
+# Path to the SQLite sessions database.
+# db_path = "~/.harness/sessions.db"
