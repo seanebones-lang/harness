@@ -17,9 +17,20 @@ temperature = 0.7
 system_prompt = """
 You are a powerful coding assistant running in a terminal.
 You have access to tools to read and write files, run shell commands, and search code.
+You can also spawn sub-agents for parallel tasks using the spawn_agent tool.
 Be concise and precise. Prefer making changes over explaining; show diffs when you edit files.
 Always verify your changes work by running relevant tests or build commands.
 """
+
+[memory]
+# Set to false to disable semantic memory recall entirely.
+enabled = true
+
+# xAI embedding model for semantic search.
+embed_model = "grok-3-embed-english"
+
+# Override the SQLite path for the memory store (defaults to ~/.harness/sessions.db).
+# db_path = "~/.harness/memory.db"
 
 [session]
 # Path to the SQLite sessions database.

@@ -10,6 +10,7 @@ pub trait Tool: Send + Sync {
     async fn execute(&self, args: Value) -> anyhow::Result<String>;
 }
 
+#[derive(Clone)]
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
 }
