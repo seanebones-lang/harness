@@ -23,15 +23,36 @@ Always verify your changes work by running relevant tests or build commands.
 """
 
 [memory]
-# Set to false to disable semantic memory recall entirely.
+# Set to false to disable semantic memory recall.
 enabled = true
 
 # xAI embedding model for semantic search.
 embed_model = "grok-3-embed-english"
 
-# Override the SQLite path for the memory store (defaults to ~/.harness/sessions.db).
+# Override the SQLite path for the memory store.
 # db_path = "~/.harness/memory.db"
 
 [session]
 # Path to the SQLite sessions database.
 # db_path = "~/.harness/sessions.db"
+
+[mcp]
+# Path to your MCP server configuration.
+# Harness also checks .harness/mcp.json and ~/.harness/mcp.json automatically.
+# config_path = ".harness/mcp.json"
+
+# Example .harness/mcp.json:
+# {
+#   "mcpServers": {
+#     "filesystem": {
+#       "command": "npx",
+#       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"],
+#       "env": {}
+#     },
+#     "github": {
+#       "command": "npx",
+#       "args": ["-y", "@modelcontextprotocol/server-github"],
+#       "env": { "GITHUB_TOKEN": "ghp_..." }
+#     }
+#   }
+# }
