@@ -5,6 +5,7 @@ members = [
     "crates/harness-tools",
     "crates/harness-memory",
     "crates/harness-mcp",
+    "crates/harness-browser",
 ]
 resolver = "2"
 
@@ -57,6 +58,7 @@ harness-provider-xai = { path = "crates/harness-provider-xai" }
 harness-tools = { path = "crates/harness-tools" }
 harness-memory = { path = "crates/harness-memory" }
 harness-mcp = { path = "crates/harness-mcp" }
+harness-browser = { path = "crates/harness-browser" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }

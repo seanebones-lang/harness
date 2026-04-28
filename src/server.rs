@@ -21,7 +21,7 @@ use anyhow::Result;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{sse::{Event, KeepAlive, Sse}, Json},
+    response::{sse::{Event, KeepAlive, Sse}, Html, Json},
     routing::{get, post},
     Router,
 };
@@ -73,10 +73,13 @@ struct HealthResponse {
     model: String,
 }
 
+const UI_HTML: &str = include_str!("../static/index.html");
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(state: ServerState) -> Router {
     Router::new()
+        .route("/", get(ui))
         .route("/api/health", get(health))
         .route("/api/sessions", get(list_sessions))
         .route("/api/sessions/:id", get(get_session))
@@ -93,6 +96,10 @@ pub async fn serve(state: ServerState, addr: std::net::SocketAddr) -> Result<()>
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
+
+async fn ui() -> Html<&'static str> {
+    Html(UI_HTML)
+}
 
 async fn health(State(state): State<Arc<ServerState>>) -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok", model: state.model.clone() })
@@ -159,6 +166,8 @@ async fn chat(
     let mem_store = state.memory_store.as_ref().map(|m| (**m).clone());
     let em2 = state.embed_model.clone();
 
+    let session_id_str = session.id.clone();
+
     tokio::spawn(async move {
         let _ = agent::drive_agent(
             &provider,
@@ -176,6 +185,13 @@ async fn chat(
         if let (Some(m), Some(em)) = (mem_store, em2) {
             agent::store_turn_memory(&provider, &m, &em, &session).await;
         }
+    });
+
+    // Prepend a session_id event so the client can track the session.
+    let session_id_event = stream::once(async move {
+        let data = format!(r#"{{"type":"session_id","id":{}}}"#,
+            serde_json::to_string(&session_id_str).unwrap_or_default());
+        Ok::<Event, std::convert::Infallible>(Event::default().data(data))
     });
 
     // Convert AgentEvent stream into SSE
@@ -215,6 +231,7 @@ async fn chat(
         Ok::<Event, std::convert::Infallible>(Event::default().data(data))
     });
 
-    let boxed: BoxSseStream = Box::pin(event_stream);
+    let combined = session_id_event.chain(event_stream);
+    let boxed: BoxSseStream = Box::pin(combined);
     Sse::new(boxed).keep_alive(KeepAlive::default())
 }

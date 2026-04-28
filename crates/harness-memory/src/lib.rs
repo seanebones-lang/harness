@@ -4,4 +4,4 @@ pub mod memory;
 
 pub use session::{Session, SessionId};
 pub use store::SessionStore;
-pub use memory::MemoryStore;
+pub use memory::{Memory, MemoryStore};

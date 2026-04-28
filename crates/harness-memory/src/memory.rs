@@ -64,6 +64,49 @@ impl MemoryStore {
         Ok(id)
     }
 
+    /// Total number of memories in the store.
+    pub fn count_all(&self) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))?;
+        Ok(n as usize)
+    }
+
+    /// Return the `limit` most recently inserted memories across all sessions.
+    pub fn recent_memories(&self, limit: usize) -> Result<Vec<Memory>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, text, created_at
+             FROM memories ORDER BY created_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |row| {
+            Ok(Memory {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                text: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
+    /// Delete memories by id list.
+    pub fn delete_memories(&self, ids: &[String]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let conn = self.conn.lock().unwrap();
+        let placeholders = ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!("DELETE FROM memories WHERE id IN ({placeholders})");
+        let params: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        conn.execute(&sql, params.as_slice())?;
+        Ok(())
+    }
+
     /// Return top-k memories by cosine similarity to `query_embedding`.
     /// Excludes memories from the current session to avoid redundancy.
     pub fn search(
