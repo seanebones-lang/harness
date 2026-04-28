@@ -211,8 +211,8 @@ fn trim_context(lines: &[String], ctx: usize) -> Vec<String> {
     for &ci in &changed {
         let lo = ci.saturating_sub(ctx);
         let hi = (ci + ctx + 1).min(lines.len());
-        for k in lo..hi {
-            keep[k] = true;
+        for slot in keep.iter_mut().take(hi).skip(lo) {
+            *slot = true;
         }
     }
 

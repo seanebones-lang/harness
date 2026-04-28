@@ -23,6 +23,7 @@ use ratatui::{
 use std::io;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
+use tokio::sync::watch;
 
 use crate::agent::{self, DEFAULT_SYSTEM};
 use crate::config::Config;
@@ -55,15 +56,13 @@ struct AppState {
     event_scroll: u16,
     /// Session id for display.
     session_id: String,
-    #[allow(dead_code)]
-    model: String,
     /// Cumulative token counts for this session.
     tokens_in: u32,
     tokens_out: u32,
 }
 
 impl AppState {
-    fn new(model: &str) -> Self {
+    fn new(_model: &str) -> Self {
         Self {
             input: String::new(),
             cursor_pos: 0,
@@ -75,7 +74,6 @@ impl AppState {
             chat_scroll: 0,
             event_scroll: 0,
             session_id: String::new(),
-            model: model.to_string(),
             tokens_in: 0,
             tokens_out: 0,
         }
@@ -117,6 +115,7 @@ impl AppState {
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     provider: XaiProvider,
     session_store: SessionStore,
@@ -125,6 +124,8 @@ pub async fn run(
     tools: ToolExecutor,
     model: String,
     cfg: Config,
+    resume_id: Option<&str>,
+    ambient_shutdown: Option<watch::Sender<()>>,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -133,7 +134,22 @@ pub async fn run(
     let mut terminal = Terminal::new(backend)?;
 
     let state = Arc::new(Mutex::new(AppState::new(&model)));
-    let mut session = Session::new(&model);
+    let mut session = match resume_id {
+        Some(id) => session_store
+            .find(id)?
+            .ok_or_else(|| anyhow::anyhow!("session not found: {id}"))?,
+        None => Session::new(&model),
+    };
+    if !session.messages.is_empty() {
+        let mut st = state.lock().unwrap();
+        st.session_id = session.short_id().to_string();
+        st.status = format!(
+            "Resumed {} · {} · {} turns",
+            session.short_id(),
+            model,
+            session.messages.len()
+        );
+    }
 
     let result = event_loop(
         &mut terminal,
@@ -146,6 +162,7 @@ pub async fn run(
         &tools,
         &model,
         cfg.agent.system_prompt.as_deref().unwrap_or(DEFAULT_SYSTEM),
+        ambient_shutdown,
     )
     .await;
 
@@ -157,6 +174,7 @@ pub async fn run(
 
 // ── Main event loop ───────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 async fn event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     state: Arc<Mutex<AppState>>,
@@ -168,6 +186,7 @@ async fn event_loop(
     tools: &ToolExecutor,
     model: &str,
     system_prompt: &str,
+    ambient_shutdown: Option<watch::Sender<()>>,
 ) -> Result<()> {
     // Built once — loads syntect syntax/theme sets (a few hundred ms).
     let highlighter = Highlighter::new();
@@ -203,12 +222,15 @@ async fn event_loop(
             {
                 let p2 = provider.clone();
                 let store2 = session_store.clone();
-                let mem_owned = memory_store.map(|m| m.clone());
+                let mem_owned = memory_store.cloned();
                 let em_owned = embed_model.map(|s| s.to_string());
                 let mem_pair = mem_owned.zip(em_owned);
                 let mut sess2 = finished.clone();
                 tokio::spawn(async move {
-                    agent::auto_name_session(&p2, &mut sess2).await;
+                    if let Some(title) = agent::suggest_session_name(&p2, &sess2).await {
+                        let _ = store2.set_name_if_missing(&sess2.id, &title);
+                        sess2.name = Some(title);
+                    }
                     let _ = store2.save(&sess2);
                     if let Some((mem, em)) = mem_pair {
                         agent::store_turn_memory(&p2, &mem, &em, &sess2).await;
@@ -238,7 +260,12 @@ async fn event_loop(
             if let Event::Key(key) = event::read()? {
                 match (key.code, key.modifiers) {
                     (KeyCode::Char('c'), KeyModifiers::CONTROL)
-                    | (KeyCode::Char('q'), KeyModifiers::CONTROL) => break,
+                    | (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
+                        if let Some(tx) = &ambient_shutdown {
+                            let _ = tx.send(());
+                        }
+                        break;
+                    }
 
                     (KeyCode::Enter, _) => {
                         let busy = state.lock().unwrap().busy;
@@ -268,7 +295,7 @@ async fn event_loop(
                         // Spawn agent task
                         let p2 = provider.clone();
                         let t2 = tools.clone();
-                        let mem2 = memory_store.map(|m| m.clone());
+                        let mem2 = memory_store.cloned();
                         let em2 = embed_model.map(|s| s.to_string());
                         let sys = system_prompt.to_string();
                         let atx = agent_tx.clone();

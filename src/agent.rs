@@ -14,6 +14,7 @@ use crate::events::{AgentEvent, EventTx};
 pub const DEFAULT_SYSTEM: &str = "\
 You are a powerful coding assistant running in a terminal. \
 You have access to tools to read and write files, run shell commands, and search code. \
+If available, you can also use browser automation tools, MCP-backed tools, and spawn sub-agents. \
 Be concise and precise. Prefer making changes over explaining; show diffs when you edit files. \
 Always verify your changes work by running relevant tests or build commands.";
 
@@ -187,12 +188,9 @@ pub async fn store_turn_memory(
     }
 }
 
-/// Generate a short session name from the first user message.
-/// Fires a quick non-streaming chat call; silently returns on failure.
-/// Only runs when the session has no name and at least one assistant reply.
-pub async fn auto_name_session(provider: &XaiProvider, session: &mut Session) {
+pub async fn suggest_session_name(provider: &XaiProvider, session: &Session) -> Option<String> {
     if session.name.is_some() {
-        return;
+        return None;
     }
 
     let first_user = session
@@ -203,7 +201,7 @@ pub async fn auto_name_session(provider: &XaiProvider, session: &mut Session) {
         .unwrap_or_default();
 
     if first_user.is_empty() {
-        return;
+        return None;
     }
 
     let snippet = &first_user[..first_user.len().min(200)];
@@ -215,7 +213,7 @@ pub async fn auto_name_session(provider: &XaiProvider, session: &mut Session) {
     let req = ChatRequest::new(&session.model)
         .with_messages(vec![Message::user(&prompt)]);
 
-    let Ok(mut stream) = provider.stream_chat(req).await else { return };
+    let Ok(mut stream) = provider.stream_chat(req).await else { return None };
     let mut title = String::new();
     while let Some(Ok(Delta::Text(chunk))) = stream.next().await {
         title.push_str(&chunk);
@@ -223,11 +221,13 @@ pub async fn auto_name_session(provider: &XaiProvider, session: &mut Session) {
 
     let title = title.trim().to_string();
     if !title.is_empty() && title.len() < 80 {
-        session.name = Some(title);
+        return Some(title);
     }
+    None
 }
 
 /// Non-interactive single-prompt run. Prints events to stdout/stderr.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_once(
     provider: &XaiProvider,
     store: &SessionStore,
@@ -253,7 +253,7 @@ pub async fn run_once(
     // Drive agent in the background so we can print events as they arrive.
     let provider2 = provider.clone();
     let tools2 = tools.clone();
-    let mem2 = memory_store.map(|m| m.clone());
+    let mem2 = memory_store.cloned();
     let em2 = embed_model.map(|s| s.to_string());
     let sys = system_prompt.unwrap_or(DEFAULT_SYSTEM).to_string();
 
@@ -287,7 +287,10 @@ pub async fn run_once(
     println!();
     let mut final_session = handle.await??;
 
-    auto_name_session(provider, &mut final_session).await;
+    if let Some(title) = suggest_session_name(provider, &final_session).await {
+        final_session.name = Some(title.clone());
+        let _ = store.set_name_if_missing(&final_session.id, &title)?;
+    }
     store.save(&final_session)?;
 
     if let (Some(mem), Some(em)) = (memory_store, embed_model) {

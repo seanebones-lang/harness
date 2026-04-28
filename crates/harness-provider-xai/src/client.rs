@@ -8,7 +8,7 @@ use serde_json::Value;
 use tracing::{debug, warn};
 
 use crate::stream::SseStream;
-use crate::types::{ApiMessage, ApiRequest, ApiToolCall, ApiToolCallFunction};
+use crate::types::{ApiMessage, ApiRequest, ApiToolCall, ApiToolCallFunction, StreamOptions};
 
 const XAI_BASE_URL: &str = "https://api.x.ai/v1";
 
@@ -165,6 +165,7 @@ impl Provider for XaiProvider {
             max_tokens: self.config.max_tokens,
             temperature: self.config.temperature,
             stream: true,
+            stream_options: Some(StreamOptions { include_usage: true }),
             tool_choice: if has_tools { Some("auto".into()) } else { None },
         };
 

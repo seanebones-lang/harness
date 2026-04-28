@@ -15,7 +15,14 @@ pub struct ApiRequest {
     pub temperature: f32,
     pub stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<StreamOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct StreamOptions {
+    pub include_usage: bool,
 }
 
 #[derive(Serialize, Deserialize)]

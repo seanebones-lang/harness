@@ -1,11 +1,13 @@
 //! Smoke tests for the harness crates.
 //! These run without a live API key — they test local logic only.
 
+use harness_browser::BrowserTool;
 use harness_memory::{MemoryStore, Session, SessionStore};
 use harness_provider_core::{
     ChatRequest, Message, Role, ToolCall, ToolCallFunction, ToolDefinition,
 };
 use harness_tools::{ToolExecutor, ToolRegistry};
+use harness_tools::registry::Tool;
 use harness_tools::tools::{PatchFileTool, ReadFileTool, SearchCodeTool, ShellTool, WriteFileTool};
 use tempfile::tempdir;
 
@@ -65,6 +67,25 @@ async fn session_list() {
 
     let list = store.list(10).unwrap();
     assert_eq!(list.len(), 5);
+}
+
+#[tokio::test]
+async fn session_delete_and_name_update() {
+    let dir = tempdir().unwrap();
+    let store = SessionStore::open(dir.path().join("s.db")).unwrap();
+
+    let mut s = Session::new("grok-3-fast");
+    s.push(Message::user("hello"));
+    store.save(&s).unwrap();
+
+    let renamed = store.set_name_if_missing(&s.id, "new name").unwrap();
+    assert!(renamed);
+    let loaded = store.load(&s.id).unwrap().unwrap();
+    assert_eq!(loaded.name.as_deref(), Some("new name"));
+
+    let deleted = store.delete(&s.id[..8]).unwrap();
+    assert!(deleted);
+    assert!(store.load(&s.id).unwrap().is_none());
 }
 
 // ── Memory (vector) store ─────────────────────────────────────────────────────
@@ -302,4 +323,16 @@ async fn unknown_tool_returns_error_message() {
     };
     let result = executor.execute(&call).await;
     assert!(result.contains("Unknown tool"), "expected unknown tool message: {result}");
+}
+
+#[test]
+fn browser_tool_schema_exposes_actions() {
+    let tool = BrowserTool::new("http://localhost:9222");
+    let def = tool.definition();
+    assert_eq!(def.function.name, "browser");
+    let action_enum = def.function.parameters["properties"]["action"]["enum"]
+        .as_array()
+        .expect("action enum");
+    assert!(action_enum.iter().any(|v| v == "navigate"));
+    assert!(action_enum.iter().any(|v| v == "screenshot"));
 }
