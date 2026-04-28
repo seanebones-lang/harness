@@ -41,6 +41,6 @@ impl Session {
     }
 
     pub fn short_id(&self) -> &str {
-        &self.id[..8]
+        self.id.get(..8).unwrap_or(&self.id)
     }
 }

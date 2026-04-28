@@ -199,8 +199,11 @@ impl Stream for SseStream {
                     // Flush any remaining tool calls if stream ended mid-tool
                     if !self.tool_call_builders.is_empty() {
                         let calls = self.flush_tool_calls();
-                        if let Some(call) = calls.into_iter().next() {
-                            return Poll::Ready(Some(Ok(Delta::ToolCall(call))));
+                        for call in calls {
+                            self.queue.push_back(Ok(Delta::ToolCall(call)));
+                        }
+                        if let Some(item) = self.queue.pop_front() {
+                            return Poll::Ready(Some(item));
                         }
                     }
                     return Poll::Ready(None);
@@ -208,5 +211,74 @@ impl Stream for SseStream {
                 Poll::Pending => return Poll::Pending,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SseStream;
+    use bytes::Bytes;
+    use futures::{stream, StreamExt};
+    use harness_provider_core::{Delta, StopReason};
+
+    #[tokio::test]
+    async fn emits_all_tool_calls_when_finish_reason_is_tool_calls() {
+        let payload = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[",
+            "{\"index\":0,\"id\":\"call_a\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\"}},",
+            "{\"index\":1,\"id\":\"call_b\",\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\"}}",
+            "]},\"finish_reason\":null}]}\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[",
+            "{\"index\":0,\"function\":{\"arguments\":\"\\\"/tmp/a.txt\\\"}\"}},",
+            "{\"index\":1,\"function\":{\"arguments\":\"\\\"/tmp/b.txt\\\"}\"}}",
+            "]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":3,\"total_tokens\":13}}\n",
+            "data: [DONE]\n"
+        );
+
+        let inner = stream::iter(vec![Ok::<Bytes, reqwest::Error>(Bytes::from(payload))]);
+        let mut sse = SseStream::new(inner);
+
+        let mut emitted = Vec::new();
+        while let Some(item) = sse.next().await {
+            emitted.push(item.expect("valid stream item"));
+        }
+
+        assert!(matches!(&emitted[0], Delta::ToolCall(call) if call.id == "call_a"));
+        assert!(matches!(&emitted[1], Delta::ToolCall(call) if call.id == "call_b"));
+        assert!(matches!(
+            &emitted[2],
+            Delta::Usage {
+                input_tokens: 10,
+                output_tokens: 3
+            }
+        ));
+        assert!(matches!(
+            &emitted[3],
+            Delta::Done {
+                stop_reason: StopReason::ToolUse
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn flushes_multiple_pending_tool_calls_on_stream_end() {
+        let payload = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[",
+            "{\"index\":0,\"id\":\"call_a\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"/tmp/a.txt\\\"}\"}},",
+            "{\"index\":1,\"id\":\"call_b\",\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"/tmp/b.txt\\\"}\"}}",
+            "]},\"finish_reason\":null}]}\n"
+        );
+
+        let inner = stream::iter(vec![Ok::<Bytes, reqwest::Error>(Bytes::from(payload))]);
+        let mut sse = SseStream::new(inner);
+
+        let mut emitted = Vec::new();
+        while let Some(item) = sse.next().await {
+            emitted.push(item.expect("valid stream item"));
+        }
+
+        assert_eq!(emitted.len(), 2);
+        assert!(matches!(&emitted[0], Delta::ToolCall(call) if call.id == "call_a"));
+        assert!(matches!(&emitted[1], Delta::ToolCall(call) if call.id == "call_b"));
     }
 }
