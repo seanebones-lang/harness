@@ -14,6 +14,8 @@ pub enum AgentEvent {
     SubAgentSpawned { task: String },
     /// Sub-agent finished.
     SubAgentDone { task: String, summary: String },
+    /// Token usage for the completed request.
+    TokenUsage { input: u32, output: u32 },
     /// Agent turn is complete.
     Done,
     /// An error occurred.

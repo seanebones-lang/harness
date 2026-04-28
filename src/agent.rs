@@ -61,6 +61,9 @@ pub async fn drive_agent(
                 Delta::ToolCall(call) => {
                     pending_tool_calls.push(call);
                 }
+                Delta::Usage { input_tokens, output_tokens } => {
+                    emit(AgentEvent::TokenUsage { input: input_tokens, output: output_tokens });
+                }
                 Delta::Done { stop_reason: sr } => {
                     stop_reason = sr;
                 }
@@ -274,6 +277,9 @@ pub async fn run_once(
             AgentEvent::MemoryRecall { count } => eprintln!("[memory] recalled {count} entries"),
             AgentEvent::SubAgentSpawned { task } => eprintln!("[swarm] spawning: {task}"),
             AgentEvent::SubAgentDone { task, .. } => eprintln!("[swarm] done: {task}"),
+            AgentEvent::TokenUsage { input, output } => {
+                eprintln!("[tokens] in={input} out={output}");
+            }
             AgentEvent::Done | AgentEvent::Error(_) => {}
         }
     }
