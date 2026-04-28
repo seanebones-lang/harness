@@ -184,6 +184,46 @@ pub async fn store_turn_memory(
     }
 }
 
+/// Generate a short session name from the first user message.
+/// Fires a quick non-streaming chat call; silently returns on failure.
+/// Only runs when the session has no name and at least one assistant reply.
+pub async fn auto_name_session(provider: &XaiProvider, session: &mut Session) {
+    if session.name.is_some() {
+        return;
+    }
+
+    let first_user = session
+        .messages
+        .iter()
+        .find(|m| matches!(m.role, Role::User))
+        .map(|m| m.content.as_str().to_string())
+        .unwrap_or_default();
+
+    if first_user.is_empty() {
+        return;
+    }
+
+    let snippet = &first_user[..first_user.len().min(200)];
+    let prompt = format!(
+        "Summarise this task in 4 to 6 words. No punctuation, no quotes. \
+         Reply with ONLY the title.\n\nTask: {snippet}"
+    );
+
+    let req = ChatRequest::new(&session.model)
+        .with_messages(vec![Message::user(&prompt)]);
+
+    let Ok(mut stream) = provider.stream_chat(req).await else { return };
+    let mut title = String::new();
+    while let Some(Ok(Delta::Text(chunk))) = stream.next().await {
+        title.push_str(&chunk);
+    }
+
+    let title = title.trim().to_string();
+    if !title.is_empty() && title.len() < 80 {
+        session.name = Some(title);
+    }
+}
+
 /// Non-interactive single-prompt run. Prints events to stdout/stderr.
 pub async fn run_once(
     provider: &XaiProvider,
@@ -239,8 +279,9 @@ pub async fn run_once(
     }
 
     println!();
-    let final_session = handle.await??;
+    let mut final_session = handle.await??;
 
+    auto_name_session(provider, &mut final_session).await;
     store.save(&final_session)?;
 
     if let (Some(mem), Some(em)) = (memory_store, embed_model) {

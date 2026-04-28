@@ -12,7 +12,7 @@ use harness_browser::BrowserTool;
 use harness_provider_xai::{XaiConfig, XaiProvider};
 use harness_tools::{ToolExecutor, ToolRegistry};
 use harness_tools::tools::{
-    ListDirTool, ReadFileTool, RebuildSelfTool, ReloadSelfTool,
+    ListDirTool, PatchFileTool, ReadFileTool, RebuildSelfTool, ReloadSelfTool,
     SearchCodeTool, ShellTool, SpawnAgentTool, WriteFileTool,
 };
 use std::path::PathBuf;
@@ -150,8 +150,12 @@ async fn main() -> Result<()> {
         None
     };
 
+    // CLI --browser flag overrides config; config.browser.enabled is the opt-in default.
+    let browser_enabled = cli.browser || cfg.browser.enabled.unwrap_or(false);
+    let browser_url = cfg.browser.url.clone().unwrap_or(cli.browser_url);
+
     // Build tools (including MCP servers if config exists).
-    let tools = build_tools(provider.clone(), model.clone(), &cfg, cli.browser, &cli.browser_url).await;
+    let tools = build_tools(provider.clone(), model.clone(), &cfg, browser_enabled, &browser_url).await;
 
     match cli.command {
         Some(Commands::Sessions) => {
@@ -218,6 +222,7 @@ async fn build_tools(provider: XaiProvider, model: String, cfg: &config::Config,
         let mut r = ToolRegistry::new();
         r.register(ReadFileTool);
         r.register(WriteFileTool);
+        r.register(PatchFileTool);
         r.register(ListDirTool);
         r.register(ShellTool);
         r.register(SearchCodeTool);
@@ -345,6 +350,7 @@ async fn run_self_dev(
     let mut registry = ToolRegistry::new();
     registry.register(ReadFileTool);
     registry.register(WriteFileTool);
+    registry.register(PatchFileTool);
     registry.register(ListDirTool);
     registry.register(ShellTool);
     registry.register(SearchCodeTool);

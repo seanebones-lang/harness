@@ -8,6 +8,7 @@ use crate::session::{Session, SessionId};
 
 /// SQLite-backed persistent session store.
 /// One DB file per workspace (or `~/.harness/sessions.db` as fallback).
+#[derive(Clone)]
 pub struct SessionStore {
     conn: Arc<Mutex<Connection>>,
 }

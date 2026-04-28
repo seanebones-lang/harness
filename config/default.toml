@@ -41,6 +41,13 @@ embed_model = "grok-3-embed-english"
 # Harness also checks .harness/mcp.json and ~/.harness/mcp.json automatically.
 # config_path = ".harness/mcp.json"
 
+[browser]
+# Enable the CDP browser tool. Requires Chrome launched with:
+#   chrome --remote-debugging-port=9222 --headless
+# Can also be enabled at runtime with: harness --browser
+# enabled = false
+# url = "http://localhost:9222"
+
 # Example .harness/mcp.json:
 # {
 #   "mcpServers": {
