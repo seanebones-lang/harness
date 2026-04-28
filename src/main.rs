@@ -1,6 +1,7 @@
 mod agent;
 mod config;
 mod events;
+mod highlight;
 mod server;
 mod tui;
 
@@ -9,7 +10,8 @@ use clap::{Parser, Subcommand};
 use harness_provider_xai::{XaiConfig, XaiProvider};
 use harness_tools::{ToolExecutor, ToolRegistry};
 use harness_tools::tools::{
-    ListDirTool, ReadFileTool, SearchCodeTool, ShellTool, SpawnAgentTool, WriteFileTool,
+    ListDirTool, ReadFileTool, RebuildSelfTool, ReloadSelfTool,
+    SearchCodeTool, ShellTool, SpawnAgentTool, WriteFileTool,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -67,6 +69,16 @@ enum Commands {
         /// Existing session id to continue.
         #[arg(long)]
         session: Option<String>,
+    },
+    /// Run harness in self-development mode: the agent can edit its own source
+    /// and trigger rebuilds via the rebuild_self and reload_self tools.
+    SelfDev {
+        /// Directory containing harness source (defaults to current dir).
+        #[arg(long)]
+        src: Option<PathBuf>,
+        /// Grok model to use (recommend grok-3 for self-dev).
+        #[arg(long)]
+        model: Option<String>,
     },
 }
 
@@ -155,6 +167,13 @@ async fn main() -> Result<()> {
 
         Some(Commands::Connect { url, prompt, session }) => {
             connect_to_server(&url, &prompt, session.as_deref()).await?;
+        }
+
+        Some(Commands::SelfDev { src, model: sd_model }) => {
+            let src_dir = src
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+            let sd_model = sd_model.unwrap_or_else(|| model.clone());
+            run_self_dev(provider, session_store, memory_store, embed_model, src_dir, sd_model, &cfg).await?;
         }
 
         None => {
@@ -286,6 +305,76 @@ async fn connect_to_server(base_url: &str, prompt: &str, session_id: Option<&str
 
     Ok(())
 }
+
+/// Self-dev mode: builds a tool executor with rebuild/reload tools, then launches
+/// the TUI with a self-dev system prompt so the agent can modify its own source.
+async fn run_self_dev(
+    provider: XaiProvider,
+    session_store: harness_memory::SessionStore,
+    memory_store: Option<harness_memory::MemoryStore>,
+    embed_model: Option<String>,
+    src_dir: PathBuf,
+    model: String,
+    cfg: &config::Config,
+) -> Result<()> {
+    tracing::info!(src = %src_dir.display(), model = %model, "starting self-dev mode");
+
+    let mut registry = ToolRegistry::new();
+    registry.register(ReadFileTool);
+    registry.register(WriteFileTool);
+    registry.register(ListDirTool);
+    registry.register(ShellTool);
+    registry.register(SearchCodeTool);
+    registry.register(RebuildSelfTool::new(src_dir.clone()));
+    registry.register(ReloadSelfTool::new(src_dir.clone()));
+
+    let tools = ToolExecutor::new(registry);
+
+    // Tailor the config for self-dev
+    let mut sd_cfg = config::Config {
+        provider: config::ProviderConfig {
+            model: Some(model.clone()),
+            ..Default::default()
+        },
+        agent: config::AgentConfig {
+            system_prompt: Some(SELF_DEV_SYSTEM.to_string()),
+        },
+        ..Default::default()
+    };
+    // Keep memory/session settings from user config
+    sd_cfg.session = cfg.session.clone();
+    sd_cfg.memory = cfg.memory.clone();
+
+    tui::run(provider, session_store, memory_store, embed_model, tools, model, sd_cfg).await
+}
+
+const SELF_DEV_SYSTEM: &str = "\
+You are harness, a Rust coding agent, running in self-development mode.
+You have access to your own source code and can modify it.
+
+Source layout:
+  src/main.rs          — CLI, tool wiring, self-dev entry point
+  src/agent.rs         — core agent loop, memory injection
+  src/tui.rs           — two-panel ratatui TUI
+  src/highlight.rs     — syntect syntax highlighting
+  src/server.rs        — axum HTTP/SSE server
+  src/events.rs        — AgentEvent enum
+  src/config.rs        — TOML config structs
+  crates/harness-provider-core/  — Provider trait, Message/Delta types
+  crates/harness-provider-xai/   — Grok streaming client, embeddings
+  crates/harness-tools/          — Tool trait, built-in tools (file/shell/search/spawn/selfdev)
+  crates/harness-memory/         — SQLite session & vector memory store
+  crates/harness-mcp/            — MCP stdio protocol client
+
+Workflow:
+1. Read relevant source files before editing.
+2. Make targeted edits with write_file or shell (use patch/sed for small changes).
+3. Call rebuild_self to check your changes compile (use check_only=true for a fast check).
+4. Fix any compiler errors, then rebuild.
+5. Once the build succeeds, call reload_self to hot-swap to the new binary.
+
+Be methodical: one change at a time, verify compilation before proceeding.
+Prefer small, well-understood edits over large rewrites.";
 
 fn list_sessions(store: &harness_memory::SessionStore) -> Result<()> {
     let sessions = store.list(20)?;

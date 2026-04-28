@@ -1,5 +1,6 @@
 //! Two-panel TUI: chat history (left) + tool/event log (right), input box + status bar.
 //! Agent runs in a background tokio task, streaming events via mpsc channel.
+//! Code blocks in assistant messages are syntax-highlighted via syntect.
 
 use anyhow::Result;
 use crossterm::{
@@ -26,6 +27,7 @@ use tokio::sync::mpsc;
 use crate::agent::{self, DEFAULT_SYSTEM};
 use crate::config::Config;
 use crate::events::AgentEvent;
+use crate::highlight::Highlighter;
 
 // ── App state ─────────────────────────────────────────────────────────────────
 
@@ -162,6 +164,9 @@ async fn event_loop(
     model: &str,
     system_prompt: &str,
 ) -> Result<()> {
+    // Built once — loads syntect syntax/theme sets (a few hundred ms).
+    let highlighter = Highlighter::new();
+
     // Channel for receiving AgentEvents from the background agent task.
     let (agent_tx, mut agent_rx) = mpsc::unbounded_channel::<AgentEvent>();
     // Channel for sending the finished session back.
@@ -171,7 +176,7 @@ async fn event_loop(
         // Draw current state
         {
             let st = state.lock().unwrap();
-            terminal.draw(|f| draw(f, &st))?;
+            terminal.draw(|f| draw(f, &st, &highlighter))?;
         }
 
         // Drain any agent events (non-blocking)
@@ -344,7 +349,7 @@ fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
-fn draw(f: &mut ratatui::Frame, state: &AppState) {
+fn draw(f: &mut ratatui::Frame, state: &AppState, hl: &Highlighter) {
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -354,43 +359,56 @@ fn draw(f: &mut ratatui::Frame, state: &AppState) {
         ])
         .split(f.area());
 
-    // Split main area into chat (60%) and event log (40%)
+    // Split main area into chat (62%) and event log (38%)
     let main = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
         .split(root[0]);
 
-    draw_chat(f, state, main[0]);
+    draw_chat(f, state, main[0], hl);
     draw_event_log(f, state, main[1]);
     draw_input(f, state, root[1]);
     draw_status(f, state, root[2]);
 }
 
-fn draw_chat(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
+fn draw_chat(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect, hl: &Highlighter) {
     let mut items: Vec<ListItem> = Vec::new();
 
     for msg in &state.chat {
         let (color, label) = match msg.role.as_str() {
-            "user" => (Color::Cyan, "you"),
+            "user"      => (Color::Cyan,  "you"),
             "assistant" => (Color::Green, "grok"),
-            _ => (Color::Red, "err"),
+            _           => (Color::Red,   "err"),
         };
-        // Label line
+
+        // Speaker label
         items.push(ListItem::new(Line::from(Span::styled(
             format!("┌ [{label}]"),
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ))));
-        // Content lines (word-wrap manually by splitting on newlines)
-        for line in msg.content.lines() {
-            items.push(ListItem::new(Line::from(Span::styled(
-                format!("│ {line}"),
+
+        if msg.role == "assistant" {
+            // Syntax-highlighted rendering for assistant messages
+            let rendered = hl.render_message(
+                &msg.content,
                 Style::default().fg(Color::White),
-            ))));
+            );
+            for line in rendered {
+                let prefixed = prefix_line(line, "│ ");
+                items.push(ListItem::new(prefixed));
+            }
+        } else {
+            for raw in msg.content.lines() {
+                items.push(ListItem::new(Line::from(Span::styled(
+                    format!("│ {raw}"),
+                    Style::default().fg(Color::White),
+                ))));
+            }
         }
         items.push(ListItem::new(Line::from(Span::raw(""))));
     }
 
-    // Live streaming text
+    // Live streaming text (plain — no highlighting until turn completes)
     if !state.streaming.is_empty() {
         items.push(ListItem::new(Line::from(Span::styled(
             "┌ [grok] ●",
@@ -409,6 +427,13 @@ fn draw_chat(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Re
         .block(Block::default().borders(Borders::ALL).title(title))
         .style(Style::default().fg(Color::White));
     f.render_widget(list, area);
+}
+
+/// Prepend a margin prefix to every span in a line.
+fn prefix_line(line: Line<'static>, prefix: &'static str) -> Line<'static> {
+    let mut spans = vec![Span::raw(prefix)];
+    spans.extend(line.spans);
+    Line::from(spans)
 }
 
 fn draw_event_log(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
