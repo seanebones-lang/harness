@@ -50,6 +50,15 @@ pub struct ApiToolCallFunction {
 #[derive(Deserialize)]
 pub struct StreamChunk {
     pub choices: Vec<StreamChoice>,
+    pub usage: Option<UsageInfo>,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+pub struct UsageInfo {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    #[allow(dead_code)]
+    pub total_tokens: u32,
 }
 
 #[derive(Deserialize)]

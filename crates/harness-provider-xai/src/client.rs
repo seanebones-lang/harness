@@ -5,7 +5,7 @@ use harness_provider_core::{
 };
 use reqwest::Client;
 use serde_json::Value;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::stream::SseStream;
 use crate::types::{ApiMessage, ApiRequest, ApiToolCall, ApiToolCallFunction};
@@ -171,30 +171,69 @@ impl Provider for XaiProvider {
         debug!(model = %body.model, "sending chat request to xAI");
 
         let url = format!("{}/chat/completions", self.config.base_url);
-        let response = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.config.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Other(e.to_string()))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = response
+        // Retry loop: up to MAX_RETRIES attempts with exponential backoff.
+        // Retryable: 429 (rate limit), 500/502/503/504 (transient server errors).
+        const MAX_RETRIES: u32 = 4;
+        const BASE_DELAY_MS: u64 = 1000;
+
+        let mut attempt = 0u32;
+        loop {
+            let resp = self
+                .client
+                .post(&url)
+                .bearer_auth(&self.config.api_key)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| ProviderError::Other(e.to_string()))?;
+
+            let status = resp.status();
+
+            let retryable = matches!(
+                status.as_u16(),
+                429 | 500 | 502 | 503 | 504
+            );
+
+            if status.is_success() {
+                let byte_stream = resp.bytes_stream();
+                let sse = SseStream::new(byte_stream);
+                return Ok(Box::pin(sse));
+            }
+
+            if retryable && attempt < MAX_RETRIES {
+                // Honour Retry-After header if present (value in seconds).
+                let retry_after = resp
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok());
+
+                let delay_ms = retry_after
+                    .map(|s| s * 1000)
+                    .unwrap_or(BASE_DELAY_MS << attempt); // exponential: 1s, 2s, 4s, 8s
+
+                warn!(
+                    status = status.as_u16(),
+                    attempt,
+                    delay_ms,
+                    "xAI API retryable error; waiting before retry"
+                );
+
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                attempt += 1;
+                continue;
+            }
+
+            let msg = resp
                 .text()
                 .await
                 .unwrap_or_else(|_| "<unreadable>".into());
             return Err(ProviderError::Api {
                 status: status.as_u16(),
-                message: body,
+                message: msg,
             });
         }
-
-        let byte_stream = response.bytes_stream();
-        let sse = SseStream::new(byte_stream);
-        Ok(Box::pin(sse))
     }
 }
 

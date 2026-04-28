@@ -90,6 +90,14 @@ enum Commands {
         #[arg(long)]
         model: Option<String>,
     },
+    /// Export a session as Markdown.
+    Export {
+        /// Session id prefix or name.
+        id: String,
+        /// Output file path (defaults to stdout).
+        #[arg(long, short)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -189,6 +197,10 @@ async fn main() -> Result<()> {
 
         Some(Commands::Connect { url, prompt, session }) => {
             connect_to_server(&url, &prompt, session.as_deref()).await?;
+        }
+
+        Some(Commands::Export { id, output }) => {
+            export_session(&session_store, &id, output.as_deref())?;
         }
 
         Some(Commands::SelfDev { src, model: sd_model }) => {
@@ -404,6 +416,115 @@ Workflow:
 
 Be methodical: one change at a time, verify compilation before proceeding.
 Prefer small, well-understood edits over large rewrites.";
+
+fn export_session(
+    store: &harness_memory::SessionStore,
+    id: &str,
+    output: Option<&std::path::Path>,
+) -> Result<()> {
+    use harness_provider_core::Role;
+    use std::fmt::Write as FmtWrite;
+
+    let session = store
+        .find(id)?
+        .ok_or_else(|| anyhow::anyhow!("session not found: {id}"))?;
+
+    let mut md = String::new();
+
+    // Front matter
+    let title = session.name.as_deref().unwrap_or("Untitled session");
+    writeln!(md, "# {title}")?;
+    writeln!(md)?;
+    writeln!(md, "**Session:** `{}`  ", session.id)?;
+    writeln!(md, "**Model:** {}  ", session.model)?;
+    writeln!(
+        md,
+        "**Created:** {}  ",
+        session.created_at.format("%Y-%m-%d %H:%M UTC")
+    )?;
+    writeln!(md)?;
+    writeln!(md, "---")?;
+    writeln!(md)?;
+
+    let mut turn = 0usize;
+    for msg in &session.messages {
+        match msg.role {
+            Role::System => {
+                writeln!(md, "> **System:** {}", msg.content.as_str())?;
+                writeln!(md)?;
+            }
+            Role::User => {
+                turn += 1;
+                writeln!(md, "## Turn {turn} — User")?;
+                writeln!(md)?;
+                writeln!(md, "{}", msg.content.as_str())?;
+                writeln!(md)?;
+            }
+            Role::Assistant => {
+                let content = msg.content.as_str();
+                if content.starts_with("__tool_calls__:") {
+                    // Decode tool calls for readability
+                    if let Some(json) = content.strip_prefix("__tool_calls__:") {
+                        if let Ok(calls) =
+                            serde_json::from_str::<serde_json::Value>(json)
+                        {
+                            if let Some(arr) = calls.as_array() {
+                                for call in arr {
+                                    let name = call["function"]["name"]
+                                        .as_str()
+                                        .unwrap_or("?");
+                                    let args = call["function"]["arguments"]
+                                        .as_str()
+                                        .unwrap_or("{}");
+                                    let pretty = serde_json::from_str::<serde_json::Value>(args)
+                                        .map(|v| {
+                                            serde_json::to_string_pretty(&v)
+                                                .unwrap_or_else(|_| args.to_string())
+                                        })
+                                        .unwrap_or_else(|_| args.to_string());
+                                    writeln!(md, "**→ `{name}`**")?;
+                                    writeln!(md, "```json")?;
+                                    writeln!(md, "{pretty}")?;
+                                    writeln!(md, "```")?;
+                                    writeln!(md)?;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    writeln!(md, "## Turn {turn} — Assistant")?;
+                    writeln!(md)?;
+                    writeln!(md, "{content}")?;
+                    writeln!(md)?;
+                }
+            }
+            Role::Tool => {
+                let result = msg.content.as_str();
+                // Truncate very long tool outputs
+                let display = if result.len() > 2000 {
+                    format!("{}\n\n_… ({} bytes truncated)_", &result[..2000], result.len() - 2000)
+                } else {
+                    result.to_string()
+                };
+                writeln!(md, "**← tool result**")?;
+                writeln!(md, "```")?;
+                writeln!(md, "{display}")?;
+                writeln!(md, "```")?;
+                writeln!(md)?;
+            }
+        }
+    }
+
+    match output {
+        Some(path) => {
+            std::fs::write(path, &md)?;
+            eprintln!("Exported {} turns to {}", turn, path.display());
+        }
+        None => print!("{md}"),
+    }
+
+    Ok(())
+}
 
 fn list_sessions(store: &harness_memory::SessionStore) -> Result<()> {
     let sessions = store.list(20)?;

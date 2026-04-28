@@ -126,6 +126,8 @@ pub enum Delta {
     Text(String),
     /// The model wants to call a tool (may arrive in fragments; provider assembles).
     ToolCall(ToolCall),
+    /// Token usage for the completed request (emitted just before Done).
+    Usage { input_tokens: u32, output_tokens: u32 },
     /// Model stopped generating; stream is done.
     Done { stop_reason: StopReason },
 }
