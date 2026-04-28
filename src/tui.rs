@@ -191,7 +191,26 @@ async fn event_loop(
         // Check for a completed session from the background task
         if let Ok(finished) = done_rx.try_recv() {
             *session = finished.clone();
+            // Immediate save (no name yet).
             session_store.save(session)?;
+
+            // Auto-name + memory store + re-save in background.
+            {
+                let p2 = provider.clone();
+                let store2 = session_store.clone();
+                let mem_owned = memory_store.map(|m| m.clone());
+                let em_owned = embed_model.map(|s| s.to_string());
+                let mem_pair = mem_owned.zip(em_owned);
+                let mut sess2 = finished.clone();
+                tokio::spawn(async move {
+                    agent::auto_name_session(&p2, &mut sess2).await;
+                    let _ = store2.save(&sess2);
+                    if let Some((mem, em)) = mem_pair {
+                        agent::store_turn_memory(&p2, &mem, &em, &sess2).await;
+                    }
+                });
+            }
+
             let mut st = state.lock().unwrap();
             st.busy = false;
             st.session_id = session.id[..8].to_string();
@@ -201,16 +220,6 @@ async fn event_loop(
                 model,
                 session.messages.len()
             );
-
-            if let (Some(mem), Some(em)) = (memory_store, embed_model) {
-                let p2 = provider.clone();
-                let mem2 = mem.clone();
-                let em2 = em.to_string();
-                let sess2 = finished.clone();
-                tokio::spawn(async move {
-                    agent::store_turn_memory(&p2, &mem2, &em2, &sess2).await;
-                });
-            }
         }
 
         // Handle terminal input events

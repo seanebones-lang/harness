@@ -6,7 +6,7 @@ use harness_provider_core::{
     ChatRequest, Message, Role, ToolCall, ToolCallFunction, ToolDefinition,
 };
 use harness_tools::{ToolExecutor, ToolRegistry};
-use harness_tools::tools::{ReadFileTool, SearchCodeTool, ShellTool, WriteFileTool};
+use harness_tools::tools::{PatchFileTool, ReadFileTool, SearchCodeTool, ShellTool, WriteFileTool};
 use tempfile::tempdir;
 
 // ── Session / store ───────────────────────────────────────────────────────────
@@ -240,6 +240,51 @@ async fn search_code_tool() {
     };
     let result = executor.execute(&call).await;
     assert!(result.contains("println"), "expected match: {result}");
+}
+
+#[tokio::test]
+async fn patch_file_tool() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("code.rs");
+    std::fs::write(&path, "fn foo() {\n    let x = 1;\n    x\n}\n").unwrap();
+
+    let mut registry = ToolRegistry::new();
+    registry.register(PatchFileTool);
+    let executor = ToolExecutor::new(registry);
+
+    // Successful patch
+    let call = ToolCall {
+        id: "p1".into(),
+        kind: "function".into(),
+        function: ToolCallFunction {
+            name: "patch_file".into(),
+            arguments: serde_json::json!({
+                "path": path.to_str().unwrap(),
+                "old_content": "    let x = 1;",
+                "new_content": "    let x = 42;"
+            }).to_string(),
+        },
+    };
+    let result = executor.execute(&call).await;
+    assert!(result.contains("Patched"), "expected patch success: {result}");
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("42"), "file should be updated: {content}");
+
+    // Not found
+    let call2 = ToolCall {
+        id: "p2".into(),
+        kind: "function".into(),
+        function: ToolCallFunction {
+            name: "patch_file".into(),
+            arguments: serde_json::json!({
+                "path": path.to_str().unwrap(),
+                "old_content": "this does not exist",
+                "new_content": "replacement"
+            }).to_string(),
+        },
+    };
+    let result2 = executor.execute(&call2).await;
+    assert!(result2.contains("not found"), "expected not-found: {result2}");
 }
 
 #[tokio::test]

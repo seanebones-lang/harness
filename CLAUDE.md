@@ -85,6 +85,7 @@ Base URL: `https://api.x.ai/v1` — OpenAI-compatible.
 
 Built-in tools:
 - `ReadFileTool`, `WriteFileTool`, `ListDirTool`
+- `PatchFileTool` — surgical old→new text replacement with diff output
 - `ShellTool` — runs `sh -c <command>`, configurable timeout
 - `SearchCodeTool` — regex over gitignore-aware file walk
 - `SpawnAgentTool` — runs a sub-agent with base tools only
@@ -172,6 +173,10 @@ system_prompt = "..."
 
 [mcp]
 config_path = ".harness/mcp.json"   # optional path override
+
+[browser]
+enabled = false                      # or pass --browser at runtime
+url = "http://localhost:9222"        # Chrome --remote-debugging-port
 ```
 
 ## MCP server config (`.harness/mcp.json`)
