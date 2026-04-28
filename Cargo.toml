@@ -39,6 +39,7 @@ regex = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = { version = "0.7", features = ["ws"] }
+syntect = { version = "5", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
 
 [package]
 name = "harness"
@@ -72,6 +73,7 @@ tokio-stream = { workspace = true }
 axum = { workspace = true }
 reqwest = { workspace = true }
 bytes = { workspace = true }
+syntect = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
@@ -90,3 +92,10 @@ inherits = "release"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# Fast self-modification rebuild — debug-info off, opt-level 0 for fast compilation
+[profile.selfdev]
+inherits = "release"
+opt-level = 0
+debug = 0
+incremental = true

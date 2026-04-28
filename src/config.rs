@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Config {
     #[serde(default)]
     pub provider: ProviderConfig,
@@ -16,13 +16,13 @@ pub struct Config {
     pub mcp: McpConfigSection,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct McpConfigSection {
     /// Path to mcp.json (defaults to .harness/mcp.json or ~/.harness/mcp.json).
     pub config_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub model: Option<String>,
@@ -31,17 +31,17 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct AgentConfig {
     pub system_prompt: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct SessionConfig {
     pub db_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct MemoryConfig {
     /// Set to false to disable semantic memory entirely.
     pub enabled: Option<bool>,
