@@ -10,6 +10,8 @@ pub struct Config {
     pub agent: AgentConfig,
     #[serde(default)]
     pub session: SessionConfig,
+    #[serde(default)]
+    pub memory: MemoryConfig,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -28,6 +30,16 @@ pub struct AgentConfig {
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct SessionConfig {
+    pub db_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct MemoryConfig {
+    /// Set to false to disable semantic memory entirely.
+    pub enabled: Option<bool>,
+    /// xAI embedding model (default: grok-3-embed-english).
+    pub embed_model: Option<String>,
+    /// Override path for the memory SQLite DB.
     pub db_path: Option<PathBuf>,
 }
 

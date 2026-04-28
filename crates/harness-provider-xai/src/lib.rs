@@ -1,6 +1,7 @@
 mod client;
 mod stream;
 mod types;
+pub mod embed;
 
 pub use client::XaiProvider;
 pub use client::XaiConfig;

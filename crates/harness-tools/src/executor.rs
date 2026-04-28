@@ -2,6 +2,7 @@ use crate::registry::ToolRegistry;
 use harness_provider_core::ToolCall;
 use tracing::{debug, warn};
 
+#[derive(Clone)]
 pub struct ToolExecutor {
     registry: ToolRegistry,
 }
