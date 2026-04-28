@@ -213,8 +213,10 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::SelfDev { src, model: sd_model }) => {
-            let src_dir = src
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+            let src_dir = match src {
+                Some(path) => path,
+                None => std::env::current_dir().context("failed to get current directory")?,
+            };
             let sd_model = sd_model.unwrap_or_else(|| model.clone());
             run_self_dev(provider, session_store, memory_store, embed_model, src_dir, sd_model, &cfg).await?;
         }
@@ -468,7 +470,7 @@ fn export_session(
 
     let session = store
         .find(id)?
-        .ok_or_else(|| anyhow::anyhow!("session not found: {id}"))?;
+        .ok_or_else(|| anyhow::anyhow!("session not found: '{}'. Use 'harness sessions' to list available sessions.", id))?;
 
     let mut md = String::new();
 
