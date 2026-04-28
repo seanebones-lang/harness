@@ -12,6 +12,14 @@ pub struct Config {
     pub session: SessionConfig,
     #[serde(default)]
     pub memory: MemoryConfig,
+    #[serde(default)]
+    pub mcp: McpConfigSection,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct McpConfigSection {
+    /// Path to mcp.json (defaults to .harness/mcp.json or ~/.harness/mcp.json).
+    pub config_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]

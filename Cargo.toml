@@ -4,6 +4,7 @@ members = [
     "crates/harness-provider-xai",
     "crates/harness-tools",
     "crates/harness-memory",
+    "crates/harness-mcp",
 ]
 resolver = "2"
 
@@ -37,6 +38,7 @@ similar = "2"
 regex = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.7", features = ["ws"] }
 
 [package]
 name = "harness"
@@ -53,6 +55,7 @@ harness-provider-core = { path = "crates/harness-provider-core" }
 harness-provider-xai = { path = "crates/harness-provider-xai" }
 harness-tools = { path = "crates/harness-tools" }
 harness-memory = { path = "crates/harness-memory" }
+harness-mcp = { path = "crates/harness-mcp" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
@@ -66,3 +69,24 @@ ratatui = { workspace = true }
 crossterm = { workspace = true }
 futures = { workspace = true }
 tokio-stream = { workspace = true }
+axum = { workspace = true }
+reqwest = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tempfile = "3"
+
+[profile.release]
+opt-level = 2
+debug = 0
+codegen-units = 16
+incremental = true
+
+# Distribution build: thin LTO, smaller binary
+[profile.release-lto]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
+strip = true
