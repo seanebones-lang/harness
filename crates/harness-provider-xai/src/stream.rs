@@ -1,14 +1,14 @@
 //! SSE byte-stream → Delta stream adapter.
 
 use futures::Stream;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
 use harness_provider_core::{Delta, ProviderError, StopReason, ToolCall, ToolCallFunction};
 
-use crate::types::{PartialToolCall, StreamChunk};
+use crate::types::{PartialToolCall, StreamChunk, UsageInfo};
 
 /// Wraps a raw byte stream from reqwest and parses SSE into `Delta` items.
 pub struct SseStream {
@@ -17,6 +17,9 @@ pub struct SseStream {
     // assembles fragmented tool_call deltas keyed by index
     tool_call_builders: HashMap<usize, ToolCallBuilder>,
     done: bool,
+    pending_usage: Option<UsageInfo>,
+    // ready-to-emit items queued before the main poll loop re-runs
+    queue: VecDeque<Result<Delta, ProviderError>>,
 }
 
 #[derive(Default)]
@@ -33,6 +36,8 @@ impl SseStream {
             buffer: String::new(),
             tool_call_builders: HashMap::new(),
             done: false,
+            pending_usage: None,
+            queue: VecDeque::new(),
         }
     }
 
@@ -47,6 +52,18 @@ impl SseStream {
             Ok(c) => c,
             Err(e) => return Some(Err(ProviderError::Json(e))),
         };
+
+        // Usage arrives in the last chunk (stream_options: include_usage).
+        if let Some(usage) = chunk.usage {
+            if chunk.choices.is_empty() {
+                return Some(Ok(Delta::Usage {
+                    input_tokens: usage.prompt_tokens,
+                    output_tokens: usage.completion_tokens,
+                }));
+            }
+            // Store for emission after the choice is processed.
+            self.pending_usage = Some(usage);
+        }
 
         let choice = chunk.choices.into_iter().next()?;
         let finish = choice.finish_reason.as_deref();
@@ -66,17 +83,33 @@ impl SseStream {
         }
 
         match finish {
-            Some("tool_calls") => {
-                // Emit all assembled tool calls, then Done
-                let calls: Vec<ToolCall> = self.flush_tool_calls();
-                if let Some(first) = calls.into_iter().next() {
-                    return Some(Ok(Delta::ToolCall(first)));
+            Some(reason) => {
+                let stop_reason = match reason {
+                    "tool_calls" => StopReason::ToolUse,
+                    "stop"       => StopReason::EndTurn,
+                    "length"     => StopReason::MaxTokens,
+                    other        => StopReason::Other(other.to_string()),
+                };
+
+                // For tool_calls, queue all assembled calls first.
+                if matches!(stop_reason, StopReason::ToolUse) {
+                    let calls = self.flush_tool_calls();
+                    for call in calls {
+                        self.queue.push_back(Ok(Delta::ToolCall(call)));
+                    }
                 }
-                Some(Ok(Delta::Done { stop_reason: StopReason::ToolUse }))
+
+                // Emit usage before Done if available.
+                if let Some(u) = self.pending_usage.take() {
+                    self.queue.push_back(Ok(Delta::Usage {
+                        input_tokens: u.prompt_tokens,
+                        output_tokens: u.completion_tokens,
+                    }));
+                }
+
+                self.queue.push_back(Ok(Delta::Done { stop_reason }));
+                self.queue.pop_front()
             }
-            Some("stop") => Some(Ok(Delta::Done { stop_reason: StopReason::EndTurn })),
-            Some("length") => Some(Ok(Delta::Done { stop_reason: StopReason::MaxTokens })),
-            Some(other) => Some(Ok(Delta::Done { stop_reason: StopReason::Other(other.to_string()) })),
             None => None,
         }
     }
@@ -123,6 +156,11 @@ impl Stream for SseStream {
     type Item = Result<Delta, ProviderError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // Drain pre-queued items (tool calls + usage + done).
+        if let Some(item) = self.queue.pop_front() {
+            return Poll::Ready(Some(item));
+        }
+
         if self.done {
             return Poll::Ready(None);
         }

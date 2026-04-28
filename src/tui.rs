@@ -57,6 +57,9 @@ struct AppState {
     session_id: String,
     #[allow(dead_code)]
     model: String,
+    /// Cumulative token counts for this session.
+    tokens_in: u32,
+    tokens_out: u32,
 }
 
 impl AppState {
@@ -73,6 +76,8 @@ impl AppState {
             event_scroll: 0,
             session_id: String::new(),
             model: model.to_string(),
+            tokens_in: 0,
+            tokens_out: 0,
         }
     }
 
@@ -214,11 +219,17 @@ async fn event_loop(
             let mut st = state.lock().unwrap();
             st.busy = false;
             st.session_id = session.id[..8].to_string();
+            let tok_str = if st.tokens_in > 0 || st.tokens_out > 0 {
+                format!(" · ↑{}↓{} tok", st.tokens_in, st.tokens_out)
+            } else {
+                String::new()
+            };
             st.status = format!(
-                "Session {} · {} · {} turns",
+                "Session {} · {} · {} turns{}",
                 &session.id[..8],
                 model,
-                session.messages.len()
+                session.messages.len(),
+                tok_str,
             );
         }
 
@@ -340,6 +351,11 @@ fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
         AgentEvent::SubAgentDone { task, .. } => {
             let preview: String = task.chars().take(60).collect();
             st.push_event(format!("swarm ↑ done: {preview}"));
+        }
+        AgentEvent::TokenUsage { input, output } => {
+            st.tokens_in += input;
+            st.tokens_out += output;
+            st.push_event(format!("tokens in={input} out={output}"));
         }
         AgentEvent::Done => {
             if !st.streaming.is_empty() {
