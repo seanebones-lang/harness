@@ -1,4 +1,5 @@
 mod agent;
+mod ambient;
 mod config;
 mod events;
 mod highlight;
@@ -7,6 +8,7 @@ mod tui;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use harness_browser::BrowserTool;
 use harness_provider_xai::{XaiConfig, XaiProvider};
 use harness_tools::{ToolExecutor, ToolRegistry};
 use harness_tools::tools::{
@@ -41,6 +43,14 @@ struct Cli {
     /// Disable semantic memory recall for this run.
     #[arg(long)]
     no_memory: bool,
+
+    /// Enable browser tool (requires Chrome with --remote-debugging-port=9222).
+    #[arg(long)]
+    browser: bool,
+
+    /// Chrome DevTools remote URL (default: http://localhost:9222).
+    #[arg(long, default_value = "http://localhost:9222")]
+    browser_url: String,
 
     /// Verbose logging.
     #[arg(long, short)]
@@ -132,8 +142,16 @@ async fn main() -> Result<()> {
         None
     };
 
+    // Start ambient memory consolidation if memory is enabled.
+    let _ambient_shutdown = if let (Some(mem), Some(em)) = (&memory_store, &embed_model) {
+        let mem_arc = std::sync::Arc::new(mem.clone());
+        Some(ambient::spawn(provider.clone(), mem_arc, em.clone()))
+    } else {
+        None
+    };
+
     // Build tools (including MCP servers if config exists).
-    let tools = build_tools(provider.clone(), model.clone(), &cfg).await;
+    let tools = build_tools(provider.clone(), model.clone(), &cfg, cli.browser, &cli.browser_url).await;
 
     match cli.command {
         Some(Commands::Sessions) => {
@@ -195,7 +213,7 @@ async fn main() -> Result<()> {
 }
 
 /// Build the full tool executor: base tools + SpawnAgentTool + MCP tools.
-async fn build_tools(provider: XaiProvider, model: String, cfg: &config::Config) -> ToolExecutor {
+async fn build_tools(provider: XaiProvider, model: String, cfg: &config::Config, browser_enabled: bool, browser_url: &str) -> ToolExecutor {
     let base_registry = || {
         let mut r = ToolRegistry::new();
         r.register(ReadFileTool);
@@ -229,6 +247,11 @@ async fn build_tools(provider: XaiProvider, model: String, cfg: &config::Config)
 
     let mut registry = base_registry();
     registry.register(SpawnAgentTool::new(runner));
+
+    if browser_enabled {
+        registry.register(BrowserTool::new(browser_url));
+        tracing::info!(url = %browser_url, "browser tool enabled");
+    }
 
     // Load MCP tools if a config file exists.
     if let Some(mcp_path) = harness_mcp::find_config() {

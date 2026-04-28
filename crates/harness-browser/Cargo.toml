@@ -1,0 +1,18 @@
+[package]
+name = "harness-browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+harness-provider-core = { path = "../harness-provider-core" }
+harness-tools = { path = "../harness-tools" }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+reqwest = { workspace = true }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+base64 = "0.22"
