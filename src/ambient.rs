@@ -11,6 +11,8 @@ use futures::StreamExt;
 use harness_memory::{Memory, MemoryStore};
 use harness_provider_core::{ChatRequest, Delta, Message, Provider};
 use harness_provider_xai::XaiProvider;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
@@ -19,11 +21,29 @@ const INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
 const MIN_NEW: usize = 5;
 const TOP_K: usize = 20;
 
+pub trait AmbientProvider: Provider + Clone + Send + Sync + 'static {
+    fn embed_for_memory<'a>(
+        &'a self,
+        model: &'a str,
+        text: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send + 'a>>;
+}
+
+impl AmbientProvider for XaiProvider {
+    fn embed_for_memory<'a>(
+        &'a self,
+        model: &'a str,
+        text: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send + 'a>> {
+        Box::pin(async move { self.embed(model, text).await })
+    }
+}
+
 /// Spawn the ambient consolidation task.
 ///
 /// Returns a shutdown sender: dropping it requests a clean stop.
 pub fn spawn(
-    provider: XaiProvider,
+    provider: impl AmbientProvider,
     memory: Arc<MemoryStore>,
     embed_model: String,
 ) -> watch::Sender<()> {
@@ -65,7 +85,7 @@ pub fn spawn(
 /// Pull the most recent TOP_K memories, ask the model to summarise them,
 /// store the summary as a new memory, and delete the originals.
 async fn consolidate(
-    provider: &XaiProvider,
+    provider: &impl AmbientProvider,
     memory: &MemoryStore,
     embed_model: &str,
 ) -> Result<usize> {
@@ -103,7 +123,7 @@ async fn consolidate(
     }
 
     // Embed the summary.
-    let embedding = provider.embed(embed_model, &summary).await?;
+    let embedding = provider.embed_for_memory(embed_model, &summary).await?;
 
     // Store the consolidated memory under a synthetic session id.
     memory.insert("__consolidated__", &summary, &embedding)?;
@@ -114,3 +134,4 @@ async fn consolidate(
 
     Ok(memories.len())
 }
+

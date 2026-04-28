@@ -106,4 +106,51 @@ impl SessionStore {
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
+
+    pub fn delete(&self, id_or_prefix: &str) -> anyhow::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let id = if id_or_prefix.len() < 36 {
+            let pattern = format!("{id_or_prefix}%");
+            let mut stmt = conn.prepare(
+                "SELECT id FROM sessions WHERE id LIKE ?1 ORDER BY updated_at DESC LIMIT 1",
+            )?;
+            let mut rows = stmt.query(params![pattern])?;
+            if let Some(row) = rows.next()? {
+                row.get::<_, String>(0)?
+            } else {
+                return Ok(false);
+            }
+        } else {
+            id_or_prefix.to_string()
+        };
+
+        let changed = conn.execute("DELETE FROM sessions WHERE id = ?1", params![id])?;
+        Ok(changed > 0)
+    }
+
+    pub fn set_name_if_missing(&self, id: &str, name: &str) -> anyhow::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT data FROM sessions WHERE id = ?1")?;
+        let mut rows = stmt.query(params![id])?;
+        let Some(row) = rows.next()? else {
+            return Ok(false);
+        };
+
+        let data: String = row.get(0)?;
+        let mut session: Session = serde_json::from_str(&data)?;
+        if session.name.as_deref().is_some_and(|n| !n.is_empty()) {
+            return Ok(false);
+        }
+
+        session.name = Some(name.to_string());
+        session.updated_at = chrono::Utc::now();
+        let updated_data = serde_json::to_string(&session)?;
+        let changed = conn.execute(
+            "UPDATE sessions
+             SET name = ?2, updated_at = ?3, data = ?4
+             WHERE id = ?1",
+            params![id, session.name, session.updated_at.to_rfc3339(), updated_data],
+        )?;
+        Ok(changed == 1)
+    }
 }

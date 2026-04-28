@@ -98,6 +98,11 @@ enum Commands {
         #[arg(long, short)]
         output: Option<PathBuf>,
     },
+    /// Delete a session by id prefix or full id.
+    Delete {
+        /// Session id prefix or full id.
+        id: String,
+    },
 }
 
 #[tokio::main]
@@ -151,7 +156,7 @@ async fn main() -> Result<()> {
     };
 
     // Start ambient memory consolidation if memory is enabled.
-    let _ambient_shutdown = if let (Some(mem), Some(em)) = (&memory_store, &embed_model) {
+    let ambient_shutdown = if let (Some(mem), Some(em)) = (&memory_store, &embed_model) {
         let mem_arc = std::sync::Arc::new(mem.clone());
         Some(ambient::spawn(provider.clone(), mem_arc, em.clone()))
     } else {
@@ -203,6 +208,10 @@ async fn main() -> Result<()> {
             export_session(&session_store, &id, output.as_deref())?;
         }
 
+        Some(Commands::Delete { id }) => {
+            delete_session(&session_store, &id)?;
+        }
+
         Some(Commands::SelfDev { src, model: sd_model }) => {
             let src_dir = src
                 .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
@@ -220,9 +229,28 @@ async fn main() -> Result<()> {
                     &prompt, cli.resume.as_deref(),
                 ).await?;
             } else {
-                tui::run(provider, session_store, memory_store, embed_model, tools, model, cfg).await?;
+                let result = tui::run(
+                    provider,
+                    session_store,
+                    memory_store,
+                    embed_model,
+                    tools,
+                    model,
+                    cfg,
+                    cli.resume.as_deref(),
+                    ambient_shutdown.clone(),
+                )
+                .await;
+                if let Some(tx) = &ambient_shutdown {
+                    let _ = tx.send(());
+                }
+                result?;
             }
         }
+    }
+
+    if let Some(tx) = &ambient_shutdown {
+        let _ = tx.send(());
     }
 
     Ok(())
@@ -386,12 +414,25 @@ async fn run_self_dev(
     sd_cfg.session = cfg.session.clone();
     sd_cfg.memory = cfg.memory.clone();
 
-    tui::run(provider, session_store, memory_store, embed_model, tools, model, sd_cfg).await
+    tui::run(
+        provider,
+        session_store,
+        memory_store,
+        embed_model,
+        tools,
+        model,
+        sd_cfg,
+        None,
+        None,
+    )
+    .await
 }
 
 const SELF_DEV_SYSTEM: &str = "\
 You are harness, a Rust coding agent, running in self-development mode.
 You have access to your own source code and can modify it.
+You can also use browser automation (when enabled), MCP tools (when configured),
+and spawn sub-agents for parallel tasks.
 
 Source layout:
   src/main.rs          — CLI, tool wiring, self-dev entry point
@@ -532,9 +573,19 @@ fn list_sessions(store: &harness_memory::SessionStore) -> Result<()> {
         println!("No sessions yet.");
         return Ok(());
     }
-    println!("{:<10} {:<24} {}", "ID", "NAME", "UPDATED");
+    println!("{:<10} {:<24} UPDATED", "ID", "NAME");
     for (id, name, updated) in sessions {
-        println!("{:<10} {:<24} {}", &id[..8], name.unwrap_or_default(), updated);
+        let short = id.chars().take(8).collect::<String>();
+        println!("{:<10} {:<24} {}", short, name.unwrap_or_default(), updated);
+    }
+    Ok(())
+}
+
+fn delete_session(store: &harness_memory::SessionStore, id: &str) -> Result<()> {
+    if store.delete(id)? {
+        println!("Deleted session: {id}");
+    } else {
+        println!("Session not found: {id}");
     }
     Ok(())
 }

@@ -34,6 +34,12 @@ harness connect http://127.0.0.1:8787 "hello"
 # List sessions
 harness sessions
 
+# Delete a session
+harness delete abc12345
+
+# Browser-enabled run
+harness --browser "navigate to docs and summarize changes"
+
 # Self-development mode (agent edits itself)
 harness self-dev --src . --model grok-3
 ```
@@ -142,6 +148,7 @@ drive_agent(provider, tools, memory?, embed_model?, session, system_prompt, even
 ```
 
 Keys: `Enter` send · `↑↓` scroll chat · `PgUp/PgDn` scroll event log · `Ctrl+C` quit.
+Interactive resume is available with `harness --resume <session-id-or-name>`.
 
 ## HTTP API (`src/server.rs`)
 
@@ -154,6 +161,7 @@ GET  /api/health        → {status, model}
 
 SSE event types: `text_chunk`, `tool_start`, `tool_result`, `memory_recall`,
 `sub_agent_spawned`, `sub_agent_done`, `done`, `error`.
+The server emits an initial `session_id` event so web clients can persist continuity across refreshes.
 
 ## Configuration (`~/.harness/config.toml`)
 

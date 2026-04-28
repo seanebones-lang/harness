@@ -161,7 +161,8 @@
   const send   = document.getElementById('send');
   const status = document.getElementById('status');
 
-  let sessionId = null;
+  const SESSION_KEY = 'harness.session_id';
+  let sessionId = localStorage.getItem(SESSION_KEY);
   let streaming  = false;
 
   // ── helpers ──────────────────────────────────────────────────────────────
@@ -203,6 +204,10 @@
   function setStatus(text, connected) {
     status.textContent = text;
     status.className = 'status' + (connected ? ' connected' : '');
+  }
+
+  if (sessionId) {
+    setStatus(`ready · session ${sessionId.slice(0, 8)}`, true);
   }
 
   // ── auto-resize textarea ──────────────────────────────────────────────────
@@ -312,6 +317,9 @@
             }
             case 'session_id':
               sessionId = evt.id;
+              if (sessionId) {
+                localStorage.setItem(SESSION_KEY, sessionId);
+              }
               break;
             case 'done':
               assistantDiv.className = 'msg assistant';
