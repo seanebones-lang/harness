@@ -63,6 +63,8 @@ Two-panel interface:
 - **Right panel** — tool calls and events
 - **Bottom bar** — type your message, press `Enter`
 
+**Keyboard reference:** all Phase E shortcuts (search, paste-friendly voice key, panel resize, `/focus`, etc.) are listed in [`docs/SHORTCUTS.md`](../docs/SHORTCUTS.md). Breaking changes from older builds: [`docs/MIGRATION.md`](../docs/MIGRATION.md).
+
 ### Good first prompts
 
 ```
@@ -120,6 +122,18 @@ Or type `/plan` inside the TUI. Shows a preview and asks for confirmation before
 
 ---
 
+## Structured JSON responses (`/schema`)
+
+For APIs, configs, or any workflow where the model must return **valid JSON** matching a schema:
+
+```
+/schema my_output {"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"]}
+```
+
+Clears with `/schema clear`. While set, the agent attaches strict structured-output instructions for your current provider (OpenAI/xAI JSON Schema mode; Anthropic synthetic tool). See [`CLAUDE.md`](../CLAUDE.md) for technical detail.
+
+---
+
 ## TUI Slash Commands
 
 Type any of these in the input bar and press Enter:
@@ -145,6 +159,12 @@ Type any of these in the input bar and press Enter:
 | `/notify test`       | Send a test desktop notification                          |
 | `/runs`              | List background agent runs                                |
 | `/fork`              | Note about session forking (use Ctrl+E)                   |
+| `/focus [N]`         | Pomodoro-style quiet: silence notifications for N minutes (default 25); `/focus off` clears |
+| `/focus off`         | Exit focus / notification quiet mode                      |
+| `/schema …`          | Strict JSON output: `/schema clear` or `/schema name {"type":"object",…}` |
+| `/obsidian save`     | Save last assistant reply to Obsidian (needs `[bridges]` vault path) |
+
+See [`docs/SHORTCUTS.md`](../docs/SHORTCUTS.md) for the full list.
 
 ---
 
@@ -153,12 +173,19 @@ Type any of these in the input bar and press Enter:
 | Key       | Action                                          |
 |-----------|-------------------------------------------------|
 | `Enter`   | Send message                                    |
-| `Tab`     | Autocomplete `@file` paths in input             |
-| `↑ / ↓`   | Scroll chat panel                               |
+| `Shift+Enter` / `Alt+Enter` | Newline inside the input box              |
+| `Tab`     | Autocomplete `@file` paths or slash commands    |
+| `↑ / ↓`   | Scroll chat (or navigate input history at line start) |
 | `PgUp/Dn` | Scroll event log                                |
-| `Ctrl+V`  | Hold to voice-record, release to transcribe     |
+| `Ctrl+S`  | Voice record → transcribe (Whisper); **Phase E default** |
+| `Ctrl+Y`  | Copy last assistant reply to system clipboard   |
+| `Ctrl+F`  | Search chat; `Ctrl+N` / `Ctrl+P` next/prev match |
+| `Ctrl+L`  | Jump chat to bottom (latest messages)           |
+| `Ctrl+]` / `Ctrl+[` | Widen / narrow the right (events) panel   |
 | `Ctrl+E`  | Fork session — branch from a past turn          |
 | `Ctrl+C`  | Quit                                            |
+
+> **Migration:** voice was moved from **Ctrl+V** to **Ctrl+S** so **Ctrl+V** can paste normally. Details in [`docs/MIGRATION.md`](../docs/MIGRATION.md).
 
 ---
 
@@ -172,14 +199,15 @@ Press `Tab` after `@` to autocomplete. Pin multiple files in one message.
 
 ---
 
-## Voice Input (Ctrl+V / `harness voice`)
+## Voice Input (Ctrl+S / `harness voice`)
 
-Hold `Ctrl+V` in TUI to record; release to transcribe and insert into input.
+In the TUI, use **`Ctrl+S`** for voice capture → Whisper transcription → text inserted into the input (same flow as before; key changed in Phase E).
 
-Or one-shot CLI:
+One-shot CLI:
 ```bash
 harness voice            # record + print transcript
 harness voice --send     # record + send to agent immediately
+harness voice --realtime # duplex conversation via OpenAI Realtime API (requires OPENAI_API_KEY)
 ```
 
 Backends (auto-detected):
@@ -261,8 +289,11 @@ Harness sends macOS Notification Center / libnotify alerts for:
 - Background agent runs completing (done or failed)
 - Auto-test failures
 - Budget threshold crossings (80%, 100%)
+- Additional kinds are available in code for PRs, CI, swarm completion, daemon lifecycle, etc., as those integrations fire.
 
-Test them with `/notify test` in the TUI, or disable in config:
+Use **`/focus 25`** in the TUI for a 25-minute “quiet” window (notifications suppressed); the status bar shows **`[FOCUS Nm]`**. **`/focus off`** clears it.
+
+Test alerts with `/notify test`, or disable globally:
 ```toml
 [notifications]
 enabled = false
@@ -404,10 +435,41 @@ After every file write, Harness automatically runs:
 ## Check Your Setup
 
 ```bash
-harness status
+harness status   # config summary, recent sessions, MCP hints
+harness doctor   # deeper checks: keys, paths, daemon socket, toolchain hints
 ```
 
-Shows: which API key is loaded, which config is active, which MCP servers are configured, recent sessions.
+### Shell completions
+
+```bash
+harness completions bash
+harness completions zsh
+harness completions fish
+```
+
+Redirect output into your shell’s completion directory (see `harness completions --help`).
+
+### Swarm & traces (Phase E)
+
+Parallel sub-agent tasks (when you use swarm tooling):
+
+```bash
+harness swarm list              # recent tasks
+harness swarm status <task-id> # one task state
+harness swarm result <task-id> # captured output when finished
+```
+
+Local observability spans (when enabled in config):
+
+```bash
+harness trace          # summarize last trace
+harness trace <id>     # export a specific trace id
+```
+
+### Desktop app & VS Code
+
+- **Tauri shell:** [`apps/desktop/README.md`](../apps/desktop/README.md) — tray icon, **Cmd+Shift+H** (Ctrl+Shift+H on Windows/Linux) to show/hide, tries to run `harness daemon` if no socket exists.
+- **VS Code:** [`extensions/vscode/`](../extensions/vscode/) — install deps with `npm install`, then open in VS Code and run the extension (or package with `vsce`).
 
 ---
 

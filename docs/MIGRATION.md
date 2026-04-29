@@ -66,14 +66,13 @@ Phase E adds the following new subcommands:
 | Command | Description |
 |---------|-------------|
 | `harness doctor` | Self-diagnostic: check API keys, paths, services |
-| `harness completions <shell>` | Generate shell completions |
-| `harness swarm status` | Show parallel swarm task list |
-| `harness swarm cancel <id>` | Cancel a swarm task |
-| `harness swarm results <id>` | Show swarm task results |
-| `harness trace list` | List recent observability traces |
-| `harness trace show <id>` | Show a trace span |
-| `harness join <session-id>` | Join a collaborative session |
-| `harness voice --realtime` | Start real-time duplex voice session |
+| `harness completions <shell>` | Generate shell completions (bash, zsh, fish, …) |
+| `harness swarm list` | List recent swarm tasks |
+| `harness swarm status <id>` | Show one task’s state |
+| `harness swarm result <id>` | Print stored result when complete |
+| `harness trace` | Summarize last local trace (when observability enabled) |
+| `harness trace <id>` | Export a specific trace id |
+| `harness voice --realtime` | Real-time duplex voice (OpenAI Realtime API) |
 
 ### 7. Notification System Overhaul
 

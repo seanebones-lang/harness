@@ -107,3 +107,36 @@ embed_model = "nomic-embed-text"
 #     }
 #   }
 # }
+
+# ── Phase E (optional) ──────────────────────────────────────────────────────
+# Uncomment keys below only when you add matching sections to harness Config,
+# or paste into a sidecar — unknown top-level tables break `harness` today.
+
+[router]
+# Smart defaults when unset: anthropic → xai → openai → ollama (see CLAUDE.md).
+# default = "anthropic"
+# fast_model = "anthropic:claude-haiku-4-5"
+# heavy_model = "anthropic:claude-opus-4-7"
+# embed_model = "ollama:nomic-embed-text"
+# fallback = ["anthropic", "xai", "openai", "ollama"]
+
+# [observability]
+# enabled = true
+# traces_dir = "~/.harness/traces"
+# otlp_endpoint = ""   # e.g. "http://localhost:4318/v1/traces"
+
+# [swarm]
+# max_concurrency = 4
+# db_path = "~/.harness/swarm.db"
+
+# [bridges]
+# obsidian_vault = ""
+# apple_notes_folder = "Harness"
+# github_owner = ""
+# github_project_number = 0
+
+# [collab]
+# enabled = false
+# bind = "127.0.0.1:9090"
+
+# Phase E adds richer notification kinds when integrations call into src/notifications.rs.

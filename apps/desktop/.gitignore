@@ -1,0 +1,6 @@
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+# Regenerate with: cd src-tauri && npx --prefix .. tauri icon app-icon.png
+src-tauri/icons/ios/
+src-tauri/icons/android/
