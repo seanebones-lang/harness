@@ -71,16 +71,15 @@ harness completions zsh > ~/.zsh/completions/_harness
 harness completions fish > ~/.config/fish/completions/harness.fish
 
 # Parallel swarm
-harness swarm status
-harness swarm cancel <task-id>
-harness swarm results <task-id>
+harness swarm list
+harness swarm status <task-id>
+harness swarm result <task-id>
 
 # Observability traces
-harness trace list
-harness trace show <span-id>
+harness trace
+harness trace <trace-id>
 
-# Collaborative sessions
-harness join <session-id>
+# Collaborative sessions (when server exposes collab — see server/collab wiring)
 ```
 
 ## Workspace layout
@@ -239,7 +238,7 @@ New MCP 2.0 features:
 
 ### `swarm` (E9)
 
-`TaskEntry`, `TaskStatus`, SQLite persistence at `~/.harness/swarm.db`, `tokio::sync::Semaphore` for concurrency. CLI: `harness swarm status/cancel/results`.
+`TaskEntry`, `TaskStatus`, SQLite persistence at `~/.harness/swarm.db`, `tokio::sync::Semaphore` for concurrency. CLI: `harness swarm list`, `harness swarm status <id>`, `harness swarm result <id>`.
 
 ### `bridges` (E12)
 
@@ -247,7 +246,7 @@ New MCP 2.0 features:
 
 ### `collab` (E13)
 
-`CollabConfig`, `CollabEvent`, `CollabSession`, `CollabRegistry` — multi-user shared sessions over WebSocket. Events: `UserJoined`, `UserLeft`, `Typing`, `Message`. CLI: `harness join <session-id>`.
+`CollabConfig`, `CollabEvent`, `CollabSession`, `CollabRegistry` — multi-user shared sessions over WebSocket. Events: `UserJoined`, `UserLeft`, `Typing`, `Message`. Wire-up is via `server.rs` when `[collab]` is enabled.
 
 ### `diff_review` (E4)
 

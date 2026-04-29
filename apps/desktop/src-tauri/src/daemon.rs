@@ -3,31 +3,32 @@
 use tauri::AppHandle;
 
 /// Check if the harness daemon is running and start it if not.
-pub async fn ensure_daemon_running(app: &AppHandle) {
+pub async fn ensure_daemon_running(_app: &AppHandle) {
     let sock = dirs_next::home_dir()
         .unwrap_or_default()
         .join(".harness/daemon.sock");
 
     if sock.exists() {
-        tracing_log::log::info!("harness daemon already running");
+        eprintln!("[harness-desktop] daemon socket present — skipping spawn");
         return;
     }
 
-    tracing_log::log::info!("starting harness daemon…");
-    let _ = start_daemon(app.clone()).await;
+    eprintln!("[harness-desktop] starting harness daemon…");
+    let _ = start_daemon_inner().await;
+}
+
+async fn start_daemon_inner() -> Result<String, String> {
+    tokio::process::Command::new("harness")
+        .arg("daemon")
+        .spawn()
+        .map(|_| "Daemon started".to_string())
+        .map_err(|e| format!("Failed to start daemon: {e}"))
 }
 
 /// Start the harness daemon process.
 #[tauri::command]
 pub async fn start_daemon(_app: AppHandle) -> Result<String, String> {
-    let output = tokio::process::Command::new("harness")
-        .arg("daemon")
-        .spawn();
-
-    match output {
-        Ok(_child) => Ok("Daemon started".to_string()),
-        Err(e) => Err(format!("Failed to start daemon: {e}")),
-    }
+    start_daemon_inner().await
 }
 
 /// Get daemon status.

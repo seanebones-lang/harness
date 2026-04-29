@@ -57,19 +57,32 @@ harness "explain what main.rs does"   # one-shot, no TUI
 harness --plan                   # approve-mode: preview changes before they apply
 harness --think 10000            # enable extended thinking with 10k token budget
 harness status                   # show config, API key, recent sessions
+harness doctor                   # health checks (keys, daemon, MCP paths, …)
+harness completions zsh          # print completions → save to your shell's completion dir
+harness swarm list               # parallel sub-agent tasks
+harness swarm status <task-id>   # one task
+harness swarm result <task-id>   # output when done
+harness trace                    # list spans from last local trace (needs observability)
 ```
 
 ---
 
 ## TUI keybindings
 
+Full cheat sheet: [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md). Phase E highlights:
+
 | Key       | Action                             |
 |-----------|------------------------------------|
 | `Enter`   | Send message                       |
-| `↑ / ↓`   | Scroll chat                        |
+| `Shift+Enter` / `Alt+Enter` | Newline in input           |
+| `↑ / ↓`   | Scroll chat / history navigation   |
 | `PgUp/Dn` | Scroll event log (right panel)     |
-| `Ctrl+V`  | Hold to voice-record, release to transcribe (Whisper) |
-| `Ctrl+E`  | Fork mode — edit a past turn       |
+| `Ctrl+S`  | Voice record (Whisper) — **Phase E** (was Ctrl+V in Phase D) |
+| `Ctrl+Y`  | Copy last assistant reply          |
+| `Ctrl+F`  | Search chat                        |
+| `Ctrl+L`  | Jump chat to bottom                |
+| `Ctrl+]` / `Ctrl+[` | Resize right panel           |
+| `Ctrl+E`  | Fork mode — branch from a past turn |
 | `Ctrl+C`  | Quit                               |
 
 ### Slash commands
@@ -87,6 +100,9 @@ harness status                   # show config, API key, recent sessions
 | `/cost`              | Show token usage + cost estimate            |
 | `/model X`           | Switch model mid-session                    |
 | `/runs`              | List background runs                        |
+| `/focus [N]`         | Pomodoro: silence notifications N min (default 25) |
+| `/schema …`          | Strict JSON output schema (see docs)        |
+| `/obsidian save`     | Save reply to Obsidian (when configured)    |
 | `/help`              | Full command list                           |
 
 ---
@@ -174,9 +190,10 @@ Passphrase is stored in macOS Keychain (or `~/.harness/.sync-key` as fallback).
 ```bash
 harness voice                    # record one-shot, print transcript
 harness voice --send             # record + send to agent immediately
+harness voice --realtime         # OpenAI Realtime API duplex (requires OPENAI_API_KEY)
 ```
 
-Or hold `Ctrl+V` in TUI to record; release to transcribe and insert.
+In the TUI use **`Ctrl+S`** for push-to-talk style recording (see [`docs/MIGRATION.md`](docs/MIGRATION.md) if you still use Ctrl+V).
 
 Backends:
 - **OpenAI Whisper** (`OPENAI_API_KEY` set) — uses `gpt-4o-transcribe`
@@ -203,6 +220,27 @@ TUI shows a red `[COMPUTER USE LIVE]` banner when active.
 harness serve --addr 127.0.0.1:8787
 # then open http://127.0.0.1:8787
 ```
+
+---
+
+## Desktop app (Tauri 2, optional)
+
+Wraps the same UI in a native window with tray icon and **Cmd+Shift+H** (Ctrl+Shift+H on Linux/Windows) to show/hide.
+
+```bash
+cd apps/desktop
+npm install
+npm run dev      # development
+npm run build    # release bundle
+```
+
+Requires `harness` on `PATH` for auto-spawn of `harness daemon`. See [`apps/desktop/README.md`](apps/desktop/README.md).
+
+---
+
+## VS Code extension (optional)
+
+`extensions/vscode/` — side-panel chat and inline edit against the harness daemon (Unix socket). Install dependencies with `npm install`, then **Run Extension** from VS Code or package with `vsce`.
 
 ---
 
@@ -254,6 +292,9 @@ enabled = true
 
 [agent]
 system_prompt = "..."           # customize agent persona
+
+# Optional Phase E blocks — see `config/default.toml` (**commented** templates; do not
+# paste raw `[observability]` tables until those structs exist in harness `Config`).
 ```
 
 ---
@@ -280,10 +321,13 @@ crates/
   harness-memory/               SQLite session store + vector memory
   harness-mcp/                  MCP stdio protocol client
   harness-browser/              Chrome CDP browser tool
-  harness-voice/                Whisper audio transcription (OpenAI + local)
+  harness-voice/                Whisper audio transcription + Realtime API duplex
+  harness-term-graphics/        Inline terminal images (Kitty / iTerm2 / Sixel)
+extensions/vscode/             VS Code integration (MVP)
+apps/desktop/                  Tauri 2 native shell
 ```
 
-For a developer deep-dive see [`CLAUDE.md`](CLAUDE.md).
+For a developer deep-dive see [`CLAUDE.md`](CLAUDE.md). User-facing migration notes: [`docs/MIGRATION.md`](docs/MIGRATION.md).
 
 ---
 
