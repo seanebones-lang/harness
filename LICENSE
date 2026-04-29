@@ -1,0 +1,128 @@
+Proprietary Rights and Enforcement Notice for
+NextEleven LLC Repositories
+Effective Date: January 7, 2026
+Issued by: NextEleven LLC, Frisco, Texas, USA
+As Corporate Attorney for NextEleven LLC: This document serves as the binding legal
+framework governing all intellectual property contained within any GitHub repositories
+owned, maintained, o r controlled by NextEleven LLC (hereinafter "the Company"). This i s
+not an open-source license. This is a zero-tolerance, all-encompassing proprietary
+protection declaration designed t o annihilate any unauthorized interaction with our
+creations. Every line o f code, every file, every commit, every idea, design, algorithm,
+architecture, documentation, graphic, script, configuration, data structure, user interface
+element, or any other tangible or intangible element (collectively, "the Works") is the
+exclusive property o f NextEleven LLC. We will hunt down violators with unrelenting fury,
+leveraging every legal avenue available under United States federal law, Texas state law,
+international treaties, and the laws o f any jurisdiction where infringement occurs. There are
+no loopholes. There is no mercy. Violation means war.
+1. Absolute Ownership and Copyright Assertion
+All Works in these repositories are protected by copyright under the United States
+Copyright Act o f 1976 (as amended, including the Digital Millennium Copyright Act of 1998
+and subsequent updates through December 2025), the Berne Convention for the
+Protection o f Literary and Artistic Works, the World Intellectual Property Organization
+(WIPO) Copyright Treaty, and equivalent laws i n every country worldwide. Copyright ©
+2026 NextEleven LLC. All rights reserved worldwide.
+• N o Implied Rights: Nothing in these repositories grants any license, sublicense,
+permission, or right-express, implied, statutory, o r otherwise—to view, access,
+download, copy, modify, distribute, perform, display, transmit, o r otherwise use the
+Works in any manner whatsoever without prior written authorization from an executive
+officer o f NextEleven LLC.
+• Automatic Protection: Protection attaches immediately upon creation, without need
+for registration (though w e reserve the right t o register copyrights formally for
+enhanced enforcement). As o f December 2025, U.S. copyright law provides for
+statutory damages up t o $150,000 per willful infringement, and we will seek the
+maximum in every case.
+• Trade Secrets and Confidential Information: Any non-public elements, including but
+not limited to source code, proprietary algorithms, business logic, or internal
+documentation, are trade secrets under the Defend Trade Secrets Act o f 2016 (18
+U.S.C. § 1839) and Texas Uniform Trade Secrets Act (Texas Civil Practice and
+Remedies Code § 134A). Misappropriation will trigger civil and criminal penalties,
+including treble damages and attorneys' fees.
+2. Prohibited Activities: A Comprehensive Blacklist
+You are expressly forbidden from engaging i n any o f the following, directly o r indirectly,
+anywhere i n the world:
+• Copying o r Reproduction: Duplicating any part o f the Works, i n whole o r in part,
+including but not limited to cloning repositories via Git, forking, mirroring, scraping,
+screenshotting, photographing, or any other form of replication.
+• Stealing or Misappropriation: Accessing, downloading, o r extracting the Works
+without permission, including through automated tools, bots, APls, o r manual means.
+This includes "inspiration" that results in substantially similar creations—we will pursue
+derivative works a s infringements under 17 U.S.C. § 106.
+• Cloning o r Forking: Creating any derivative, modified, o r adapted version o f the
+Works, whether for personal, commercial, educational, o r any other use. Reverse
+engineering, decompiling, disassembling, o r attempting t o derive source code is a
+direct violation under the DMCA's anti-circumvention provisions (17 U.S.C. § 1201),
+punishable b y u p t o $500,000 in fines and 5 years imprisonment for first offenses.
+• Distribution o r Sharing: Uploading, posting, emailing, linking, o r otherwise
+disseminating the Works o r any portion thereof on any platform, including but not
+limited t o other GitHub repos, GitLab, Bitbucket, SourceForge, personal websites,
+social media, forums, cloud storage, or physical media.
+• Public Performance o r Display: Demonstrating, showcasing, or integrating the Works
+into any product, service, presentation, or public medium without explicit license.
+• Commercial Exploitation: Using the Works i n any business, startup, app, software,
+hardware, A l model training, o r revenue-generating activity. This includes indirect uses
+like benchmarking or competitive analysis.
+• Educational or Non-Profit Use: N o exemptions for "fair use" claims—we will contest
+and litigate any asserted fair use under 17 U.S.C. § 107, demanding proof o f
+transformative nature, minimal portion used, and no market harm (which we assert is
+always present).
+• A l and Machine Learning: Feeding any Works into A l systems for training, generation,
+or analysis constitutes theft and will be pursued as copyright infringement, consistent
+with emerging case law as o f December 2025 (e.g., extensions o f Getty Images v.
+Stability Al precedents).
+• International Violations: If you are outside the U.S., we invoke the Universal Copyright
+Convention, TRIPS Agreement (under WTO), and bilateral treaties t o enforce in your
+jurisdiction. We will use long-arm statutes (e.g., Texas Civil Practice and Remedies
+Code § 17.042) t o haul you into Texas courts.
+Any attempt t o circumvent these prohibitions, including through VPNs, proxies,
+anonymous accounts, o r offshore entities, will be treated as willful infringement, escalating
+damages.
+3. Enforcement: Ruthless Pursuit and Maximum Damages
+We d o not negotiate. We d o not settle lightly. Violation triggers immediate and aggressive
+action:
+• Cease and Desist: You will receive a demand to immediately cease all infringing
+activities, delete all copies, and provide a sworn affidavit o f compliance.
+• Litigation: We will file suit in the U.S. District Court for the Northern District o f Texas
+(Frisco jurisdiction) or any appropriate international court. W e seek:
+• Injunctive Relief: Permanent injunctions t o stop your activities, under 17 U.S.C. §
+502.
+• Damages: Actual damages, profits from infringement, statutory damages (up t o
+$150,000 per work), treble damages for trade secret misappropriation, and
+punitive damages where available (e.g., under Texas law for willful conduct).
+• Attorneys' Fees and Costs: Full recovery under 17 U.S.C. § 505 and equivalent
+laws.
+• Criminal Prosecution: Referral t o the FBI, DOJ, or international authorities for
+criminal copyright infringement (17 U.S.C. § 506, up t o 10 years imprisonment for
+repeat offenders) o r trade secret theft (18 U.S.C. § 1832).
+• Global Reach: Through mutual legal assistance treaties (MLATs) and partnerships with
+firms in Europe (GDPR-aligned enforcement), Asia (e.g., China's Anti-Unfair
+Competition Law), and beyond, we will enforce judgments worldwide. Assets will b e
+seized, domains frozen, and reputations destroyed.
+• Monitoring and Detection: We employ automated tools, watermarking, digital
+fingerprints, and third-party services to detect infringements. GitHub's DMCA
+takedown process will b e invoked instantly (under 17 U.S.C. § 512), but we g o further-
+suing platforms for contributory infringement i f they fail t o act.
+• N o Statute of Limitations Escape: We will pursue claims within the three-year U.S.
+copyright statute (17 U.S.C. § 507), but tolling applies for concealed infringements.
+International claims follow local limits, extended by discovery rules.
+4. Indemnification and Liability
+By accessing these repositories, you agree t o indemnify and hold harmless NextEleven
+LLC, its officers, directors, employees, and agents from any claims arising from your
+violations. You are liable for all consequential, incidental, and exemplary damages. No
+limitations o f liability apply— w e disclaim all warranties, and you assume all risks.
+5 . Governing Law and Jurisdiction
+This notice i s governed b y the laws o f the State of Texas and the United States, without
+regard to conflict o f laws. Exclusive venue: State o r federal courts i n Collin County, Texas.
+You consent t o personal jurisdiction and waive any objections.
+6 . Severability and N o Waiver
+I f any provision is held invalid, the remainder remains in full force. Failure t o enforce any
+right does not constitute waiver—we reserve all rights t o act a t any time.
+7. Amendments
+We may amend this notice unilaterally by updating the repository. Continued access
+constitutes acceptance.
+Warning: Ignore this a t your peril. NextEleven LLC is backed b y top-tier legal counsel ready
+to deploy. Your IP address, access logs, and metadata are monitored. Proceed only i f
+authorized.
+For licensing inquiries, contact: legal@nexteleven.com (proof o f identity required).
+This document is drafted t o be impenetrable, exhaustive, and lethal t o infringers. I t reflects
+U.S. and international IP law as o f December 2025, including recent amendments t o the
+DMCA and trade secret protections.
