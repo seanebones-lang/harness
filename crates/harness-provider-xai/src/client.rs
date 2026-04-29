@@ -25,7 +25,7 @@ impl XaiConfig {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
-            model: "grok-3-fast".into(),
+            model: "grok-4.20-0309-reasoning".into(),
             max_tokens: 8192,
             temperature: 0.7,
             base_url: XAI_BASE_URL.into(),
@@ -167,10 +167,19 @@ impl Provider for XaiProvider {
 
     fn pricing(&self) -> Option<Pricing> {
         let m = self.config.model.to_lowercase();
-        if m.contains("grok-3-mini") {
-            Some(Pricing { input_per_m_usd: 0.30, output_per_m_usd: 0.50 })
-        } else if m.contains("grok-3") || m.contains("grok-4") {
-            Some(Pricing { input_per_m_usd: 3.00, output_per_m_usd: 15.00 })
+        // April 2026 Grok 4.x SKUs
+        if m.contains("grok-4.20") || m.contains("grok-4-20") {
+            // Grok 4.20: $2/$6, 90% cached discount → $0.20 cached
+            Some(Pricing { input_per_m_usd: 2.00, cached_input_per_m_usd: 0.20, output_per_m_usd: 6.00 })
+        } else if m.contains("grok-4-1-fast") || m.contains("grok-4.1-fast") {
+            Some(Pricing { input_per_m_usd: 0.20, cached_input_per_m_usd: 0.05, output_per_m_usd: 0.50 })
+        } else if m.contains("grok-4") {
+            Some(Pricing { input_per_m_usd: 3.00, cached_input_per_m_usd: 0.0, output_per_m_usd: 15.00 })
+        // Legacy Grok 3
+        } else if m.contains("grok-3-mini") {
+            Some(Pricing { input_per_m_usd: 0.30, cached_input_per_m_usd: 0.0, output_per_m_usd: 0.50 })
+        } else if m.contains("grok-3") {
+            Some(Pricing { input_per_m_usd: 2.00, cached_input_per_m_usd: 0.0, output_per_m_usd: 10.00 })
         } else {
             None
         }
@@ -178,7 +187,26 @@ impl Provider for XaiProvider {
 
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
         let messages = self.build_api_messages(&req);
-        let tools = self.build_tool_schemas(&req.tools);
+        let mut tools = self.build_tool_schemas(&req.tools);
+
+        // Append xAI native server-side tools when requested.
+        // xAI tools use a special "type" field distinct from "function".
+        if req.native_web_search {
+            tools.push(serde_json::json!({
+                "type": "web_search"
+            }));
+        }
+        if req.native_x_search {
+            tools.push(serde_json::json!({
+                "type": "x_search"
+            }));
+        }
+        if req.native_code_execution {
+            tools.push(serde_json::json!({
+                "type": "code_execution"
+            }));
+        }
+
         let has_tools = !tools.is_empty();
 
         let body = ApiRequest {

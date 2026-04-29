@@ -28,6 +28,7 @@ use tokio::sync::watch;
 use crate::agent::{self, DEFAULT_SYSTEM};
 use crate::config::Config;
 use crate::cost;
+use crate::cost_db::{self, CostDb};
 use crate::events::AgentEvent;
 use crate::highlight::Highlighter;
 
@@ -60,6 +61,10 @@ struct AppState {
     /// Cumulative token counts for this session.
     tokens_in: u64,
     tokens_out: u64,
+    /// Anthropic prompt-cache stats: tokens read from cache this session.
+    cache_read_tokens: u64,
+    /// Anthropic prompt-cache stats: tokens written to cache this session.
+    cache_creation_tokens: u64,
     /// Active model name (for cost calculation).
     model: String,
     /// Session start time for elapsed display.
@@ -75,8 +80,24 @@ struct AppState {
     tab_completion_idx: usize,
     /// Fork mode: when Some(N), the status bar shows "Fork at turn N" and Enter forks.
     fork_mode: bool,
+    /// Extended thinking budget (None = off / model-adaptive, Some(n) = explicit budget).
+    thinking_budget: Option<u32>,
+    /// Is a voice recording in progress?
+    recording_voice: bool,
+    /// Is computer use active this session?
+    computer_use_active: bool,
+    /// Cost database handle (optional — opened lazily).
+    cost_db: Option<CostDb>,
+    /// Current session ID for cost recording.
+    session_id_full: String,
+    /// Budget: daily limit in USD (from config).
+    budget_daily_usd: Option<f64>,
+    /// Budget: monthly limit in USD (from config).
+    budget_monthly_usd: Option<f64>,
     /// Approval counts per (tool, first_arg) for learning trust suggestions.
     approval_counts: std::collections::HashMap<(String, String), usize>,
+    /// Notifications config (for sending desktop notifications).
+    notifications: crate::config::NotificationsConfig,
 }
 
 struct PendingConfirm {
@@ -122,6 +143,8 @@ impl AppState {
             session_id: String::new(),
             tokens_in: 0,
             tokens_out: 0,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
             model: model.to_string(),
             session_start: std::time::Instant::now(),
             pending_confirm: None,
@@ -130,7 +153,15 @@ impl AppState {
             tab_completions: Vec::new(),
             tab_completion_idx: 0,
             fork_mode: false,
+            thinking_budget: None,
+            recording_voice: false,
+            computer_use_active: false,
+            cost_db: CostDb::open().ok(),
+            session_id_full: String::new(),
+            budget_daily_usd: None,
+            budget_monthly_usd: None,
             approval_counts: std::collections::HashMap::new(),
+            notifications: crate::config::NotificationsConfig::default(),
         }
     }
 
@@ -142,9 +173,19 @@ impl AppState {
         let in_str = cost::format_tokens(self.tokens_in);
         let out_str = cost::format_tokens(self.tokens_out);
         let cost_part = cost::price_for_model(&self.model)
-            .map(|p| format!(" · {}", cost::format_cost(p.cost_usd(self.tokens_in, self.tokens_out))))
+            .map(|p| {
+                let usd = p.cost_with_cache(self.tokens_in, self.cache_read_tokens, self.tokens_out);
+                format!(" · {}", cost::format_cost(usd))
+            })
             .unwrap_or_default();
-        format!(" · ↑{in_str} ↓{out_str} tok{cost_part}")
+        // Show cache hit % when caching is active
+        let cache_part = if self.cache_read_tokens > 0 {
+            let pct = self.cache_read_tokens * 100 / self.tokens_in.max(1);
+            format!(" · cache:{pct}%↑")
+        } else {
+            String::new()
+        };
+        format!(" · ↑{in_str} ↓{out_str} tok{cost_part}{cache_part}")
     }
 
     /// Elapsed time since session start as a short string.
@@ -292,6 +333,10 @@ pub async fn run(
     {
         let mut st = state.lock().unwrap();
         st.plan_mode = has_confirm_gate;
+        st.computer_use_active = cfg.computer_use.is_enabled();
+        st.budget_daily_usd = cfg.budget.daily_usd;
+        st.budget_monthly_usd = cfg.budget.monthly_usd;
+        st.notifications = cfg.notifications.clone();
     }
     let mut session = match resume_id {
         Some(id) => session_store
@@ -299,6 +344,10 @@ pub async fn run(
             .ok_or_else(|| anyhow::anyhow!("session not found: {id}"))?,
         None => Session::new(&model),
     };
+    {
+        let mut st = state.lock().unwrap();
+        st.session_id_full = session.id.clone();
+    }
     if !session.messages.is_empty() {
         let mut st = state.lock().unwrap();
         st.session_id = session.short_id().to_string();
@@ -496,6 +545,47 @@ async fn event_loop(
                         break;
                     }
 
+                    // Ctrl+V — start voice recording
+                    (KeyCode::Char('v'), KeyModifiers::CONTROL) => {
+                        let busy = state.lock().unwrap().busy;
+                        let recording = state.lock().unwrap().recording_voice;
+                        if busy || recording {
+                            state.lock().unwrap().push_event("[voice] busy, please wait.".to_string());
+                        } else {
+                            {
+                                let mut st = state.lock().unwrap();
+                                st.recording_voice = true;
+                                st.status = "🎙 Recording… (5s)".to_string();
+                                st.push_event("[voice] recording for 5s…".to_string());
+                            }
+                            let state2 = state.clone();
+                            let openai_key = std::env::var("OPENAI_API_KEY").ok();
+                            tokio::spawn(async move {
+                                use harness_voice::{WhisperBackend, record_and_transcribe};
+                                use std::time::Duration;
+                                let backend = WhisperBackend::detect(openai_key.as_deref());
+                                let result = record_and_transcribe(Duration::from_secs(5), &backend).await;
+                                let mut st = state2.lock().unwrap();
+                                st.recording_voice = false;
+                                match result {
+                                    Ok(transcript) if !transcript.is_empty() => {
+                                        st.input.push_str(&transcript);
+                                        st.cursor_pos = st.input.len();
+                                        st.status = "Voice transcribed — press Enter to send.".to_string();
+                                        st.push_event(format!("[voice] transcribed: {}", &transcript[..transcript.len().min(60)]));
+                                    }
+                                    Ok(_) => {
+                                        st.status = "Voice: no speech detected.".to_string();
+                                    }
+                                    Err(e) => {
+                                        st.push_event(format!("[voice] error: {e}"));
+                                        st.status = format!("Voice error: {e}");
+                                    }
+                                }
+                            });
+                        }
+                    }
+
                     // Ctrl+E — enter fork mode (edit/fork a past turn)
                     (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
                         let mut st = state.lock().unwrap();
@@ -660,16 +750,12 @@ async fn event_loop(
                         let atx = agent_tx.clone();
                         let dtx = done_tx.clone();
                         let mut sess_clone = session.clone();
+                        let think_budget = state.lock().unwrap().thinking_budget;
 
                         tokio::spawn(async move {
-                            let _ = agent::drive_agent(
-                                &p2,
-                                &t2,
-                                mem2.as_ref(),
-                                em2.as_deref(),
-                                &mut sess_clone,
-                                &sys,
-                                Some(&atx),
+                            let _ = agent::drive_agent_with_options(
+                                &p2, &t2, mem2.as_ref(), em2.as_deref(),
+                                &mut sess_clone, &sys, Some(&atx), think_budget,
                             )
                             .await;
                             let _ = dtx.send(sess_clone);
@@ -962,27 +1048,175 @@ async fn handle_slash_command(
 
         "/fork" => {
             state.lock().unwrap().push_event(
-                "[fork] Edit/fork past turns coming in Phase C. Use harness --resume in a new terminal for now.".to_string()
+                "[fork] Use Ctrl+E to enter fork mode, then type a turn number.".to_string()
             );
+        }
+
+        "/think" => {
+            let mut st = state.lock().unwrap();
+            let arg = parts.get(1).copied().unwrap_or("").trim();
+            if arg.is_empty() || arg == "off" {
+                st.thinking_budget = None;
+                st.push_event("[think] Extended thinking OFF — using model-adaptive reasoning.".to_string());
+                st.status = "Thinking: off (adaptive)".into();
+            } else if let Ok(budget) = arg.parse::<u32>() {
+                st.thinking_budget = Some(budget);
+                st.push_event(format!("[think] Extended thinking ON — budget: {budget} tokens."));
+                st.status = format!("Thinking budget: {budget} tokens");
+            } else {
+                st.push_event("[think] Usage: /think [budget_tokens | off]".to_string());
+            }
+        }
+
+        "/remember" => {
+            // /remember topic: fact text here
+            let rest = parts[1..].join(" ");
+            if let Some((topic, fact)) = rest.split_once(':') {
+                match crate::memory_project::remember(topic.trim(), fact.trim()) {
+                    Ok(path) => {
+                        let mut st = state.lock().unwrap();
+                        st.push_event(format!("[memory] saved to {}", path.display()));
+                        st.status = format!("Remembered under '{}'", topic.trim());
+                    }
+                    Err(e) => {
+                        state.lock().unwrap().push_event(format!("[memory] error: {e}"));
+                    }
+                }
+            } else {
+                state.lock().unwrap().push_event("[memory] Usage: /remember <topic>: <fact>".to_string());
+            }
+        }
+
+        "/forget" => {
+            let topic = parts.get(1).copied().unwrap_or("").trim();
+            if topic.is_empty() {
+                state.lock().unwrap().push_event("[memory] Usage: /forget <topic>".to_string());
+            } else {
+                match crate::memory_project::forget(topic) {
+                    Ok(true) => {
+                        let mut st = state.lock().unwrap();
+                        st.push_event(format!("[memory] forgot '{topic}'"));
+                        st.status = format!("Forgot topic '{topic}'");
+                    }
+                    Ok(false) => {
+                        state.lock().unwrap().push_event(format!("[memory] no memory for '{topic}'"));
+                    }
+                    Err(e) => {
+                        state.lock().unwrap().push_event(format!("[memory] error: {e}"));
+                    }
+                }
+            }
+        }
+
+        "/memories" => {
+            let topics = crate::memory_project::list_topics();
+            let mut st = state.lock().unwrap();
+            if topics.is_empty() {
+                st.push_event("[memory] no project memories yet. Use /remember topic: fact".to_string());
+            } else {
+                st.push_event(format!("[memory] {} topic(s):", topics.len()));
+                for t in &topics {
+                    st.push_event(format!("  • {t}"));
+                }
+            }
+            st.status = format!("{} memory topics", topics.len());
+        }
+
+        "/pr" => {
+            let pr_num = parts.get(1).copied().unwrap_or("").trim();
+            if pr_num.is_empty() {
+                // List open PRs
+                state.lock().unwrap().push_event("[pr] fetching open PRs…".to_string());
+                let state2 = state.clone();
+                tokio::spawn(async move {
+                    let msg = harness_tools::tools::gh::pr_list()
+                        .await
+                        .unwrap_or_else(|e| format!("gh error: {e}"));
+                    let mut st = state2.lock().unwrap();
+                    for line in msg.lines().take(30) {
+                        st.push_event(format!("  {line}"));
+                    }
+                    st.status = "PRs listed in event log →".into();
+                });
+            } else {
+                let num = pr_num.to_string();
+                let input_msg = format!("@pr:{num}");
+                let mut st = state.lock().unwrap();
+                st.input = input_msg;
+                st.cursor_pos = st.input.len();
+                st.status = format!("PR #{num} reference added — press Enter to load context");
+            }
+        }
+
+        "/issues" => {
+            state.lock().unwrap().push_event("[issues] fetching open issues…".to_string());
+            let state2 = state.clone();
+            tokio::spawn(async move {
+                let out = tokio::process::Command::new("gh")
+                    .args(["issue", "list", "--json", "number,title,state,labels", "--limit", "20"])
+                    .output().await;
+                let msg = match out {
+                    Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+                    Err(e) => format!("gh error: {e}"),
+                };
+                let mut st = state2.lock().unwrap();
+                for line in msg.lines().take(40) {
+                    st.push_event(format!("  {line}"));
+                }
+                st.status = "Issues listed in event log →".into();
+            });
+        }
+
+        "/ci" => {
+            state.lock().unwrap().push_event("[ci] checking workflow runs…".to_string());
+            let state2 = state.clone();
+            tokio::spawn(async move {
+                let out = tokio::process::Command::new("gh")
+                    .args(["run", "list", "--limit", "10"])
+                    .output().await;
+                let msg = match out {
+                    Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+                    Err(e) => format!("gh error: {e}"),
+                };
+                let mut st = state2.lock().unwrap();
+                for line in msg.lines().take(20) {
+                    st.push_event(format!("  {line}"));
+                }
+                st.status = "CI runs listed in event log →".into();
+            });
+        }
+
+        "/notify test" | "/notify" => {
+            let notif_cfg = state.lock().unwrap().notifications.clone();
+            crate::notifications::test_notification(&notif_cfg);
+            state.lock().unwrap().push_event("[notify] test notification sent".to_string());
         }
 
         "/help" | "/?" => {
             let mut st = state.lock().unwrap();
             for line in &[
-                "/clear    — clear chat panel",
-                "/undo     — restore last git checkpoint",
-                "/diff     — show git diff in event log",
-                "/test     — run test suite",
-                "/compact  — compact context (summarise old messages)",
-                "/runs     — list background runs (harness run-bg <prompt> to spawn)",
-                "/cost     — show token usage + cost estimate",
-                "/plan     — toggle plan mode (restart with --plan to gate)",
-                "/model X  — switch model for new turns",
-                "/fork N   — fork session at turn N (Phase C)",
-                "/help     — show this list",
+                "/clear       — clear chat panel",
+                "/undo        — restore last git checkpoint",
+                "/diff        — show git diff in event log",
+                "/test        — run test suite",
+                "/compact     — compact context (summarise old messages)",
+                "/runs        — list background runs (harness run-bg <prompt> to spawn)",
+                "/cost        — show token usage + cost estimate",
+                "/plan        — toggle plan mode (restart with --plan to gate)",
+                "/model X     — switch model for new turns",
+                "/think [N]         — enable extended thinking with N-token budget (off = adaptive)",
+                "/remember t: f     — store fact f under topic t in .harness/memory/",
+                "/forget t          — remove topic t from project memory",
+                "/memories          — list all memory topics",
+                "/pr [N]            — list open PRs or load PR #N context",
+                "/issues            — list open GitHub issues",
+                "/ci                — show recent CI workflow runs",
+                "/notify test       — send a test desktop notification",
+                "/help              — show this list",
                 "",
-                "@path     — pin file contents into next message",
-                "Tab       — autocomplete @file paths",
+                "@path        — pin file contents into next message",
+                "Tab          — autocomplete @file paths",
+                "Ctrl+E       — enter fork mode (edit/fork a past turn)",
             ] {
                 st.push_event(line.to_string());
             }
@@ -1042,7 +1276,72 @@ fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
         AgentEvent::TokenUsage { input, output } => {
             st.tokens_in += input as u64;
             st.tokens_out += output as u64;
+
+            // Record to cost DB
+            if let Some(ref db) = st.cost_db {
+                let usd = cost::price_for_model(&st.model)
+                    .map(|p| p.cost_with_cache(input as u64, st.cache_read_tokens, output as u64))
+                    .unwrap_or(0.0);
+                let project = std::env::current_dir()
+                    .ok()
+                    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+                    .unwrap_or_default();
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                let row = cost_db::UsageRow {
+                    session_id: st.session_id_full.clone(),
+                    project,
+                    provider: "auto".to_string(),
+                    model: st.model.clone(),
+                    ts,
+                    in_tok: input,
+                    cached_in: st.cache_read_tokens as u32,
+                    out_tok: output,
+                    native_calls: 0,
+                    usd,
+                };
+                let _ = db.record(&row);
+
+                // Budget check
+                let (daily_pct, monthly_pct) = cost_db::check_budget(
+                    db, st.budget_daily_usd, st.budget_monthly_usd
+                );
+                if let Some(pct) = daily_pct {
+                    if pct >= 100.0 {
+                        let msg = format!("⚠ BUDGET: daily limit reached ({:.0}%)", pct);
+                        crate::notifications::budget_alert(&st.notifications, &msg);
+                        st.push_event(msg);
+                    } else if pct >= 80.0 {
+                        let msg = format!("⚠ BUDGET: {:.0}% of daily limit used", pct);
+                        crate::notifications::budget_alert(&st.notifications, &msg);
+                        st.push_event(msg);
+                    }
+                }
+                if let Some(pct) = monthly_pct {
+                    if pct >= 100.0 {
+                        let msg = format!("⚠ BUDGET: monthly limit reached ({:.0}%)", pct);
+                        crate::notifications::budget_alert(&st.notifications, &msg);
+                        st.push_event(msg);
+                    } else if pct >= 80.0 {
+                        let msg = format!("⚠ BUDGET: {:.0}% of monthly limit used", pct);
+                        crate::notifications::budget_alert(&st.notifications, &msg);
+                        st.push_event(msg);
+                    }
+                }
+            }
+
             st.push_event(format!("tokens in={input} out={output}"));
+        }
+        AgentEvent::CacheUsage { creation, read } => {
+            st.cache_creation_tokens += creation as u64;
+            st.cache_read_tokens += read as u64;
+            if read > 0 {
+                let total = st.tokens_in.max(1);
+                let hit_pct = st.cache_read_tokens * 100 / total;
+                st.push_event(format!("cache write={creation} read={read} ({hit_pct}% hit)"));
+            }
         }
         AgentEvent::Done => {
             if !st.streaming.is_empty() {
@@ -1207,7 +1506,9 @@ fn draw_input(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::R
 }
 
 fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    let style = if state.pending_confirm.is_some() {
+    let style = if state.computer_use_active {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    } else if state.pending_confirm.is_some() {
         Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
     } else if state.busy {
         Style::default().fg(Color::Yellow)
@@ -1215,7 +1516,9 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::
         Style::default().fg(Color::DarkGray)
     };
     let plan_indicator = if state.plan_mode { " [PLAN]" } else { "" };
-    let text = format!("{plan_indicator} {}", state.status);
+    let computer_indicator = if state.computer_use_active { " [⚠ COMPUTER USE LIVE]" } else { "" };
+    let voice_indicator = if state.recording_voice { " [🎙 REC]" } else { "" };
+    let text = format!("{computer_indicator}{plan_indicator}{voice_indicator} {}", state.status);
     let p = Paragraph::new(text).style(style);
     f.render_widget(p, area);
 }

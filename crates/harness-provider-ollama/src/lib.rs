@@ -105,7 +105,7 @@ impl Provider for OllamaProvider {
 
     fn pricing(&self) -> Option<Pricing> {
         // Local models are free.
-        Some(Pricing { input_per_m_usd: 0.0, output_per_m_usd: 0.0 })
+        Some(Pricing { input_per_m_usd: 0.0, cached_input_per_m_usd: 0.0, output_per_m_usd: 0.0 })
     }
 
     async fn embed(&self, model: &str, text: &str) -> Result<Vec<f32>, ProviderError> {

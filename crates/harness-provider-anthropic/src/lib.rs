@@ -31,7 +31,7 @@ impl AnthropicConfig {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
-            model: "claude-sonnet-4-5".into(),
+            model: "claude-sonnet-4-6".into(),
             max_tokens: 8192,
             temperature: 0.7,
             base_url: ANTHROPIC_BASE_URL.into(),
@@ -71,12 +71,16 @@ struct ApiRequest {
     model: String,
     max_tokens: u32,
     messages: Vec<ApiMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<String>,
+    /// System as a structured array so we can attach cache_control.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    system: Vec<Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<Value>,
     stream: bool,
     temperature: f32,
+    /// Extended thinking config (omitted when None).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -85,11 +89,42 @@ struct ApiMessage {
     content: Value,
 }
 
+/// Build the system block array with a cache breakpoint on the final block.
+fn build_system_blocks(text: &str) -> Vec<Value> {
+    vec![json!({
+        "type": "text",
+        "text": text,
+        "cache_control": { "type": "ephemeral" }
+    })]
+}
+
 fn build_api_messages(req: &ChatRequest) -> Vec<ApiMessage> {
     let mut msgs = Vec::new();
-    for msg in &req.messages {
+    let total = req.messages.len();
+
+    for (idx, msg) in req.messages.iter().enumerate() {
         let (role, content) = match &msg.role {
-            Role::User => ("user", json!(msg.content.as_str())),
+            Role::User => {
+                let text = msg.content.as_str();
+                // Attach a rolling cache breakpoint to the second-to-last user message
+                // (Anthropic supports up to 4 cache breakpoints per request).
+                // Also cache @file-pinned content and the very last user message.
+                let should_cache = idx + 1 == total     // last message
+                    || idx + 2 == total                  // second-to-last
+                    || text.contains("@file:");          // pinned file reference
+                if should_cache {
+                    (
+                        "user",
+                        json!([{
+                            "type": "text",
+                            "text": text,
+                            "cache_control": { "type": "ephemeral" }
+                        }]),
+                    )
+                } else {
+                    ("user", json!(text))
+                }
+            }
             Role::Assistant => {
                 let s = msg.content.as_str();
                 if let Some(stripped) = s.strip_prefix("__tool_calls__:") {
@@ -131,15 +166,24 @@ fn build_api_messages(req: &ChatRequest) -> Vec<ApiMessage> {
     msgs
 }
 
+/// Build tool schemas with a cache breakpoint on the last tool (so the whole
+/// tool list can be cached across turns).
 fn build_tool_schemas(tools: &[harness_provider_core::ToolDefinition]) -> Vec<Value> {
-    tools.iter().map(|t| {
-        json!({
+    let len = tools.len();
+    tools.iter().enumerate().map(|(i, t)| {
+        let mut def = json!({
             "name": t.function.name,
             "description": t.function.description,
             "input_schema": t.function.parameters
-        })
+        });
+        // Cache the last tool entry so the whole tool list is cached.
+        if i + 1 == len {
+            def["cache_control"] = json!({ "type": "ephemeral" });
+        }
+        def
     }).collect()
 }
+
 
 fn make_tool_call(id: &str, name: &str, args: &str) -> ToolCall {
     ToolCall {
@@ -164,12 +208,21 @@ impl Provider for AnthropicProvider {
 
     fn pricing(&self) -> Option<Pricing> {
         let m = self.config.model.to_lowercase();
-        if m.contains("opus") {
-            Some(Pricing { input_per_m_usd: 15.00, output_per_m_usd: 75.00 })
+        // Opus 4.7 / 4.6 / 4.5: $5/$25, cached $0.50
+        if m.contains("opus-4-7") || m.contains("opus-4-6") || m.contains("opus-4-5") {
+            Some(Pricing { input_per_m_usd: 5.00, cached_input_per_m_usd: 0.50, output_per_m_usd: 25.00 })
+        // Opus 4.1 / 4 (legacy): $15/$75, cached $1.50
+        } else if m.contains("opus") {
+            Some(Pricing { input_per_m_usd: 15.00, cached_input_per_m_usd: 1.50, output_per_m_usd: 75.00 })
+        // Sonnet 4.x: $3/$15, cached $0.30
         } else if m.contains("sonnet") {
-            Some(Pricing { input_per_m_usd: 3.00, output_per_m_usd: 15.00 })
+            Some(Pricing { input_per_m_usd: 3.00, cached_input_per_m_usd: 0.30, output_per_m_usd: 15.00 })
+        // Haiku 4.5: $1/$5, cached $0.10
+        } else if m.contains("haiku-4-5") {
+            Some(Pricing { input_per_m_usd: 1.00, cached_input_per_m_usd: 0.10, output_per_m_usd: 5.00 })
+        // Haiku legacy: $0.80/$4
         } else if m.contains("haiku") {
-            Some(Pricing { input_per_m_usd: 0.25, output_per_m_usd: 1.25 })
+            Some(Pricing { input_per_m_usd: 0.80, cached_input_per_m_usd: 0.08, output_per_m_usd: 4.00 })
         } else {
             None
         }
@@ -177,16 +230,59 @@ impl Provider for AnthropicProvider {
 
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
         let messages = build_api_messages(&req);
-        let tools = build_tool_schemas(&req.tools);
+        let mut tools = build_tool_schemas(&req.tools);
+        let system = req.system.as_deref().map(build_system_blocks).unwrap_or_default();
+
+        // Append Anthropic native server-side tools when requested.
+        if req.native_web_search {
+            tools.push(json!({
+                "type": "web_search_20250305",
+                "name": "web_search"
+            }));
+        }
+        if req.native_code_execution {
+            tools.push(json!({
+                "type": "bash_20250124",
+                "name": "bash"
+            }));
+        }
+
+        // Extended / adaptive thinking support.
+        // Opus 4.7 supports adaptive thinking (no explicit budget needed).
+        // Other Claude 4.x models need an explicit budget to activate thinking.
+        let model_lower = self.config.model.to_lowercase();
+        let supports_thinking = model_lower.contains("opus-4-7")
+            || model_lower.contains("sonnet-4-6")
+            || model_lower.contains("opus-4-6")
+            || model_lower.contains("opus-4-5");
+
+        let (thinking, temperature, betas) = if supports_thinking {
+            if let Some(budget) = req.thinking_budget {
+                // Explicit budget: extended thinking. Temperature must be 1.0.
+                let thinking = json!({
+                    "type": "enabled",
+                    "budget_tokens": budget
+                });
+                (Some(thinking), 1.0f32, Some(vec!["interleaved-thinking-2025-05-14".to_string()]))
+            } else if model_lower.contains("opus-4-7") {
+                // Opus 4.7: adaptive thinking (model decides, no explicit config needed)
+                (None, self.config.temperature, None)
+            } else {
+                (None, self.config.temperature, None)
+            }
+        } else {
+            (None, self.config.temperature, None)
+        };
 
         let body = ApiRequest {
             model: self.config.model.clone(),
             max_tokens: self.config.max_tokens,
             messages,
-            system: req.system.clone(),
+            system,
             tools,
             stream: true,
-            temperature: self.config.temperature,
+            temperature,
+            thinking,
         };
 
         let url = format!("{}/messages", self.config.base_url);
@@ -195,11 +291,18 @@ impl Provider for AnthropicProvider {
         let mut attempt = 0u32;
 
         loop {
-            let resp = self.client
+            let mut builder = self.client
                 .post(&url)
                 .header("x-api-key", &self.config.api_key)
                 .header("anthropic-version", ANTHROPIC_VERSION)
-                .header("content-type", "application/json")
+                .header("content-type", "application/json");
+
+            // Send beta features header if extended thinking is active
+            if let Some(beta_list) = &betas {
+                builder = builder.header("anthropic-beta", beta_list.join(","));
+            }
+
+            let resp = builder
                 .json(&body)
                 .send()
                 .await
@@ -245,6 +348,9 @@ fn parse_anthropic_sse(
         in_tool: bool,
         input_tokens: u32,
         output_tokens: u32,
+        cache_creation_tokens: u32,
+        cache_read_tokens: u32,
+        pending_stop_reason: Option<StopReason>,
         done: bool,
     }
 
@@ -257,11 +363,20 @@ fn parse_anthropic_sse(
         in_tool: false,
         input_tokens: 0,
         output_tokens: 0,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+        pending_stop_reason: None,
         done: false,
     };
 
     futures::stream::unfold(state, |mut s| async move {
         if s.done { return None; }
+
+        // If we already have a pending stop reason (emitted Usage, now emit Done)
+        if let Some(sr) = s.pending_stop_reason.take() {
+            s.done = true;
+            return Some((Ok(Delta::Done { stop_reason: sr }), s));
+        }
 
         loop {
             while let Some(nl) = s.buf.find('\n') {
@@ -310,18 +425,33 @@ fn parse_anthropic_sse(
                                 };
                                 let it = s.input_tokens;
                                 let ot = s.output_tokens;
-                                s.done = true;
+                                let cc = s.cache_creation_tokens;
+                                let cr = s.cache_read_tokens;
                                 if it > 0 || ot > 0 {
-                                    s.input_tokens = 0;
-                                    s.output_tokens = 0;
-                                    // Emit usage; done emitted on next poll (state.done=true).
+                                    // Emit Usage, then Done on the next poll
+                                    s.pending_stop_reason = Some(sr);
                                     return Some((Ok(Delta::Usage { input_tokens: it, output_tokens: ot }), s));
+                                } else if cc > 0 || cr > 0 {
+                                    s.pending_stop_reason = Some(sr);
+                                    return Some((Ok(Delta::CacheUsage {
+                                        cache_creation_tokens: cc,
+                                        cache_read_tokens: cr,
+                                    }), s));
                                 }
+                                s.done = true;
                                 return Some((Ok(Delta::Done { stop_reason: sr }), s));
                             }
                             Some("message_start") => {
-                                if let Some(u) = event["message"]["usage"]["input_tokens"].as_u64() {
+                                let usage = &event["message"]["usage"];
+                                if let Some(u) = usage["input_tokens"].as_u64() {
                                     s.input_tokens = u as u32;
+                                }
+                                // Prompt caching stats
+                                if let Some(u) = usage["cache_creation_input_tokens"].as_u64() {
+                                    s.cache_creation_tokens = u as u32;
+                                }
+                                if let Some(u) = usage["cache_read_input_tokens"].as_u64() {
+                                    s.cache_read_tokens = u as u32;
                                 }
                             }
                             _ => {}

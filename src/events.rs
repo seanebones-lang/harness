@@ -16,6 +16,8 @@ pub enum AgentEvent {
     SubAgentDone { task: String, summary: String },
     /// Token usage for the completed request.
     TokenUsage { input: u32, output: u32 },
+    /// Anthropic prompt-cache statistics.
+    CacheUsage { creation: u32, read: u32 },
     /// Agent turn is complete.
     Done,
     /// An error occurred.

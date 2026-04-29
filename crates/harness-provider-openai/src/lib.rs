@@ -29,7 +29,7 @@ impl OpenAIConfig {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
-            model: "gpt-4o".into(),
+            model: "gpt-5.5".into(),
             max_tokens: 8192,
             temperature: 0.7,
             base_url: OPENAI_BASE_URL.into(),
@@ -149,14 +149,30 @@ impl Provider for OpenAIProvider {
 
     fn pricing(&self) -> Option<Pricing> {
         let m = self.config.model.to_lowercase();
-        if m.contains("gpt-4o") && m.contains("mini") {
-            Some(Pricing { input_per_m_usd: 0.15, output_per_m_usd: 0.60 })
+        // April 2026 GPT-5.x family
+        if m.contains("gpt-5.5") {
+            Some(Pricing { input_per_m_usd: 5.00, cached_input_per_m_usd: 0.50, output_per_m_usd: 30.00 })
+        } else if m.contains("gpt-5.4-nano") {
+            Some(Pricing { input_per_m_usd: 0.20, cached_input_per_m_usd: 0.02, output_per_m_usd: 1.25 })
+        } else if m.contains("gpt-5.4-mini") {
+            Some(Pricing { input_per_m_usd: 0.75, cached_input_per_m_usd: 0.075, output_per_m_usd: 4.50 })
+        } else if m.contains("gpt-5.4") {
+            Some(Pricing { input_per_m_usd: 2.50, cached_input_per_m_usd: 0.25, output_per_m_usd: 15.00 })
+        } else if m.contains("gpt-5") {
+            Some(Pricing { input_per_m_usd: 1.25, cached_input_per_m_usd: 0.125, output_per_m_usd: 10.00 })
+        } else if m.contains("o4-mini") {
+            Some(Pricing { input_per_m_usd: 1.10, cached_input_per_m_usd: 0.275, output_per_m_usd: 4.40 })
+        } else if m.contains("o4") {
+            Some(Pricing { input_per_m_usd: 2.00, cached_input_per_m_usd: 0.50, output_per_m_usd: 8.00 })
+        } else if m.contains("o3") {
+            Some(Pricing { input_per_m_usd: 1.00, cached_input_per_m_usd: 0.25, output_per_m_usd: 4.00 })
+        // Legacy GPT-4o
+        } else if m.contains("gpt-4o") && m.contains("mini") {
+            Some(Pricing { input_per_m_usd: 0.15, cached_input_per_m_usd: 0.075, output_per_m_usd: 0.60 })
         } else if m.contains("gpt-4o") || m.contains("gpt-4") {
-            Some(Pricing { input_per_m_usd: 2.50, output_per_m_usd: 10.00 })
+            Some(Pricing { input_per_m_usd: 2.50, cached_input_per_m_usd: 1.25, output_per_m_usd: 10.00 })
         } else if m.contains("gpt-3.5") {
-            Some(Pricing { input_per_m_usd: 0.50, output_per_m_usd: 1.50 })
-        } else if m.contains("o3") || m.contains("o4") {
-            Some(Pricing { input_per_m_usd: 10.00, output_per_m_usd: 40.00 })
+            Some(Pricing { input_per_m_usd: 0.50, cached_input_per_m_usd: 0.0, output_per_m_usd: 1.50 })
         } else {
             None
         }

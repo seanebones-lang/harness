@@ -7,13 +7,18 @@ mod cost;
 mod daemon;
 mod events;
 mod highlight;
+mod cost_db;
+mod memory_project;
+mod notifications;
 mod server;
+mod sync;
 mod trust;
 mod tui;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use harness_browser::BrowserTool;
+use harness_voice;
 use harness_lsp::{
     DiagnosticsTool, FindDefinitionTool, FindReferencesTool, RenameSymbolTool,
     detect_and_spawn,
@@ -23,7 +28,7 @@ use harness_provider_router::ProviderRouter;
 use harness_provider_xai::{XaiConfig, XaiProvider};
 use harness_tools::{ToolExecutor, ToolRegistry};
 use harness_tools::tools::{
-    ApplyPatchTool, GitTool, ListDirTool, PatchFileTool, ReadFileTool, RebuildSelfTool,
+    ApplyPatchTool, ComputerUseTool, GhTool, GitTool, ListDirTool, PatchFileTool, ReadFileTool, RebuildSelfTool,
     ReloadSelfTool, SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool,
     TestRunnerTool, WriteFileTool,
 };
@@ -76,6 +81,11 @@ struct Cli {
     /// Attach an image file to the initial prompt (PNG, JPEG, GIF, WEBP).
     #[arg(long)]
     image: Option<PathBuf>,
+
+    /// Enable extended thinking with a token budget.
+    /// Example: --think 10000. Use without value for adaptive thinking (Opus 4.7 only).
+    #[arg(long, value_name = "BUDGET")]
+    think: Option<u32>,
 }
 
 #[derive(Subcommand)]
@@ -172,12 +182,94 @@ enum Commands {
         #[command(subcommand)]
         action: CheckpointAction,
     },
+    /// List available providers and models, with an interactive picker to change defaults.
+    Models {
+        /// Set the default model (writes to .harness/config.toml). Format: "provider:model" or just "model".
+        #[arg(long)]
+        set: Option<String>,
+    },
+    /// Sync Harness state across machines via an encrypted git repository.
+    Sync {
+        #[command(subcommand)]
+        action: SyncAction,
+    },
+    /// Show cost and usage statistics from the cost database.
+    Cost {
+        #[command(subcommand)]
+        action: CostAction,
+    },
+    /// Open a PR review session pre-loaded with PR context (diff, comments, CI status).
+    /// Requires gh CLI to be installed and authenticated.
+    Pr {
+        /// PR number.
+        number: u64,
+    },
+    /// Store a project memory fact in .harness/memory/<topic>.md.
+    /// These are automatically injected into the system prompt each session.
+    Memorize {
+        /// Topic name (used as filename, e.g. "architecture").
+        topic: String,
+        /// Fact to remember.
+        fact: String,
+    },
+    /// Remove a project memory topic.
+    Forget {
+        /// Topic to remove.
+        topic: String,
+    },
+    /// List all project memory topics.
+    Memories,
+    /// Record audio and transcribe via Whisper.
+    /// Requires sox (brew install sox) for recording.
+    Voice {
+        /// Duration to record in seconds (default: 5).
+        #[arg(long, short, default_value = "5")]
+        duration: u64,
+        /// Send transcript as a prompt to the agent instead of just printing it.
+        #[arg(long)]
+        send: bool,
+    },
 }
 
 #[derive(Subcommand)]
 enum CheckpointAction {
     /// List all harness checkpoint stashes.
     List,
+}
+
+#[derive(Subcommand)]
+enum SyncAction {
+    /// Initialise sync with a remote git repository.
+    Init {
+        /// Git remote URL (e.g. git@github.com:user/harness-state.git).
+        git_url: String,
+    },
+    /// Encrypt and push state to the remote.
+    Push,
+    /// Pull and decrypt state from the remote.
+    Pull,
+    /// Show sync status.
+    Status,
+    /// Show/set the sync passphrase.
+    Auth,
+}
+
+#[derive(Subcommand)]
+enum CostAction {
+    /// Show cost for today.
+    Today,
+    /// Show cost for the past 7 days.
+    Week,
+    /// Show cost for the past 30 days.
+    Month,
+    /// Show all-time cost.
+    All,
+    /// Show cost broken down by model.
+    ByModel,
+    /// Show cost broken down by project.
+    ByProject,
+    /// Tail recent usage rows live.
+    Watch,
 }
 
 #[tokio::main]
@@ -274,6 +366,24 @@ async fn main() -> Result<()> {
                 &tools, &model,
                 cfg.agent.system_prompt.as_deref(),
                 &effective_prompt, cli.resume.as_deref(),
+            ).await?;
+        }
+
+        Some(Commands::Pr { number }) => {
+            use harness_tools::tools::gh::pr_context;
+            eprintln!("Fetching PR #{number} context…");
+            let context = pr_context(number).await.unwrap_or_else(|e| format!("Error fetching PR: {e}"));
+            let system_pr = format!(
+                "{}\n\n# Reviewing PR #{number}\nYou are helping review and babysit this pull request. \
+                 Check the CI status, review the diff, and help address any review comments or failures.",
+                cfg.agent.system_prompt.as_deref().unwrap_or(agent::DEFAULT_SYSTEM)
+            );
+            agent::run_once(
+                &provider, &session_store,
+                memory_store.as_ref(), embed_model.as_deref(),
+                &tools, &model,
+                Some(&system_pr),
+                &context, None,
             ).await?;
         }
 
@@ -444,6 +554,152 @@ async fn main() -> Result<()> {
             return Ok(());
         }
 
+        Some(Commands::Voice { duration, send }) => {
+            use harness_voice::{WhisperBackend, record_and_transcribe};
+            use std::time::Duration;
+
+            let openai_key = std::env::var("OPENAI_API_KEY").ok();
+            let backend = WhisperBackend::detect(openai_key.as_deref());
+
+            if !harness_voice::voice_available() && matches!(backend, WhisperBackend::Local { .. }) {
+                eprintln!("Warning: no local audio recorder found. Install sox: brew install sox");
+            }
+
+            eprintln!("Recording for {duration}s… (speak now)");
+            let transcript = record_and_transcribe(Duration::from_secs(duration), &backend).await?;
+            println!("{transcript}");
+
+            if send && !transcript.is_empty() {
+                agent::run_once(
+                    &provider, &session_store,
+                    memory_store.as_ref(), embed_model.as_deref(),
+                    &tools, &model,
+                    cfg.agent.system_prompt.as_deref(),
+                    &transcript, cli.resume.as_deref(),
+                ).await?;
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Models { set }) => {
+            handle_models_command(set, &cfg).await?;
+            return Ok(());
+        }
+
+        Some(Commands::Sync { action }) => {
+            match action {
+                SyncAction::Init { git_url } => sync::init(&git_url).await?,
+                SyncAction::Push => sync::push().await?,
+                SyncAction::Pull => sync::pull().await?,
+                SyncAction::Status => sync::status().await?,
+                SyncAction::Auth => {
+                    println!("Sync passphrase is stored in the system keychain under 'harness-sync'.");
+                    println!("To transfer to another machine, run: harness sync init <git-url>");
+                    println!("Then on the new machine, run: harness sync pull");
+                    println!("The passphrase will be regenerated and stored on the new machine.");
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Cost { action }) => {
+            use cost_db::{CostDb, days_ago, format_usd};
+            let db = CostDb::open().context("opening cost.db")?;
+            match action {
+                CostAction::Today => {
+                    let usd = db.total_usd_since(days_ago(1))?;
+                    println!("Today: {}", format_usd(usd));
+                }
+                CostAction::Week => {
+                    let usd = db.total_usd_since(days_ago(7))?;
+                    println!("Past 7 days: {}", format_usd(usd));
+                }
+                CostAction::Month => {
+                    let usd = db.total_usd_since(days_ago(30))?;
+                    println!("Past 30 days: {}", format_usd(usd));
+                }
+                CostAction::All => {
+                    let usd = db.total_usd_since(0)?;
+                    println!("All time: {}", format_usd(usd));
+                }
+                CostAction::ByModel => {
+                    let rows = db.by_model_since(0)?;
+                    if rows.is_empty() {
+                        println!("No usage data yet.");
+                    } else {
+                        println!("{:<35} {}", "Model", "Cost");
+                        println!("{}", "-".repeat(45));
+                        for (model, usd) in rows {
+                            println!("{:<35} {}", model, format_usd(usd));
+                        }
+                    }
+                }
+                CostAction::ByProject => {
+                    let rows = db.by_project_since(0)?;
+                    if rows.is_empty() {
+                        println!("No usage data yet.");
+                    } else {
+                        println!("{:<35} {}", "Project", "Cost");
+                        println!("{}", "-".repeat(45));
+                        for (project, usd) in rows {
+                            let display = if project.is_empty() { "(unnamed)".to_string() } else { project };
+                            println!("{:<35} {}", display, format_usd(usd));
+                        }
+                    }
+                }
+                CostAction::Watch => {
+                    println!("Watching cost.db (Ctrl+C to stop)…\n");
+                    loop {
+                        let rows = db.recent(5)?;
+                        let today = db.total_usd_since(days_ago(1))?;
+                        let month = db.total_usd_since(days_ago(30))?;
+                        print!("\x1B[2J\x1B[H"); // clear screen
+                        println!("  Today: {}  |  30 days: {}", format_usd(today), format_usd(month));
+                        println!("\nRecent turns:");
+                        for r in &rows {
+                            println!(
+                                "  {} │ {} │ ↑{} ↓{} │ {}",
+                                r.model, &r.session_id[..8.min(r.session_id.len())],
+                                r.in_tok, r.out_tok, format_usd(r.usd)
+                            );
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    }
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Memorize { topic, fact }) => {
+            match memory_project::remember(&topic, &fact) {
+                Ok(path) => println!("Remembered under '{}': {}", topic, path.display()),
+                Err(e) => eprintln!("Error saving memory: {e}"),
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Forget { topic }) => {
+            match memory_project::forget(&topic) {
+                Ok(true) => println!("Forgot topic '{topic}'"),
+                Ok(false) => println!("No memory for topic '{topic}'"),
+                Err(e) => eprintln!("Error: {e}"),
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Memories) => {
+            let topics = memory_project::list_topics();
+            if topics.is_empty() {
+                println!("No project memories. Use: harness memorize <topic> <fact>");
+            } else {
+                println!("{} project memory topic(s):", topics.len());
+                for t in &topics {
+                    println!("  • {t}");
+                }
+            }
+            return Ok(());
+        }
+
         Some(Commands::SelfDev { src, model: sd_model }) => {
             let src_dir = match src {
                 Some(path) => path,
@@ -558,12 +814,24 @@ async fn build_tools(provider: ArcProvider, model: String, cfg: &config::Config,
     registry.register(ShellTool::new(shell_cfg));
     registry.register(SearchCodeTool);
     registry.register(GitTool);
+    registry.register(GhTool);
     registry.register(TestRunnerTool);
     registry.register(SpawnAgentTool::new(runner));
 
     if browser_enabled {
         registry.register(BrowserTool::new(browser_url));
         tracing::info!(url = %browser_url, "browser tool enabled");
+    }
+
+    // Computer use: gated, only enable if explicitly configured
+    if cfg.computer_use.is_enabled() {
+        let model_lower = model.to_lowercase();
+        if model_lower.contains("claude-opus-4-7") || model_lower.contains("claude-opus-4") || model_lower.contains("claude-sonnet-4") {
+            registry.register(ComputerUseTool);
+            tracing::warn!("⚠️  COMPUTER USE ENABLED — agent can control mouse/keyboard");
+        } else {
+            tracing::warn!("computer_use enabled in config but model {} does not support it (requires Claude 4.7+)", model);
+        }
     }
 
     // Auto-detect and spawn a language server for the current project.
@@ -1063,6 +1331,127 @@ fn build_prompt_with_image(prompt: &str, image: Option<&std::path::Path>) -> Res
             Ok(format!("{prompt}\n\n[image attached: {}]", path.display()))
         }
     }
+}
+
+/// Handle `harness models [--set provider:model]`.
+async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Result<()> {
+    use harness_provider_router::ProviderEntry;
+    use std::collections::HashMap;
+
+    // Model catalogue: provider → [(model, description)]
+    let catalogue: &[(&str, &[(&str, &str)])] = &[
+        ("anthropic", &[
+            ("claude-opus-4-7",           "$5/$25 · 1M ctx · adaptive thinking"),
+            ("claude-sonnet-4-6",         "$3/$15 · 1M ctx · default ★"),
+            ("claude-haiku-4-5",          "$1/$5  · fast / cheap"),
+        ]),
+        ("openai", &[
+            ("gpt-5.5",                   "$5/$30  · 1M ctx"),
+            ("gpt-5.4",                   "$2.50/$15"),
+            ("gpt-5.4-mini",              "$0.75/$4.50 · fast"),
+            ("gpt-5.4-nano",              "$0.20/$1.25 · ultra-cheap"),
+            ("o4-mini",                   "$1.10/$4.40 · reasoning"),
+        ]),
+        ("xai", &[
+            ("grok-4.20-0309-reasoning",  "$2/$6   · 2M ctx · reasoning ★"),
+            ("grok-4-1-fast-reasoning",   "$0.20/$0.50 · fast"),
+        ]),
+        ("ollama", &[
+            ("qwen3-coder:30b",           "local · 256K ctx · agentic ★"),
+            ("qwen2.5-coder:32b",         "local · 92.7% HumanEval"),
+            ("nomic-embed-text",          "local · embed"),
+        ]),
+    ];
+
+    if let Some(ref model_spec) = set {
+        // Write to .harness/config.toml
+        let local_cfg = std::path::PathBuf::from(".harness").join("config.toml");
+        let _ = std::fs::create_dir_all(".harness");
+        let mut text = if local_cfg.exists() {
+            std::fs::read_to_string(&local_cfg).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let (provider_part, model_part) = if model_spec.contains(':') {
+            let mut parts = model_spec.splitn(2, ':');
+            (parts.next().unwrap_or(""), parts.next().unwrap_or(""))
+        } else {
+            ("", model_spec.as_str())
+        };
+
+        if text.contains("model =") {
+            let re_line = text.lines()
+                .map(|l| {
+                    if l.trim_start().starts_with("model =") {
+                        format!("model = \"{}\"", model_part)
+                    } else {
+                        l.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            text = re_line;
+        } else {
+            text.push_str(&format!("\nmodel = \"{}\"\n", model_part));
+        }
+
+        if !provider_part.is_empty() && text.contains("provider =") {
+            let replaced = text.lines()
+                .map(|l| {
+                    if l.trim_start().starts_with("provider =") {
+                        format!("provider = \"{}\"", provider_part)
+                    } else {
+                        l.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            text = replaced;
+        } else if !provider_part.is_empty() {
+            text.push_str(&format!("provider = \"{}\"\n", provider_part));
+        }
+
+        std::fs::write(&local_cfg, &text)?;
+        println!("✓ Default model set to '{model_spec}' in {}", local_cfg.display());
+        return Ok(());
+    }
+
+    // List all providers + models
+    println!("Available models (April 2026):");
+    println!();
+    for (provider, models) in catalogue {
+        let env_key = match *provider {
+            "anthropic" => "ANTHROPIC_API_KEY",
+            "openai"    => "OPENAI_API_KEY",
+            "xai"       => "XAI_API_KEY",
+            _           => "",
+        };
+        let available = if env_key.is_empty() {
+            "local".to_string()
+        } else if std::env::var(env_key).map(|k| !k.is_empty()).unwrap_or(false) {
+            "✓ key set".to_string()
+        } else {
+            format!("✗ {} not set", env_key)
+        };
+        println!("  {provider} ({available})");
+        for (model, desc) in *models {
+            let current = cfg.provider.model.as_deref() == Some(model);
+            let marker = if current { " ◀ current" } else { "" };
+            println!("    {:42} {desc}{marker}", model);
+        }
+        println!();
+    }
+
+    let current = cfg.provider.model.as_deref().unwrap_or("claude-sonnet-4-6");
+    println!("Current default: {current}");
+    println!();
+    println!("To switch: harness models --set <provider:model>");
+    println!("Example:   harness models --set anthropic:claude-opus-4-7");
+
+    let _ = cfg;
+    let _ = HashMap::<String, ProviderEntry>::new();
+    Ok(())
 }
 
 fn delete_session(store: &harness_memory::SessionStore, id: &str) -> Result<()> {

@@ -18,3 +18,4 @@ regex = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
+tempfile = "3"

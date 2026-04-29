@@ -2,17 +2,21 @@
 # Run `harness init` to generate this automatically.
 
 [provider]
-# Your xAI API key. Can also be set via XAI_API_KEY env var or a .env file in your project.
-# api_key = "xai-..."
+# Your Anthropic API key. Can also be set via ANTHROPIC_API_KEY env var.
+# api_key = "sk-ant-..."
 
-# Model choices: grok-3, grok-3-fast, grok-3-mini, grok-3-mini-fast
-model = "grok-3-fast"
+# April 2026 model choices:
+#   Anthropic: claude-opus-4-7 | claude-sonnet-4-6 | claude-haiku-4-5
+#   xAI:       grok-4.20-0309-reasoning | grok-4-1-fast-reasoning
+#   OpenAI:    gpt-5.5 | gpt-5.4 | gpt-5.4-mini | o4-mini
+#   Ollama:    qwen3-coder:30b | qwen2.5-coder:32b (local, free)
+model = "claude-sonnet-4-6"
 
 max_tokens = 8192
 temperature = 0.7
 
 # Override the API base URL (useful for local proxies or testing)
-# base_url = "https://api.x.ai/v1"
+# base_url = "https://api.anthropic.com/v1"
 
 [agent]
 system_prompt = """
@@ -40,8 +44,9 @@ Guidelines:
 # Set to false to disable semantic memory recall.
 enabled = true
 
-# xAI embedding model for semantic search.
-embed_model = "grok-3-embed-english"
+# Embedding model for semantic search.
+# "nomic-embed-text" (local, via Ollama) or "voyage-3.5" (Anthropic recommended, requires VOYAGE_API_KEY)
+embed_model = "nomic-embed-text"
 
 # Override the SQLite path for the memory store.
 # db_path = "~/.harness/memory.db"
@@ -54,6 +59,31 @@ embed_model = "grok-3-embed-english"
 # Path to your MCP server configuration.
 # Harness also checks .harness/mcp.json and ~/.harness/mcp.json automatically.
 # config_path = ".harness/mcp.json"
+
+[budget]
+# Spending limits — Harness warns at 80% and blocks at 100%.
+# daily_usd = 5.00     # max daily spend in USD
+# monthly_usd = 50.00  # max monthly spend in USD
+
+[computer_use]
+# ⚠️  DANGER: When enabled, the agent can control your mouse, keyboard, and screen.
+# Only enable with Claude 4.7+ (claude-opus-4-7).
+# Requires: cliclick (macOS: brew install cliclick) or xdotool (Linux).
+# enabled = false
+
+[notifications]
+# Desktop notifications (macOS Notification Center / Linux libnotify).
+# enabled = true              # set to false to disable all notifications
+# on_background_done = true   # notify when a background run finishes
+# on_autotest_fail = true     # notify when auto-test fails
+# on_budget = true            # notify at 80% / 100% of budget thresholds
+
+[native_tools]
+# Enable provider-managed server-side tools.
+# These are billed per call by the provider (e.g. xAI: $5/1k calls).
+# web_search = false      # provider-native web search (Anthropic, xAI)
+# code_execution = false  # sandboxed code execution (Anthropic bash, xAI)
+# x_search = false        # X (Twitter) post search (xAI only)
 
 [browser]
 # Enable the CDP browser tool. Requires Chrome launched with:

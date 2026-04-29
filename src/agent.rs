@@ -24,13 +24,21 @@ Available tools:
   test_runner               — run project tests with structured pass/fail output
   search_code               — regex search across the codebase
   spawn_agent               — run a sub-agent with base tools for parallel tasks
+  find_definition           — LSP go-to-definition across the codebase
+  find_references           — LSP find all references to a symbol
+  rename_symbol             — LSP safe rename across files
+  diagnostics               — LSP errors/warnings for a file
   browser (when enabled)    — Chrome CDP: navigate, screenshot, click, fill forms
+  web_search (when enabled) — provider-native web search (no extra config needed)
+  bash (when enabled)       — provider-native sandboxed code execution
   MCP tools (when loaded)   — any tools registered via .harness/mcp.json
+  gh                        — GitHub CLI wrapper: PR/issue/CI workflow
 
 Guidelines:
   - Prefer patch_file for single-file edits, apply_patch for multi-file changes.
   - Use the git tool for all git operations instead of shell git commands.
   - Always run test_runner after changes to verify correctness.
+  - Use web_search when you need up-to-date information or documentation.
   - Be concise. Prefer making changes over explaining them.
   - When editing multiple files, use spawn_agent for parallelism.
   - In plan mode (--plan flag), destructive calls pause for user approval.";
@@ -45,6 +53,36 @@ pub async fn drive_agent(
     session: &mut Session,
     system_prompt: &str,
     tx: Option<&EventTx>,
+) -> Result<()> {
+    drive_agent_with_options(provider, tools, memory_store, embed_model, session, system_prompt, tx, None).await
+}
+
+pub async fn drive_agent_with_options(
+    provider: &ArcProvider,
+    tools: &ToolExecutor,
+    memory_store: Option<&MemoryStore>,
+    embed_model: Option<&str>,
+    session: &mut Session,
+    system_prompt: &str,
+    tx: Option<&EventTx>,
+    thinking_budget: Option<u32>,
+) -> Result<()> {
+    drive_agent_full(provider, tools, memory_store, embed_model, session, system_prompt, tx, thinking_budget, false, false, false).await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn drive_agent_full(
+    provider: &ArcProvider,
+    tools: &ToolExecutor,
+    memory_store: Option<&MemoryStore>,
+    embed_model: Option<&str>,
+    session: &mut Session,
+    system_prompt: &str,
+    tx: Option<&EventTx>,
+    thinking_budget: Option<u32>,
+    native_web_search: bool,
+    native_code_execution: bool,
+    native_x_search: bool,
 ) -> Result<()> {
     let emit = |event: AgentEvent| {
         if let Some(t) = tx {
@@ -69,7 +107,9 @@ pub async fn drive_agent(
         let req = ChatRequest::new(&session.model)
             .with_messages(session.messages.clone())
             .with_tools(tools.registry().definitions())
-            .with_system(&augmented_system);
+            .with_system(&augmented_system)
+            .with_thinking(thinking_budget)
+            .with_native_tools(native_web_search, native_code_execution, native_x_search);
 
         let mut stream: DeltaStream = provider.stream_chat(req).await?;
 
@@ -88,6 +128,9 @@ pub async fn drive_agent(
                 }
                 Delta::Usage { input_tokens, output_tokens } => {
                     emit(AgentEvent::TokenUsage { input: input_tokens, output: output_tokens });
+                }
+                Delta::CacheUsage { cache_creation_tokens, cache_read_tokens } => {
+                    emit(AgentEvent::CacheUsage { creation: cache_creation_tokens, read: cache_read_tokens });
                 }
                 Delta::Done { stop_reason: sr } => {
                     stop_reason = sr;
@@ -184,6 +227,8 @@ async fn build_augmented_system(
     } else {
         system_prompt.to_string()
     };
+    // Inject project semantic memory from .harness/memory/
+    let base = crate::memory_project::augment_system(&base);
     let system_prompt = base.as_str();
 
     let (Some(mem), Some(model)) = (memory_store, embed_model) else {
@@ -442,6 +487,11 @@ pub async fn run_once(
             AgentEvent::SubAgentDone { task, .. } => eprintln!("[swarm] done: {task}"),
             AgentEvent::TokenUsage { input, output } => {
                 eprintln!("[tokens] in={input} out={output}");
+            }
+            AgentEvent::CacheUsage { creation, read } => {
+                if *read > 0 {
+                    eprintln!("[cache] write={creation} read={read}");
+                }
             }
             AgentEvent::Done | AgentEvent::Error(_) => {}
         }

@@ -22,6 +22,14 @@ pub struct Config {
     pub approval: ApprovalConfig,
     #[serde(default)]
     pub autotest: AutotestConfig,
+    #[serde(default)]
+    pub native_tools: NativeToolsConfig,
+    #[serde(default)]
+    pub computer_use: ComputerUseConfig,
+    #[serde(default)]
+    pub budget: BudgetConfig,
+    #[serde(default)]
+    pub notifications: NotificationsConfig,
     /// Named provider configs for the multi-provider router.
     #[serde(default)]
     pub providers: std::collections::HashMap<String, harness_provider_router::ProviderEntry>,
@@ -75,6 +83,71 @@ impl ShellConfig {
             ]
         })
     }
+}
+
+/// Native provider-managed server-side tools (billed separately per call).
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct NativeToolsConfig {
+    /// Enable the provider's native web search tool (Anthropic: web_search, xAI: web_search).
+    pub web_search: Option<bool>,
+    /// Enable code execution in a sandboxed environment (Anthropic: bash, xAI: code_execution).
+    pub code_execution: Option<bool>,
+    /// Enable X (Twitter) post search — xAI only.
+    pub x_search: Option<bool>,
+}
+
+impl NativeToolsConfig {
+    #[allow(dead_code)]
+    pub fn web_search_enabled(&self) -> bool { self.web_search.unwrap_or(false) }
+    #[allow(dead_code)]
+    pub fn code_execution_enabled(&self) -> bool { self.code_execution.unwrap_or(false) }
+    #[allow(dead_code)]
+    pub fn x_search_enabled(&self) -> bool { self.x_search.unwrap_or(false) }
+}
+
+/// Budget thresholds — warn when spending approaches limits.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct BudgetConfig {
+    /// Maximum daily spend in USD before warnings appear.
+    pub daily_usd: Option<f64>,
+    /// Maximum monthly spend in USD before warnings appear.
+    pub monthly_usd: Option<f64>,
+}
+
+/// Desktop notification configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NotificationsConfig {
+    /// Enable desktop notifications (default: true on macOS/Linux, false if headless).
+    pub enabled: bool,
+    /// Notify when a background agent run completes.
+    pub on_background_done: bool,
+    /// Notify when auto-test fails.
+    pub on_autotest_fail: bool,
+    /// Notify when budget threshold is hit.
+    pub on_budget: bool,
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            on_background_done: true,
+            on_autotest_fail: true,
+            on_budget: true,
+        }
+    }
+}
+
+/// Computer-use configuration (Anthropic computer-use-2025-01-24).
+/// DANGER: When enabled, the agent can control your mouse and keyboard.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct ComputerUseConfig {
+    /// Enable computer use. ONLY enabled when explicitly set to true.
+    pub enabled: Option<bool>,
+}
+
+impl ComputerUseConfig {
+    pub fn is_enabled(&self) -> bool { self.enabled.unwrap_or(false) }
 }
 
 /// Auto-test configuration — run tests after file writes and feed failures back to the agent.
@@ -143,7 +216,7 @@ pub struct SessionConfig {
 pub struct MemoryConfig {
     /// Set to false to disable semantic memory entirely.
     pub enabled: Option<bool>,
-    /// xAI embedding model (default: grok-3-embed-english).
+    /// Embedding model for semantic memory (default: nomic-embed-text via Ollama, or voyage-3.5).
     pub embed_model: Option<String>,
     /// Override path for the memory SQLite DB.
     pub db_path: Option<PathBuf>,

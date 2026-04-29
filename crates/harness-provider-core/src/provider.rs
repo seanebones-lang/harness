@@ -10,6 +10,8 @@ pub type DeltaStream = Pin<Box<dyn Stream<Item = Result<Delta, ProviderError>> +
 #[derive(Debug, Clone, Copy)]
 pub struct Pricing {
     pub input_per_m_usd: f64,
+    /// Price per million cache-hit (prompt-cached) input tokens. 0.0 = no caching.
+    pub cached_input_per_m_usd: f64,
     pub output_per_m_usd: f64,
 }
 
