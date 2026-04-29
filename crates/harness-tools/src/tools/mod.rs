@@ -3,9 +3,15 @@ pub mod shell;
 pub mod search;
 pub mod agent;
 pub mod selfdev;
+pub mod apply_patch;
+pub mod test_runner;
+pub mod git;
 
 pub use filesystem::{ReadFileTool, WriteFileTool, ListDirTool, PatchFileTool};
-pub use shell::ShellTool;
+pub use shell::{ShellConfig, ShellTool};
 pub use search::SearchCodeTool;
 pub use agent::SpawnAgentTool;
 pub use selfdev::{RebuildSelfTool, ReloadSelfTool};
+pub use apply_patch::ApplyPatchTool;
+pub use test_runner::TestRunnerTool;
+pub use git::GitTool;

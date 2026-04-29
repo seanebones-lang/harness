@@ -206,7 +206,7 @@ async fn read_write_file_tools() {
 #[tokio::test]
 async fn shell_tool_basic() {
     let mut registry = ToolRegistry::new();
-    registry.register(ShellTool);
+    registry.register(ShellTool::default());
     let executor = ToolExecutor::new(registry);
 
     let call = ToolCall {
@@ -224,7 +224,7 @@ async fn shell_tool_basic() {
 #[tokio::test]
 async fn shell_tool_timeout() {
     let mut registry = ToolRegistry::new();
-    registry.register(ShellTool);
+    registry.register(ShellTool::default());
     let executor = ToolExecutor::new(registry);
 
     let call = ToolCall {

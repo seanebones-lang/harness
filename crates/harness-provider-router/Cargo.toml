@@ -1,20 +1,17 @@
 [package]
-name = "harness-tools"
+name = "harness-provider-router"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 harness-provider-core = { path = "../harness-provider-core" }
+harness-provider-xai = { path = "../harness-provider-xai" }
+harness-provider-anthropic = { path = "../harness-provider-anthropic" }
+harness-provider-openai = { path = "../harness-provider-openai" }
+harness-provider-ollama = { path = "../harness-provider-ollama" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-thiserror = { workspace = true }
-walkdir = { workspace = true }
-ignore = { workspace = true }
-similar = { workspace = true }
-regex = { workspace = true }
 tracing = { workspace = true }
-chrono = { workspace = true }
-dirs = { workspace = true }
