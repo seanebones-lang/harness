@@ -233,6 +233,16 @@ impl Provider for AnthropicProvider {
         let mut tools = build_tool_schemas(&req.tools);
         let system = req.system.as_deref().map(build_system_blocks).unwrap_or_default();
 
+        // Anthropic structured output: inject a synthetic tool that forces
+        // the model to return JSON matching the schema.
+        if let Some(rs) = &req.response_schema {
+            tools.push(json!({
+                "name": format!("respond_{}", rs.name),
+                "description": format!("Respond with valid JSON matching the {} schema.", rs.name),
+                "input_schema": rs.schema
+            }));
+        }
+
         // Append Anthropic native server-side tools when requested.
         if req.native_web_search {
             tools.push(json!({

@@ -1,0 +1,11 @@
+[package]
+name = "harness-term-graphics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Terminal inline image rendering for Harness (Kitty/iTerm2/Sixel backends)"
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }

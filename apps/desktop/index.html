@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; width: 100%; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    #loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      gap: 16px;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #30363d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    h2 { font-size: 20px; font-weight: 500; color: #58a6ff; }
+    p { font-size: 13px; color: #8b949e; }
+    iframe { width: 100%; height: 100%; border: none; display: none; }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <h2>Harness</h2>
+    <p id="status">Starting daemon…</p>
+  </div>
+  <iframe id="app" src="http://127.0.0.1:8787" title="Harness"></iframe>
+
+  <script type="module">
+    const { invoke } = window.__TAURI__.core;
+
+    const loading = document.getElementById('loading');
+    const statusEl = document.getElementById('status');
+    const app = document.getElementById('app');
+
+    async function pollDaemon(retries = 0) {
+      try {
+        const status = await invoke('daemon_status');
+        if (status === 'running') {
+          // Try fetching the URL to confirm it's serving
+          const res = await fetch('http://127.0.0.1:8787/', { method: 'HEAD' });
+          if (res.ok) {
+            loading.style.display = 'none';
+            app.style.display = 'block';
+            return;
+          }
+        } else if (retries === 0) {
+          statusEl.textContent = 'Starting Harness daemon…';
+          await invoke('start_daemon');
+        }
+      } catch (_) {}
+
+      if (retries < 30) {
+        statusEl.textContent = `Waiting for daemon… (${retries + 1})`;
+        setTimeout(() => pollDaemon(retries + 1), 1000);
+      } else {
+        statusEl.textContent = 'Could not connect. Is "harness serve" running?';
+      }
+    }
+
+    pollDaemon();
+  </script>
+</body>
+</html>

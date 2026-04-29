@@ -234,6 +234,39 @@ pub struct ChatRequest {
     pub native_web_search: bool,
     pub native_code_execution: bool,
     pub native_x_search: bool,
+    /// Constrain response to a JSON Schema (strict structured output).
+    /// When set, providers use their native structured-output mechanism:
+    /// - OpenAI: `response_format` with `json_schema` + `strict: true`
+    /// - Anthropic: synthetic tool trick (forces JSON tool call)
+    /// - xAI: same as OpenAI
+    /// - Ollama: `format` field
+    pub response_schema: Option<ResponseSchema>,
+}
+
+/// A JSON Schema constraint for structured output responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResponseSchema {
+    /// A name for the schema (used by OpenAI/xAI).
+    pub name: String,
+    /// The JSON Schema object (type, properties, required, etc.).
+    pub schema: Value,
+    /// If true, the provider must strictly follow the schema.
+    #[serde(default = "default_strict")]
+    pub strict: bool,
+}
+
+fn default_strict() -> bool {
+    true
+}
+
+impl ResponseSchema {
+    pub fn new(name: impl Into<String>, schema: Value) -> Self {
+        Self {
+            name: name.into(),
+            schema,
+            strict: true,
+        }
+    }
 }
 
 impl ChatRequest {
@@ -249,7 +282,14 @@ impl ChatRequest {
             native_web_search: false,
             native_code_execution: false,
             native_x_search: false,
+            response_schema: None,
         }
+    }
+
+    /// Require structured JSON output matching the given schema.
+    pub fn with_response_schema(mut self, schema: ResponseSchema) -> Self {
+        self.response_schema = Some(schema);
+        self
     }
 
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {

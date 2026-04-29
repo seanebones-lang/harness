@@ -209,6 +209,18 @@ impl Provider for XaiProvider {
 
         let has_tools = !tools.is_empty();
 
+        // Build response_format for strict JSON schema if requested
+        let response_format = req.response_schema.as_ref().map(|rs| {
+            serde_json::json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": rs.name,
+                    "schema": rs.schema,
+                    "strict": rs.strict
+                }
+            })
+        });
+
         let body = ApiRequest {
             model: self.config.model.clone(),
             messages,
@@ -218,6 +230,7 @@ impl Provider for XaiProvider {
             stream: true,
             stream_options: Some(StreamOptions { include_usage: true }),
             tool_choice: if has_tools { Some("auto".into()) } else { None },
+            response_format,
         };
 
         debug!(model = %body.model, "sending chat request to xAI");

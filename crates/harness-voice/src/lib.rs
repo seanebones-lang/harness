@@ -190,7 +190,7 @@ async fn transcribe_local(
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-fn is_available(cmd: &str) -> bool {
+pub fn is_available(cmd: &str) -> bool {
     std::process::Command::new("which")
         .arg(cmd)
         .output()
@@ -198,7 +198,11 @@ fn is_available(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Check if voice input is likely to work on this system.
+/// Returns true if any audio capture tool is available on this system.
 pub fn voice_available() -> bool {
     is_available("rec") || is_available("sox") || (cfg!(target_os = "macos") && is_available("afrecord"))
 }
+
+pub mod realtime;
+pub use realtime::{RealtimeVoiceSession, RealtimeEvent};
+

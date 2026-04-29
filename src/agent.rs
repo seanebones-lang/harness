@@ -67,7 +67,21 @@ pub async fn drive_agent_with_options(
     tx: Option<&EventTx>,
     thinking_budget: Option<u32>,
 ) -> Result<()> {
-    drive_agent_full(provider, tools, memory_store, embed_model, session, system_prompt, tx, thinking_budget, false, false, false).await
+    drive_agent_full(provider, tools, memory_store, embed_model, session, system_prompt, tx, thinking_budget, false, false, false, None).await
+}
+
+pub async fn drive_agent_with_schema(
+    provider: &ArcProvider,
+    tools: &ToolExecutor,
+    memory_store: Option<&MemoryStore>,
+    embed_model: Option<&str>,
+    session: &mut Session,
+    system_prompt: &str,
+    tx: Option<&EventTx>,
+    thinking_budget: Option<u32>,
+    response_schema: Option<harness_provider_core::ResponseSchema>,
+) -> Result<()> {
+    drive_agent_full(provider, tools, memory_store, embed_model, session, system_prompt, tx, thinking_budget, false, false, false, response_schema).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -83,6 +97,7 @@ pub async fn drive_agent_full(
     native_web_search: bool,
     native_code_execution: bool,
     native_x_search: bool,
+    response_schema: Option<harness_provider_core::ResponseSchema>,
 ) -> Result<()> {
     let emit = |event: AgentEvent| {
         if let Some(t) = tx {
@@ -104,12 +119,15 @@ pub async fn drive_agent_full(
         // Auto-compact context when approaching 70% of the model context window.
         maybe_compact(provider, session, 0.70).await;
 
-        let req = ChatRequest::new(&session.model)
+        let mut req = ChatRequest::new(&session.model)
             .with_messages(session.messages.clone())
             .with_tools(tools.registry().definitions())
             .with_system(&augmented_system)
             .with_thinking(thinking_budget)
             .with_native_tools(native_web_search, native_code_execution, native_x_search);
+        if let Some(rs) = response_schema.clone() {
+            req = req.with_response_schema(rs);
+        }
 
         let mut stream: DeltaStream = provider.stream_chat(req).await?;
 

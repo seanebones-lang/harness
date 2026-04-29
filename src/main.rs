@@ -1,5 +1,10 @@
 mod agent;
 mod ambient;
+mod bridges;
+mod collab;
+mod diff_review;
+mod observability;
+mod swarm;
 mod background;
 mod checkpoint;
 mod config;
@@ -15,8 +20,12 @@ mod sync;
 mod trust;
 mod tui;
 
+// mimalloc is linked but turso already sets the global allocator.
+// We still benefit from mimalloc being in the dependency tree via turso.
+
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::generate;
 use harness_browser::BrowserTool;
 use harness_voice;
 use harness_lsp::{
@@ -37,7 +46,7 @@ use std::sync::Arc;
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Parser)]
-#[command(name = "harness", about = "Rust coding agent harness powered by Grok (xAI)", version)]
+#[command(name = "harness", about = "Harness — multi-provider AI coding agent (Claude · GPT · Grok · Qwen)", long_about = "Harness is a Rust-native AI coding agent supporting Anthropic Claude 4.x, OpenAI GPT-5.x, xAI Grok 4.x, and Ollama Qwen3-Coder. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or XAI_API_KEY and run `harness` to start.", version)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -228,6 +237,27 @@ enum Commands {
         /// Send transcript as a prompt to the agent instead of just printing it.
         #[arg(long)]
         send: bool,
+        /// Use OpenAI Realtime API for duplex voice conversation (requires OPENAI_API_KEY).
+        #[arg(long)]
+        realtime: bool,
+    },
+    /// Manage parallel sub-agent swarm tasks.
+    Swarm {
+        #[command(subcommand)]
+        action: SwarmAction,
+    },
+    /// Export observability traces.
+    Trace {
+        /// Trace ID to export (omit for last trace).
+        id: Option<String>,
+    },
+    /// Run health checks: API keys, tools, config, daemon, MCP, LSP, and more.
+    Doctor,
+    /// Generate shell completions (bash, zsh, fish, powershell, elvish).
+    Completions {
+        /// Shell type.
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
 }
 
@@ -252,6 +282,22 @@ enum SyncAction {
     Status,
     /// Show/set the sync passphrase.
     Auth,
+}
+
+#[derive(Subcommand)]
+enum SwarmAction {
+    /// List recent swarm tasks.
+    List,
+    /// Show status of a specific task.
+    Status {
+        /// Task ID.
+        id: String,
+    },
+    /// Show result of a completed task.
+    Result {
+        /// Task ID.
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -288,31 +334,47 @@ async fn main() -> Result<()> {
 
     let cfg = config::load(cli.config.as_deref())?;
 
-    let api_key = cfg.provider.api_key.clone()
-        .or_else(|| std::env::var("XAI_API_KEY").ok())
-        .context("XAI_API_KEY not set and no api_key in config")?;
+    // Detect available API keys (in priority order: Anthropic > xAI > OpenAI > legacy config)
+    let has_anthropic = std::env::var("ANTHROPIC_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+    let has_xai = cfg.provider.api_key.is_some()
+        || std::env::var("XAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+    let has_openai = std::env::var("OPENAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+    let has_ollama = cfg.providers.contains_key("ollama");
+
+    if !has_anthropic && !has_xai && !has_openai && !has_ollama && cfg.providers.is_empty() {
+        eprintln!("harness: no API key found.\n\nSet one of:\n  ANTHROPIC_API_KEY (recommended — claude-sonnet-4-6)\n  XAI_API_KEY       (grok-4.20)\n  OPENAI_API_KEY    (gpt-5.5)\n\nOr run: harness doctor  for a guided setup.");
+        std::process::exit(1);
+    }
 
     let model = cli
         .model
         .or_else(|| cfg.provider.model.clone())
-        .unwrap_or_else(|| "grok-3-fast".into());
+        .unwrap_or_else(|| {
+            if has_anthropic { "claude-sonnet-4-6".to_string() }
+            else if has_xai { "grok-4.20-0309-reasoning".to_string() }
+            else if has_openai { "gpt-5.5".to_string() }
+            else { "qwen3-coder:30b".to_string() }
+        });
 
-    let xai_cfg = XaiConfig::new(&api_key)
-        .with_model(&model)
-        .with_max_tokens(cfg.provider.max_tokens.unwrap_or(8192))
-        .with_temperature(cfg.provider.temperature.unwrap_or(0.7));
-
-    let provider: ArcProvider = if !cfg.providers.is_empty() {
-        // Multi-provider mode: build a router.
+    let provider: ArcProvider = if !cfg.providers.is_empty() || has_anthropic || has_openai {
+        // Smart router: builds from env vars + config
         let router = ProviderRouter::from_config(&cfg.providers, &cfg.router)
             .context("failed to build provider router")?;
-        // If no explicit default in router config, try the legacy [provider] block as xai fallback.
-        if !cfg.providers.contains_key("xai") {
-            // Add the legacy xai provider to the router.
-        }
         router.into_arc()
-    } else {
+    } else if has_xai {
+        let api_key = cfg.provider.api_key.clone()
+            .or_else(|| std::env::var("XAI_API_KEY").ok())
+            .unwrap();
+        let xai_cfg = XaiConfig::new(&api_key)
+            .with_model(&model)
+            .with_max_tokens(cfg.provider.max_tokens.unwrap_or(8192))
+            .with_temperature(cfg.provider.temperature.unwrap_or(0.7));
         std::sync::Arc::new(XaiProvider::new(xai_cfg)?)
+    } else {
+        // Fallback to router (handles Ollama etc.)
+        let router = ProviderRouter::from_config(&cfg.providers, &cfg.router)
+            .context("failed to build provider router")?;
+        router.into_arc()
     };
 
     let session_store = harness_memory::SessionStore::open(
@@ -420,7 +482,11 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::Status) => {
-            run_status(&cfg, &model, &session_store, &api_key)?;
+            let display_key = std::env::var("ANTHROPIC_API_KEY")
+                .or_else(|_| std::env::var("XAI_API_KEY"))
+                .or_else(|_| std::env::var("OPENAI_API_KEY"))
+                .unwrap_or_default();
+            run_status(&cfg, &model, &session_store, &display_key)?;
             return Ok(());
         }
 
@@ -554,13 +620,49 @@ async fn main() -> Result<()> {
             return Ok(());
         }
 
-        Some(Commands::Voice { duration, send }) => {
+        Some(Commands::Voice { duration, send, realtime }) => {
             use harness_voice::{WhisperBackend, record_and_transcribe};
             use std::time::Duration;
 
             let openai_key = std::env::var("OPENAI_API_KEY").ok();
-            let backend = WhisperBackend::detect(openai_key.as_deref());
 
+            if realtime {
+                let key = openai_key.clone().context("OPENAI_API_KEY required for realtime voice")?;
+                eprintln!("Starting realtime voice session (Ctrl+C to stop)…");
+                eprintln!("Connect to the OpenAI Realtime API — speak naturally.");
+                let mut session = harness_voice::RealtimeVoiceSession::connect(
+                    &key,
+                    "You are a helpful coding assistant. Be concise and technical.",
+                ).await?;
+                // Simple: capture 5s chunks, send to API, print transcripts
+                let dur = Duration::from_secs(duration);
+                loop {
+                    let backend = WhisperBackend::OpenAI {
+                        api_key: key.clone(),
+                        base_url: "https://api.openai.com/v1".to_string(),
+                    };
+                    let wav = harness_voice::record_and_transcribe(dur, &backend).await;
+                    match wav {
+                        Ok(t) if !t.is_empty() => {
+                            eprintln!("You: {t}");
+                            if t.to_lowercase().contains("goodbye") || t.to_lowercase().contains("quit") {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    if let Ok(ev) = session.event_rx.try_recv() {
+                        match ev {
+                            harness_voice::RealtimeEvent::TurnComplete(text) => eprintln!("AI: {text}"),
+                            harness_voice::RealtimeEvent::Error(e) => { eprintln!("Error: {e}"); break; }
+                            _ => {}
+                        }
+                    }
+                }
+                return Ok(());
+            }
+
+            let backend = WhisperBackend::detect(openai_key.as_deref());
             if !harness_voice::voice_available() && matches!(backend, WhisperBackend::Local { .. }) {
                 eprintln!("Warning: no local audio recorder found. Install sox: brew install sox");
             }
@@ -578,6 +680,55 @@ async fn main() -> Result<()> {
                     &transcript, cli.resume.as_deref(),
                 ).await?;
             }
+            return Ok(());
+        }
+
+        Some(Commands::Swarm { action }) => {
+            match action {
+                SwarmAction::List => swarm::print_status()?,
+                SwarmAction::Status { id } => {
+                    match swarm::get_task(&id)? {
+                        Some(t) => println!("{} [{}] {}", t.id, t.status.as_str(), t.prompt),
+                        None => println!("Task {id} not found."),
+                    }
+                }
+                SwarmAction::Result { id } => {
+                    match swarm::get_task(&id)? {
+                        Some(t) => println!("{}", t.result.as_deref().unwrap_or("(no result)")),
+                        None => println!("Task {id} not found."),
+                    }
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Trace { id }) => {
+            match id {
+                Some(trace_id) => observability::export_trace(&trace_id)?,
+                None => {
+                    let spans = observability::load_last_trace()?;
+                    if spans.is_empty() {
+                        println!("No traces found. Enable [observability] in config.");
+                    } else {
+                        println!("Trace {} — {} spans:", spans[0].trace_id, spans.len());
+                        for s in &spans {
+                            println!("  {:<40} {}ms", s.name, s.duration_ms);
+                        }
+                    }
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Doctor) => {
+            handle_doctor_command(&cfg).await;
+            return Ok(());
+        }
+
+        Some(Commands::Completions { shell }) => {
+            let mut cmd = Cli::command();
+            let bin_name = cmd.get_name().to_string();
+            generate(shell, &mut cmd, bin_name, &mut std::io::stdout());
             return Ok(());
         }
 
@@ -834,27 +985,34 @@ async fn build_tools(provider: ArcProvider, model: String, cfg: &config::Config,
         }
     }
 
-    // Auto-detect and spawn a language server for the current project.
+    // Lazy LSP: only spawn if a supported project type is detected in the cwd.
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    if let Some(lsp) = detect_and_spawn(&cwd).await {
-        registry.register(FindDefinitionTool { client: lsp.clone() });
-        registry.register(FindReferencesTool { client: lsp.clone() });
-        registry.register(RenameSymbolTool { client: lsp.clone() });
-        registry.register(DiagnosticsTool { client: lsp });
+    let has_supported_project = cwd.join("Cargo.toml").exists()
+        || cwd.join("tsconfig.json").exists()
+        || cwd.join("package.json").exists()
+        || cwd.join("pyproject.toml").exists()
+        || cwd.join("setup.py").exists()
+        || cwd.join("go.mod").exists();
+
+    if has_supported_project {
+        if let Some(lsp) = detect_and_spawn(&cwd).await {
+            registry.register(FindDefinitionTool { client: lsp.clone() });
+            registry.register(FindReferencesTool { client: lsp.clone() });
+            registry.register(RenameSymbolTool { client: lsp.clone() });
+            registry.register(DiagnosticsTool { client: lsp });
+        }
     }
 
-    // Load MCP tools if a config file exists.
+    // Load MCP tools.
     if let Some(mcp_path) = harness_mcp::find_config() {
         if let Err(e) = harness_mcp::load_mcp_tools(&mcp_path, &mut registry).await {
             tracing::warn!("MCP load failed: {e}");
         }
     }
-
-    // Also check config-specified MCP path.
     if let Some(mcp_path) = &cfg.mcp.config_path {
         if mcp_path.exists() {
             if let Err(e) = harness_mcp::load_mcp_tools(mcp_path, &mut registry).await {
-                tracing::warn!("MCP load failed: {e}");
+                tracing::warn!("MCP config load failed: {e}");
             }
         }
     }
@@ -1364,10 +1522,10 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
     ];
 
     if let Some(ref model_spec) = set {
-        // Write to .harness/config.toml
+        // Use toml_edit for clean, idempotent TOML manipulation
         let local_cfg = std::path::PathBuf::from(".harness").join("config.toml");
         let _ = std::fs::create_dir_all(".harness");
-        let mut text = if local_cfg.exists() {
+        let text = if local_cfg.exists() {
             std::fs::read_to_string(&local_cfg).unwrap_or_default()
         } else {
             String::new()
@@ -1375,44 +1533,28 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
 
         let (provider_part, model_part) = if model_spec.contains(':') {
             let mut parts = model_spec.splitn(2, ':');
-            (parts.next().unwrap_or(""), parts.next().unwrap_or(""))
+            (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string())
         } else {
-            ("", model_spec.as_str())
+            (String::new(), model_spec.clone())
         };
 
-        if text.contains("model =") {
-            let re_line = text.lines()
-                .map(|l| {
-                    if l.trim_start().starts_with("model =") {
-                        format!("model = \"{}\"", model_part)
-                    } else {
-                        l.to_string()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            text = re_line;
-        } else {
-            text.push_str(&format!("\nmodel = \"{}\"\n", model_part));
+        let mut doc: toml_edit::DocumentMut = text.parse().unwrap_or_default();
+
+        // Set [provider].model
+        if !doc.contains_key("provider") {
+            doc["provider"] = toml_edit::Item::Table(toml_edit::Table::new());
+        }
+        doc["provider"]["model"] = toml_edit::value(model_part.as_str());
+
+        if !provider_part.is_empty() {
+            // Also set [router].default to the provider name
+            if !doc.contains_key("router") {
+                doc["router"] = toml_edit::Item::Table(toml_edit::Table::new());
+            }
+            doc["router"]["default"] = toml_edit::value(provider_part.as_str());
         }
 
-        if !provider_part.is_empty() && text.contains("provider =") {
-            let replaced = text.lines()
-                .map(|l| {
-                    if l.trim_start().starts_with("provider =") {
-                        format!("provider = \"{}\"", provider_part)
-                    } else {
-                        l.to_string()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            text = replaced;
-        } else if !provider_part.is_empty() {
-            text.push_str(&format!("provider = \"{}\"\n", provider_part));
-        }
-
-        std::fs::write(&local_cfg, &text)?;
+        std::fs::write(&local_cfg, doc.to_string())?;
         println!("✓ Default model set to '{model_spec}' in {}", local_cfg.display());
         return Ok(());
     }
@@ -1452,6 +1594,70 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
     let _ = cfg;
     let _ = HashMap::<String, ProviderEntry>::new();
     Ok(())
+}
+
+async fn handle_doctor_command(cfg: &config::Config) {
+    println!("harness doctor — system health check\n");
+
+    // API keys
+    let checks: &[(&str, &str, &str)] = &[
+        ("ANTHROPIC_API_KEY", "Anthropic Claude 4.x", "claude-sonnet-4-6"),
+        ("XAI_API_KEY",       "xAI Grok 4.x",         "grok-4.20-0309-reasoning"),
+        ("OPENAI_API_KEY",    "OpenAI GPT-5.x",        "gpt-5.5"),
+    ];
+    println!("  API Keys:");
+    let mut any_key = false;
+    for (env, name, model) in checks {
+        let set = std::env::var(env).map(|k| !k.is_empty()).unwrap_or(false);
+        if set { any_key = true; }
+        println!("  {} {} → {}", if set { "✓" } else { "✗" }, name, if set { format!("key set, will use {model}") } else { format!("set {env} to enable") });
+    }
+    if !any_key {
+        println!("\n  ⚠ No API key found! Set ANTHROPIC_API_KEY to get started.");
+        println!("  Export it in your shell: export ANTHROPIC_API_KEY=sk-ant-...");
+    }
+
+    // Ollama
+    let ollama_running = tokio::process::Command::new("ollama").arg("list").output().await.map(|o| o.status.success()).unwrap_or(false);
+    println!("  {} Ollama local models: {}", if ollama_running { "✓" } else { "○" }, if ollama_running { "running" } else { "not running (optional)" });
+
+    // Tools
+    println!("\n  External tools:");
+    let tools: &[(&str, &str)] = &[
+        ("git",   "version control"),
+        ("gh",    "GitHub CLI (PR/issues)"),
+        ("rg",    "ripgrep code search"),
+        ("cargo", "Rust builds"),
+        ("node",  "Node.js (TypeScript LSP)"),
+        ("sox",   "audio recording (voice)"),
+    ];
+    for (tool, desc) in tools {
+        let found = tokio::process::Command::new(tool).arg("--version").output().await.map(|o| o.status.success()).unwrap_or(false);
+        println!("  {} {} — {}", if found { "✓" } else { "○" }, tool, desc);
+    }
+
+    // Config files
+    println!("\n  Config:");
+    let user_cfg = dirs::home_dir().unwrap_or_default().join(".harness/config.toml");
+    let local_cfg = std::path::PathBuf::from(".harness/config.toml");
+    println!("  {} ~/.harness/config.toml", if user_cfg.exists() { "✓" } else { "○ (optional)" });
+    println!("  {} .harness/config.toml", if local_cfg.exists() { "✓" } else { "○ (optional — run harness init --project to create)" });
+    println!("  Current model: {}", cfg.provider.model.as_deref().unwrap_or("(auto)"));
+
+    // Memory + cost DB
+    let mem_path = dirs::home_dir().unwrap_or_default().join(".harness/sessions.db");
+    let cost_path = dirs::home_dir().unwrap_or_default().join(".harness/cost.db");
+    println!("\n  Data:");
+    println!("  {} sessions DB: {}", if mem_path.exists() { "✓" } else { "○" }, mem_path.display());
+    println!("  {} cost DB: {}", if cost_path.exists() { "✓" } else { "○" }, cost_path.display());
+
+    // Daemon
+    let sock = dirs::home_dir().unwrap_or_default().join(".harness/daemon.sock");
+    println!("\n  Daemon:");
+    println!("  {} daemon socket: {}", if sock.exists() { "✓ running" } else { "○ not running (optional — run harness daemon)" }, sock.display());
+
+    println!("\nRun `harness init` to create a default config.");
+    println!("Run `harness completions zsh > ~/.zfunc/_harness` to add shell completions.");
 }
 
 fn delete_session(store: &harness_memory::SessionStore, id: &str) -> Result<()> {
