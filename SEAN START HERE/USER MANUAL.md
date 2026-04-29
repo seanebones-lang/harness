@@ -1,237 +1,226 @@
-# SEAN START HERE - Harness User Manual
+# SEAN START HERE — Harness User Manual
 
-This guide explains how to use Harness in simple language.
-
-## What This Tool Is
-
-Harness is your coding assistant in the terminal.
-You type requests, and it can:
-
-- read files
-- edit files
-- run commands
-- explain codeX
-- help debug problems
+This guide explains how to use Harness in plain English.
 
 ---
 
-## 1) One-Time Setup
+## What Harness Does
 
-Open a terminal and run:
-
-```bash
-cd /Users/nexteleven/harness/harness
-set -a; source .env; set +a
-```
-
-This loads your API key from `.env`.
+Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask.
 
 ---
 
-## 2) Start Interactive Mode (Main Way)
+## One-Time Setup (do this once)
+
+### Step 1 — Install
+
+From inside the harness source directory:
 
 ```bash
-cd /Users/nexteleven/harness/harness
-set -a; source .env; set +a
-cargo run
+cargo build --profile release-lto
+install -m 755 target/release-lto/harness ~/.local/bin/harness
 ```
 
-You will see the two-panel interface:
+Then add `~/.local/bin` to your PATH permanently. In `~/.zshrc`:
 
-- left side = chat
-- right side = tools/events
-- bottom = message input
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
 
-Type a request and press `Enter`.
+Reload your shell:
 
-### Example first prompt
+```bash
+source ~/.zshrc
+```
 
-`Read CLAUDE.md and summarize the key commands.`
+Confirm it works:
+
+```bash
+harness --version
+```
+
+### Step 2 — Initialize
+
+Run this once to create your global config and store your API key:
+
+```bash
+harness init
+```
+
+It will prompt you for your xAI API key (get one at https://console.x.ai).
 
 ---
 
-## 3) Run a Single Task (No Interactive UI)
+## Daily Use (normal flow)
 
 ```bash
-cd /Users/nexteleven/harness/harness
-set -a; source .env; set +a
-cargo run -- "explain what src/main.rs does"
-```
-
----
-
-## 4) Resume an Old Session
-
-```bash
-cd /Users/nexteleven/harness/harness
-set -a; source .env; set +a
-cargo run -- --resume <session-id-or-name> "continue"
-```
-
-Replace `<session-id-or-name>` with what you see from `sessions`.
-
----
-
-## 5) List, Export, and Delete Sessions
-
-```bash
-cd /Users/nexteleven/harness/harness
-cargo run -- sessions
-```
-
-Export one session:
-
-```bash
-cargo run -- export <id> --output my-session.md
-```
-
-Delete one session:
-
-```bash
-cargo run -- delete <id>
-```
-
----
-
-## 6) Web Mode (Optional)
-
-Start server:
-
-```bash
-cd /Users/nexteleven/harness/harness
-set -a; source .env; set +a
-cargo run -- serve --addr 127.0.0.1:8787
-```
-
-Open browser:
-
-`http://127.0.0.1:8787`
-
----
-
-## 7) Good Prompt Style (Simple Formula)
-
-Use this format for best results:
-
-1. What you want
-2. Where to do it
-3. What "done" looks like
-
-Example:
-
-`Add error handling in src/server.rs. Keep behavior the same. Run tests after changes.`
-
----
-
-## 8) Common Problems
-
-### "command not found: cargo"
-Install Rust and restart terminal.
-
-### Key/auth errors
-Reload `.env`:
-
-```bash
-set -a; source .env; set +a
-```
-
-### Nothing happens after Enter in UI
-Check if app is busy (status line) and wait for current task to finish.
-
----
-
-## 9) Safety Notes
-
-- Do not commit `.env` or API keys.
-- Rotate API keys if they were shared publicly.
-- Ask for a dry run if you want review before edits.
-
----
-
-## 10) Quick Start (Copy/Paste)
-
-```bash
-cd /Users/nexteleven/harness/harness
-set -a; source .env; set +a
-cargo run
-```
-
-Then type:
-
-`Read src/main.rs and explain the command structure in plain English.`
-
----
-
-## 11) Real Example: Work on a QA Repo
-
-This is a full example you can copy and follow.
-
-### Goal
-
-Open a repo named `qa-repo`, fix a failing test, and commit the fix.
-
-### Step A: Open the QA repo in terminal
-
-```bash
-cd /Users/nexteleven/path/to/qa-repo
-```
-
-If the repo also has a `.env` key file, load it:
-
-```bash
-set -a; source .env; set +a
-```
-
-### Step B: Start Harness in that repo
-
-```bash
-cargo run
-```
-
-If you run Harness from a separate install path, use your installed binary instead:
-
-```bash
+cd /path/to/your/project
 harness
 ```
 
-### Step C: Give a clear task prompt
+That's it. No `source .env`, no `cargo run`.
 
-Type this in the Harness message box:
+You will see a two-panel interface:
+- **Left panel** — conversation
+- **Right panel** — tool calls and events
+- **Bottom bar** — type your message here, press `Enter` to send
 
-`Run tests, find the first failing QA test, fix the root cause, and re-run tests. Keep changes minimal and explain what changed.`
+### Good first prompts
 
-### Step D: Review what it did
-
-Ask:
-
-`Show me exactly which files were changed and why.`
-
-Then ask:
-
-`Run clippy and tests again and confirm all green.`
-
-### Step E: Commit from Harness
-
-Prompt:
-
-`Create a git commit with a clear message for this fix.`
-
-If you want a specific commit message style, say:
-
-`Use commit title: fix(qa): handle null response in validator`
-
-### Step F: Optional push
-
-Prompt:
-
-`Push this branch to origin.`
+```
+Read the README and summarize what this project does.
+Run the tests and tell me which ones are failing.
+Find all TODO comments and list them by file.
+```
 
 ---
 
-## 12) Good QA Prompts You Can Reuse
+## Approve Mode (review before changes apply)
+
+If you want to see what Harness is about to do before it writes files or runs commands:
+
+```bash
+harness --plan
+```
+
+Or type `/plan` inside the TUI to toggle it on. You'll be shown a preview and asked to confirm before any write, patch, or shell command executes.
+
+---
+
+## Resume a Previous Session
+
+```bash
+harness --resume <session-id>
+```
+
+Find session IDs with:
+
+```bash
+harness sessions
+```
+
+---
+
+## Per-Project Setup
+
+To give Harness a custom system prompt tuned for one repo:
+
+```bash
+cd my-project
+harness init --project
+```
+
+This writes `.harness/config.toml` in the current directory. Edit the `system_prompt` there to describe the project, conventions, testing approach, etc.
+
+---
+
+## Check Your Setup
+
+```bash
+harness status
+```
+
+Shows: which API key is loaded, which config file is active, which MCP servers are configured, and your last 5 sessions.
+
+---
+
+## Session Management
+
+```bash
+harness sessions                     # list recent sessions
+harness export <id>                  # print a session as Markdown
+harness export <id> --output out.md  # save to file
+harness delete <id>                  # delete a session
+```
+
+---
+
+## Web UI (optional)
+
+```bash
+harness serve --addr 127.0.0.1:8787
+```
+
+Then open `http://127.0.0.1:8787` in a browser. Your session is remembered across refreshes. Use the "New session" button to start fresh.
+
+---
+
+## TUI Keybindings
+
+| Key | Action |
+|---|---|
+| `Enter` | Send message |
+| `↑ / ↓` | Scroll chat |
+| `PgUp / PgDn` | Scroll event log |
+| `Ctrl+C` | Quit |
+
+---
+
+## Common Problems
+
+### "command not found: harness"
+
+Install Rust, build, copy the binary to `~/.local/bin`, add that to `$PATH`. See One-Time Setup above.
+
+### API key errors
+
+Run `harness status` to see which key is being used. Re-run `harness init --force` to update it.
+
+### Nothing happens after pressing Enter
+
+Check if the agent is mid-task (look at the bottom status bar). Wait for it to finish.
+
+---
+
+## Writing Good Prompts
+
+Use this formula:
+
+1. **What** you want done
+2. **Where** to do it (file/directory)
+3. What **done** looks like
+
+Example:
+
+```
+Add input validation to src/api.rs. Reject empty strings with a 400 error.
+Run tests after. Keep all existing tests passing.
+```
+
+---
+
+## Example: Full QA Fix Workflow
+
+```bash
+cd my-project
+harness
+```
+
+Then type these prompts in sequence:
+
+```
+Run the full test suite and show me only the failing tests.
+```
+
+```
+Fix the first failing test. Keep the fix minimal and explain what changed.
+```
+
+```
+Run clippy and tests again and confirm everything is green.
+```
+
+```
+Create a git commit with a clear message for this fix.
+```
+
+---
+
+## Reusable Prompts
 
 - `Run the full test suite and fix only the first failing test.`
-- `Find flaky tests in tests/qa and make them deterministic.`
+- `Find flaky tests and make them deterministic.`
 - `Add a regression test for the bug you just fixed.`
+- `Review this repo for the top 3 risk areas and propose fixes.`
 - `Refactor this test helper for readability without behavior changes.`
-- `Review this repo for top 3 risk areas and propose fixes.`
+- `Show me all files changed in the last commit and explain each change.`

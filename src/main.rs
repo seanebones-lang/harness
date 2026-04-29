@@ -55,6 +55,11 @@ struct Cli {
     /// Verbose logging.
     #[arg(long, short)]
     verbose: bool,
+
+    /// Plan mode: preview file writes, patches, and shell commands before they execute.
+    /// In TUI, press Enter to approve or Esc to skip each change.
+    #[arg(long)]
+    plan: bool,
 }
 
 #[derive(Subcommand)]
@@ -103,10 +108,25 @@ enum Commands {
         /// Session id prefix or full id.
         id: String,
     },
+    /// Set up harness for the first time (writes ~/.harness/config.toml).
+    /// Pass --project to also write a project-level .harness/config.toml in CWD.
+    Init {
+        /// Also create a project-local .harness/config.toml in the current directory.
+        #[arg(long)]
+        project: bool,
+        /// Overwrite existing config files without prompting.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Show harness configuration and environment status.
+    Status,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Auto-load .env from CWD or any parent directory (no-op if not found).
+    dotenvy::dotenv().ok();
+
     let cli = Cli::parse();
 
     let filter = if cli.verbose {
@@ -156,12 +176,14 @@ async fn main() -> Result<()> {
     };
 
     // Start ambient memory consolidation if memory is enabled.
-    let ambient_shutdown = if let (Some(mem), Some(em)) = (&memory_store, &embed_model) {
-        let mem_arc = std::sync::Arc::new(mem.clone());
-        Some(ambient::spawn(provider.clone(), mem_arc, em.clone()))
-    } else {
-        None
-    };
+    // ambient_shutdown is (sender, join_handle); send () then await handle for a clean exit.
+    let ambient_shutdown: Option<(tokio::sync::watch::Sender<()>, tokio::task::JoinHandle<()>)> =
+        if let (Some(mem), Some(em)) = (&memory_store, &embed_model) {
+            let mem_arc = std::sync::Arc::new(mem.clone());
+            Some(ambient::spawn(provider.clone(), mem_arc, em.clone()))
+        } else {
+            None
+        };
 
     // CLI --browser flag overrides config; config.browser.enabled is the opt-in default.
     let browser_enabled = cli.browser || cfg.browser.enabled.unwrap_or(false);
@@ -212,6 +234,16 @@ async fn main() -> Result<()> {
             delete_session(&session_store, &id)?;
         }
 
+        Some(Commands::Init { project, force }) => {
+            run_init(project, force)?;
+            return Ok(());
+        }
+
+        Some(Commands::Status) => {
+            run_status(&cfg, &model, &session_store, &api_key)?;
+            return Ok(());
+        }
+
         Some(Commands::SelfDev { src, model: sd_model }) => {
             let src_dir = match src {
                 Some(path) => path,
@@ -231,6 +263,15 @@ async fn main() -> Result<()> {
                     &prompt, cli.resume.as_deref(),
                 ).await?;
             } else {
+                let ambient_tx = ambient_shutdown.as_ref().map(|(tx, _)| tx.clone());
+                // In plan mode, create a confirm gate channel and pass it to both the
+                // tools executor and the TUI (which will handle the confirmation prompts).
+                let (tools, confirm_rx) = if cli.plan {
+                    let (gate, rx) = harness_tools::confirm::channel();
+                    (tools.with_confirm_gate(gate), Some(rx))
+                } else {
+                    (tools, None)
+                };
                 let result = tui::run(
                     provider,
                     session_store,
@@ -240,22 +281,29 @@ async fn main() -> Result<()> {
                     model,
                     cfg,
                     cli.resume.as_deref(),
-                    ambient_shutdown.clone(),
+                    ambient_tx,
+                    confirm_rx,
                 )
                 .await;
-                if let Some(tx) = &ambient_shutdown {
-                    let _ = tx.send(());
-                }
+                graceful_ambient_shutdown(ambient_shutdown).await;
                 result?;
+                return Ok(());
             }
         }
     }
 
-    if let Some(tx) = &ambient_shutdown {
-        let _ = tx.send(());
-    }
-
+    graceful_ambient_shutdown(ambient_shutdown).await;
     Ok(())
+}
+
+/// Signal the ambient consolidation task to stop and wait up to 5 s for it.
+async fn graceful_ambient_shutdown(
+    ambient: Option<(tokio::sync::watch::Sender<()>, tokio::task::JoinHandle<()>)>,
+) {
+    if let Some((tx, handle)) = ambient {
+        let _ = tx.send(());
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle).await;
+    }
 }
 
 /// Build the full tool executor: base tools + SpawnAgentTool + MCP tools.
@@ -426,6 +474,7 @@ async fn run_self_dev(
         sd_cfg,
         None,
         None,
+        None,
     )
     .await
 }
@@ -580,6 +629,177 @@ fn list_sessions(store: &harness_memory::SessionStore) -> Result<()> {
         let short = id.chars().take(8).collect::<String>();
         println!("{:<10} {:<24} {}", short, name.unwrap_or_default(), updated);
     }
+    Ok(())
+}
+
+fn run_init(project: bool, force: bool) -> Result<()> {
+    use std::io::{self, Write};
+
+    // ── Global config ──────────────────────────────────────────────────────────
+    let global_dir = dirs::home_dir()
+        .context("cannot determine home directory")?
+        .join(".harness");
+    std::fs::create_dir_all(&global_dir)?;
+    let global_cfg = global_dir.join("config.toml");
+
+    if global_cfg.exists() && !force {
+        println!("Global config already exists at {}", global_cfg.display());
+        println!("Run `harness init --force` to overwrite it.");
+    } else {
+        // Read API key from env, .env (already loaded by dotenvy), or prompt.
+        let api_key = std::env::var("XAI_API_KEY").unwrap_or_default();
+        let api_key = if api_key.is_empty() {
+            print!("Enter your xAI API key (from https://console.x.ai): ");
+            io::stdout().flush()?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            input.trim().to_string()
+        } else {
+            println!("Found XAI_API_KEY in environment — using it.");
+            api_key
+        };
+
+        let config_contents = format!(
+            r#"[provider]
+api_key = "{api_key}"
+model = "grok-3-fast"
+max_tokens = 8192
+temperature = 0.7
+
+[memory]
+enabled = true
+embed_model = "grok-3-embed-english"
+
+[agent]
+system_prompt = """
+You are a powerful coding assistant running in a terminal.
+You have access to tools to read and write files, run shell commands, search code, and patch files.
+You can spawn sub-agents for parallel tasks using spawn_agent.
+Browser automation is available when Chrome runs with --remote-debugging-port=9222.
+MCP tools are loaded automatically from .harness/mcp.json if present.
+Be concise and precise. Prefer making changes over explaining; show diffs when you edit files.
+Always verify your changes work by running relevant tests or build commands.
+"""
+"#
+        );
+        std::fs::write(&global_cfg, config_contents)?;
+        println!("Created global config at {}", global_cfg.display());
+        println!("Edit it any time: {}", global_cfg.display());
+    }
+
+    // ── Project config ─────────────────────────────────────────────────────────
+    if project {
+        let project_dir = std::env::current_dir()?.join(".harness");
+        std::fs::create_dir_all(&project_dir)?;
+        let project_cfg = project_dir.join("config.toml");
+
+        if project_cfg.exists() && !force {
+            println!("Project config already exists at {}", project_cfg.display());
+            println!("Run `harness init --project --force` to overwrite it.");
+        } else {
+            let cwd_name = std::env::current_dir()?
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "this project".to_string());
+            let project_contents = format!(
+                r#"# Project-level config for {cwd_name}
+# Inherits from ~/.harness/config.toml — only override what you need.
+
+[agent]
+system_prompt = """
+You are a coding assistant working in the {cwd_name} project.
+You have access to tools to read/write files, run shell commands, patch files, and search code.
+Prefer targeted edits with patch_file over rewriting whole files.
+Always run tests after changes to confirm correctness.
+"""
+"#
+            );
+            std::fs::write(&project_cfg, project_contents)?;
+            println!("Created project config at {}", project_cfg.display());
+
+            // Write system prompt as editable markdown too
+            let system_md = project_dir.join("SYSTEM.md");
+            if !system_md.exists() || force {
+                let md = format!(
+                    "# Harness system prompt — {cwd_name}\n\nEdit this file to customize the agent's behavior for this project.\nThen copy the contents into `.harness/config.toml` under `[agent] system_prompt`.\n"
+                );
+                std::fs::write(&system_md, md)?;
+                println!("Created system prompt template at {}", system_md.display());
+            }
+        }
+    }
+
+    println!();
+    println!("All done. Start a session with:  harness");
+    println!("Resume a session with:           harness --resume <id>");
+    println!("Approve changes before writing:  harness --plan");
+    Ok(())
+}
+
+fn run_status(
+    cfg: &config::Config,
+    model: &str,
+    store: &harness_memory::SessionStore,
+    api_key: &str,
+) -> Result<()> {
+    println!("harness status\n");
+
+    // API key source
+    let key_source = if cfg.provider.api_key.is_some() {
+        "config file"
+    } else if std::env::var("XAI_API_KEY").is_ok() {
+        "XAI_API_KEY env var"
+    } else {
+        "unknown"
+    };
+    let key_preview = if api_key.len() > 8 {
+        format!("{}…{}", &api_key[..6], &api_key[api_key.len() - 4..])
+    } else {
+        "(too short)".to_string()
+    };
+    println!("  API key : {} ({})", key_preview, key_source);
+    println!("  Model   : {model}");
+
+    // Config file in use
+    let cfg_path = {
+        let local = std::path::PathBuf::from(".harness/config.toml");
+        let global = dirs::home_dir().unwrap_or_default().join(".harness/config.toml");
+        if local.exists() {
+            format!("{} (project)", local.display())
+        } else if global.exists() {
+            format!("{} (global)", global.display())
+        } else {
+            "defaults (no config file found)".to_string()
+        }
+    };
+    println!("  Config  : {cfg_path}");
+
+    // MCP config
+    let mcp_path = harness_mcp::find_config();
+    println!(
+        "  MCP     : {}",
+        mcp_path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "not configured".to_string())
+    );
+
+    // Recent sessions
+    println!();
+    println!("Recent sessions:");
+    match store.list(5) {
+        Ok(sessions) if !sessions.is_empty() => {
+            for (id, name, updated) in sessions {
+                let short = id.chars().take(8).collect::<String>();
+                println!("  {} · {} · {}", short, name.unwrap_or_else(|| "(unnamed)".to_string()), updated);
+            }
+        }
+        Ok(_) => println!("  (none yet)"),
+        Err(e) => println!("  (error reading sessions: {e})"),
+    }
+
+    println!();
+    println!("Run `harness` to start a new session.");
     Ok(())
 }
 

@@ -76,6 +76,7 @@ axum = { workspace = true }
 reqwest = { workspace = true }
 bytes = { workspace = true }
 syntect = { workspace = true }
+dotenvy = "0.15.7"
 
 [dev-dependencies]
 tokio = { workspace = true }

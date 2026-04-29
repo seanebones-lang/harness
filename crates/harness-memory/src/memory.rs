@@ -55,7 +55,7 @@ impl MemoryStore {
     pub fn insert(&self, session_id: &str, text: &str, embedding: &[f32]) -> Result<String> {
         let id = Uuid::new_v4().to_string();
         let emb_json = serde_json::to_string(embedding)?;
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in insert: {}", e))?;
         conn.execute(
             "INSERT INTO memories (id, session_id, text, embedding, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -66,14 +66,14 @@ impl MemoryStore {
 
     /// Total number of memories in the store.
     pub fn count_all(&self) -> Result<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in count_all: {}", e))?;
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))?;
         Ok(n as usize)
     }
 
     /// Return the `limit` most recently inserted memories across all sessions.
     pub fn recent_memories(&self, limit: usize) -> Result<Vec<Memory>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in recent_memories: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, text, created_at
              FROM memories ORDER BY created_at DESC LIMIT ?1",
@@ -94,7 +94,7 @@ impl MemoryStore {
         if ids.is_empty() {
             return Ok(());
         }
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in delete_memories: {}", e))?;
         let placeholders = ids
             .iter()
             .enumerate()
@@ -115,7 +115,7 @@ impl MemoryStore {
         exclude_session: &str,
         top_k: usize,
     ) -> Result<Vec<(Memory, f32)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in search: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, text, embedding, created_at
              FROM memories WHERE session_id != ?1",

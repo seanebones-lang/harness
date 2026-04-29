@@ -11,7 +11,7 @@ use crossterm::{
 use harness_memory::{MemoryStore, Session, SessionStore};
 use harness_provider_core::Message;
 use harness_provider_xai::XaiProvider;
-use harness_tools::ToolExecutor;
+use harness_tools::{ConfirmRequest, ToolExecutor};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
@@ -59,23 +59,57 @@ struct AppState {
     /// Cumulative token counts for this session.
     tokens_in: u32,
     tokens_out: u32,
+    /// Plan mode: pending confirmation request shown as an overlay.
+    pending_confirm: Option<PendingConfirm>,
+    /// First-run welcome overlay: shown until user presses Enter.
+    show_welcome: bool,
+}
+
+struct PendingConfirm {
+    tool_name: String,
+    preview: String,
+    reply: tokio::sync::oneshot::Sender<bool>,
+}
+
+/// Returns `true` on the very first launch (before `~/.harness/.welcomed` exists).
+fn is_first_run() -> bool {
+    let marker = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness/.welcomed");
+    !marker.exists()
+}
+
+/// Mark that the user has seen the welcome screen.
+fn mark_welcomed() {
+    if let Some(home) = dirs::home_dir() {
+        let dir = home.join(".harness");
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join(".welcomed"), "1");
+    }
 }
 
 impl AppState {
     fn new(_model: &str) -> Self {
+        let show_welcome = is_first_run();
         Self {
             input: String::new(),
             cursor_pos: 0,
             chat: Vec::new(),
             streaming: String::new(),
             event_log: Vec::new(),
-            status: "Ready — Enter to send · Ctrl+C to quit · ↑↓ to scroll".into(),
+            status: if show_welcome {
+                "Welcome — press Enter to get started".into()
+            } else {
+                "Ready — Enter to send · Ctrl+C to quit · ↑↓ to scroll".into()
+            },
             busy: false,
             chat_scroll: 0,
             event_scroll: 0,
             session_id: String::new(),
             tokens_in: 0,
             tokens_out: 0,
+            pending_confirm: None,
+            show_welcome,
         }
     }
 
@@ -126,6 +160,7 @@ pub async fn run(
     cfg: Config,
     resume_id: Option<&str>,
     ambient_shutdown: Option<watch::Sender<()>>,
+    confirm_rx: Option<mpsc::UnboundedReceiver<ConfirmRequest>>,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -143,11 +178,38 @@ pub async fn run(
     if !session.messages.is_empty() {
         let mut st = state.lock().unwrap();
         st.session_id = session.short_id().to_string();
+
+        // Replay prior turns into the chat panel so the user can see history.
+        for msg in &session.messages {
+            use harness_provider_core::Role;
+            let content = msg.content.as_str();
+            match msg.role {
+                Role::System | Role::Tool => continue,
+                Role::User => {
+                    st.chat.push(ChatMessage {
+                        role: "you".to_string(),
+                        content: content.to_string(),
+                    });
+                }
+                Role::Assistant => {
+                    // Skip internal tool-call blobs
+                    if content.starts_with("__tool_calls__:") {
+                        continue;
+                    }
+                    st.chat.push(ChatMessage {
+                        role: "grok".to_string(),
+                        content: content.to_string(),
+                    });
+                }
+            }
+        }
+
+        let turn_count = st.chat.len();
         st.status = format!(
-            "Resumed {} · {} · {} turns",
+            "Resumed {} · {} · {} turns — scroll ↑ to see history",
             session.short_id(),
             model,
-            session.messages.len()
+            turn_count
         );
     }
 
@@ -163,6 +225,7 @@ pub async fn run(
         &model,
         cfg.agent.system_prompt.as_deref().unwrap_or(DEFAULT_SYSTEM),
         ambient_shutdown,
+        confirm_rx,
     )
     .await;
 
@@ -187,6 +250,7 @@ async fn event_loop(
     model: &str,
     system_prompt: &str,
     ambient_shutdown: Option<watch::Sender<()>>,
+    mut confirm_rx: Option<mpsc::UnboundedReceiver<ConfirmRequest>>,
 ) -> Result<()> {
     // Built once — loads syntect syntax/theme sets (a few hundred ms).
     let highlighter = Highlighter::new();
@@ -209,6 +273,21 @@ async fn event_loop(
                 Ok(event) => apply_agent_event(&state, event),
                 Err(mpsc::error::TryRecvError::Empty) => break,
                 Err(mpsc::error::TryRecvError::Disconnected) => break,
+            }
+        }
+
+        // Poll for a pending confirmation request (plan mode)
+        if state.lock().unwrap().pending_confirm.is_none() {
+            if let Some(rx) = &mut confirm_rx {
+                if let Ok(req) = rx.try_recv() {
+                    let mut st = state.lock().unwrap();
+                    st.pending_confirm = Some(PendingConfirm {
+                        tool_name: req.tool_name,
+                        preview: req.preview,
+                        reply: req.reply,
+                    });
+                    st.status = "PLAN MODE — Enter to approve · Esc to skip".into();
+                }
             }
         }
 
@@ -267,7 +346,43 @@ async fn event_loop(
                         break;
                     }
 
+                    (KeyCode::Esc, _) => {
+                        // Deny a pending confirmation
+                        let confirm = state.lock().unwrap().pending_confirm.take();
+                        if let Some(pc) = confirm {
+                            let _ = pc.reply.send(false);
+                            let mut st = state.lock().unwrap();
+                            st.push_event(format!("[plan] skipped: {}", pc.tool_name));
+                            st.status = "Skipped — agent will continue.".into();
+                        }
+                    }
+
                     (KeyCode::Enter, _) => {
+                        // Dismiss first-run welcome overlay
+                        {
+                            let mut st = state.lock().unwrap();
+                            if st.show_welcome {
+                                st.show_welcome = false;
+                                st.status =
+                                    "Ready — Enter to send · Ctrl+C to quit · ↑↓ to scroll"
+                                        .into();
+                                mark_welcomed();
+                                continue;
+                            }
+                        }
+
+                        // Approve a pending confirmation (plan mode)
+                        {
+                            let confirm = state.lock().unwrap().pending_confirm.take();
+                            if let Some(pc) = confirm {
+                                let _ = pc.reply.send(true);
+                                let mut st = state.lock().unwrap();
+                                st.push_event(format!("[plan] approved: {}", pc.tool_name));
+                                st.status = "Approved — agent continuing…".into();
+                                continue;
+                            }
+                        }
+
                         let busy = state.lock().unwrap().busy;
                         if busy {
                             continue;
@@ -421,6 +536,17 @@ fn draw(f: &mut ratatui::Frame, state: &AppState, hl: &Highlighter) {
     draw_event_log(f, state, main[1]);
     draw_input(f, state, root[1]);
     draw_status(f, state, root[2]);
+
+    // First-run welcome overlay (shown before anything else)
+    if state.show_welcome {
+        draw_welcome_overlay(f);
+        return;
+    }
+
+    // Plan mode: confirmation overlay on top of everything
+    if let Some(pc) = &state.pending_confirm {
+        draw_confirm_overlay(f, pc);
+    }
 }
 
 fn draw_chat(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect, hl: &Highlighter) {
@@ -528,11 +654,136 @@ fn draw_input(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::R
 }
 
 fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: ratatui::layout::Rect) {
-    let style = if state.busy {
+    let style = if state.pending_confirm.is_some() {
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+    } else if state.busy {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default().fg(Color::DarkGray)
     };
     let p = Paragraph::new(format!(" {}", state.status)).style(style);
     f.render_widget(p, area);
+}
+
+fn draw_welcome_overlay(f: &mut ratatui::Frame) {
+    use ratatui::{layout::Rect, widgets::Clear};
+
+    let area = f.area();
+    let width = (area.width as f32 * 0.65).min(72.0) as u16;
+    let height = 18u16;
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let popup_area = Rect::new(x, y, width, height);
+
+    f.render_widget(Clear, popup_area);
+
+    let lines: Vec<Line> = vec![
+        Line::from(Span::styled(
+            " Welcome to Harness",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            " Harness is your AI coding assistant in the terminal.",
+            Style::default().fg(Color::White),
+        )),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(" Try one of these first prompts:", Style::default().fg(Color::Gray))),
+        Line::from(Span::styled(
+            "   Read README.md and summarize the project.",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            "   Run the tests and show me which are failing.",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            "   Explain what src/main.rs does.",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(" Keybindings:", Style::default().fg(Color::Gray))),
+        Line::from(vec![
+            Span::styled("   Enter", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::raw(" send  "),
+            Span::styled("↑/↓", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::raw(" scroll  "),
+            Span::styled("PgUp/PgDn", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::raw(" event log  "),
+            Span::styled("Ctrl+C", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::raw(" quit"),
+        ]),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            " Run `harness --plan` to preview changes before they apply.",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            " Press Enter to get started",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )),
+    ];
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(Span::styled(
+            " harness — first run ",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ));
+
+    let para = Paragraph::new(lines).block(block);
+    f.render_widget(para, popup_area);
+}
+
+fn draw_confirm_overlay(f: &mut ratatui::Frame, pc: &PendingConfirm) {
+    use ratatui::{layout::Rect, widgets::Clear};
+
+    let area = f.area();
+    // Centre a box: 70% wide, up to 20 lines tall
+    let width = (area.width as f32 * 0.70) as u16;
+    let height = (area.height as f32 * 0.55) as u16;
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let popup_area = Rect::new(x, y, width, height);
+
+    f.render_widget(Clear, popup_area);
+
+    let title = format!(" Plan mode — {} ", pc.tool_name);
+    let preview_lines: Vec<Line> = pc
+        .preview
+        .lines()
+        .map(|l| {
+            let color = if l.starts_with("+ ") {
+                Color::Green
+            } else if l.starts_with("- ") {
+                Color::Red
+            } else if l.starts_with("$ ") {
+                Color::Yellow
+            } else {
+                Color::White
+            };
+            Line::from(Span::styled(format!(" {l}"), Style::default().fg(color)))
+        })
+        .collect();
+
+    let mut content: Vec<Line> = preview_lines;
+    content.push(Line::from(Span::raw("")));
+    content.push(Line::from(vec![
+        Span::styled(" Enter", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::raw(" = approve   "),
+        Span::styled("Esc", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        Span::raw(" = skip"),
+    ]));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(Span::styled(title, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+
+    let para = Paragraph::new(content)
+        .block(block)
+        .wrap(Wrap { trim: false });
+    f.render_widget(para, popup_area);
 }

@@ -1,4 +1,19 @@
-target/
-.harness/sessions.db
-*.env
+# Rust
+/target
+
+# Environment files
 .env
+
+# macOS
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Session data
+*.db
+*.db-wal
+*.db-shm

@@ -41,15 +41,17 @@ impl AmbientProvider for XaiProvider {
 
 /// Spawn the ambient consolidation task.
 ///
-/// Returns a shutdown sender: dropping it requests a clean stop.
+/// Returns a `(shutdown_tx, join_handle)` pair.
+/// Send `()` on `shutdown_tx` (or drop it) to request a clean stop;
+/// `await` the `JoinHandle` to confirm the task has exited.
 pub fn spawn(
     provider: impl AmbientProvider,
     memory: Arc<MemoryStore>,
     embed_model: String,
-) -> watch::Sender<()> {
+) -> (watch::Sender<()>, tokio::task::JoinHandle<()>) {
     let (tx, mut rx) = watch::channel(());
 
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         let mut last_count: usize = memory.count_all().unwrap_or(0);
         let mut interval = tokio::time::interval(INTERVAL);
         interval.tick().await; // skip the immediate first tick
@@ -79,7 +81,7 @@ pub fn spawn(
         }
     });
 
-    tx
+    (tx, handle)
 }
 
 /// Pull the most recent TOP_K memories, ask the model to summarise them,

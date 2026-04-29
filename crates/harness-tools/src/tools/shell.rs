@@ -26,7 +26,12 @@ impl Tool for ShellTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let command = args["command"].as_str().ok_or_else(|| anyhow::anyhow!("missing command"))?;
+        let command = args["command"].as_str().ok_or_else(|| anyhow::anyhow!("missing command"))?
+            .trim();
+        // Basic validation to prevent command injection
+        if command.contains(';') || command.contains('|') || command.contains('`') || command.contains('&') {
+            return Err(anyhow::anyhow!("Invalid command: contains potentially dangerous characters"));
+        }
         let cwd = args["cwd"].as_str();
         let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(60);
 
