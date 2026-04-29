@@ -229,6 +229,9 @@ async fn chat(
             AgentEvent::TokenUsage { input, output } => {
                 format!(r#"{{"type":"token_usage","input":{input},"output":{output}}}"#)
             }
+            AgentEvent::CacheUsage { creation, read } => {
+                format!(r#"{{"type":"cache_usage","creation":{creation},"read":{read}}}"#)
+            }
             AgentEvent::Done => r#"{"type":"done"}"#.to_string(),
             AgentEvent::Error(msg) => {
                 format!(r#"{{"type":"error","message":{}}}"#, serde_json::to_string(&msg).unwrap_or_default())

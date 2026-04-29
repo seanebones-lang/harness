@@ -11,20 +11,20 @@
 //!
 //! [providers.anthropic]
 //! api_key = "sk-ant-..."
-//! model = "claude-sonnet-4-5"
+//! model = "claude-sonnet-4-6"
 //!
 //! [providers.xai]
 //! api_key = "xai-..."
-//! model = "grok-3-fast"
+//! model = "grok-4.20-0309-reasoning"
 //!
 //! [providers.ollama]
 //! base_url = "http://localhost:11434"
-//! model = "qwen2.5-coder:7b"
+//! model = "qwen3-coder:30b"
 //!
 //! [router]
-//! fast_model = "xai:grok-3-mini-fast"
-//! heavy_model = "anthropic:claude-sonnet-4-5"
-//! embed_model = "xai:grok-3-embed-english"
+//! fast_model = "xai:grok-4-1-fast-reasoning"
+//! heavy_model = "anthropic:claude-opus-4-7"
+//! embed_model = "ollama:nomic-embed-text"
 //! fallback = ["anthropic", "xai", "openai", "ollama"]
 //! ```
 
@@ -75,7 +75,7 @@ pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcPr
             Ok(Arc::new(harness_provider_openai::OpenAIProvider::new(cfg)?))
         }
         "ollama" => {
-            let model = entry.model.as_deref().unwrap_or("qwen2.5-coder:7b");
+            let model = entry.model.as_deref().unwrap_or("qwen3-coder:30b");
             let mut cfg = harness_provider_ollama::OllamaConfig::new(model);
             if let Some(u) = &entry.base_url { cfg = cfg.with_base_url(u); }
             Ok(Arc::new(harness_provider_ollama::OllamaProvider::new(cfg)?))
@@ -185,31 +185,126 @@ impl ProviderRouter {
     }
 
     /// Build from a flat config map (name → ProviderEntry) + RouterConfig.
+    ///
+    /// If no `[router]` block is present (all fields `None`), automatically selects
+    /// sensible defaults based on which `*_API_KEY` environment variables are set:
+    ///
+    /// | Priority | Default  | Fast                     | Heavy                  | Embed                   |
+    /// |----------|----------|--------------------------|------------------------|-------------------------|
+    /// | 1st      | anthropic (if ANTHROPIC_API_KEY) | anthropic:claude-haiku-4-5 | anthropic:claude-opus-4-7 | ollama:nomic-embed-text |
+    /// | 2nd      | xai (if XAI_API_KEY)    | xai:grok-4-1-fast-reasoning | xai:grok-4.20-0309-reasoning | ollama:nomic-embed-text |
+    /// | 3rd      | ollama (local, always)  | ollama:qwen3-coder:30b | ollama:qwen3-coder:30b | ollama:nomic-embed-text |
     pub fn from_config(
         entries: &HashMap<String, ProviderEntry>,
         router_cfg: &RouterConfig,
     ) -> anyhow::Result<Self> {
-        let default_name = router_cfg.default.clone().unwrap_or_else(|| "xai".into());
+        // Smart defaults: detect which providers are actually available
+        let has_anthropic = entries.contains_key("anthropic")
+            || std::env::var("ANTHROPIC_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+        let has_xai = entries.contains_key("xai")
+            || std::env::var("XAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+        let has_openai = entries.contains_key("openai")
+            || std::env::var("OPENAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+        let has_ollama = entries.contains_key("ollama");
+
+        // Auto-populate providers from env keys if not explicitly configured
+        let mut augmented: HashMap<String, ProviderEntry> = entries.clone();
+        if has_anthropic && !augmented.contains_key("anthropic") {
+            augmented.insert("anthropic".into(), ProviderEntry {
+                name: Some("anthropic".into()),
+                api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
+                model: Some("claude-sonnet-4-6".into()),
+                base_url: None,
+            });
+        }
+        if has_xai && !augmented.contains_key("xai") {
+            augmented.insert("xai".into(), ProviderEntry {
+                name: Some("xai".into()),
+                api_key: std::env::var("XAI_API_KEY").ok(),
+                model: Some("grok-4.20-0309-reasoning".into()),
+                base_url: None,
+            });
+        }
+        if has_openai && !augmented.contains_key("openai") {
+            augmented.insert("openai".into(), ProviderEntry {
+                name: Some("openai".into()),
+                api_key: std::env::var("OPENAI_API_KEY").ok(),
+                model: Some("gpt-5.5".into()),
+                base_url: None,
+            });
+        }
+
+        // Default provider: anthropic > xai > openai > ollama (first found)
+        let smart_default = if has_anthropic { "anthropic" }
+            else if has_xai { "xai" }
+            else if has_openai { "openai" }
+            else { "ollama" };
+
+        let default_name = router_cfg.default.clone().unwrap_or_else(|| smart_default.into());
         let mut r = Self::new(&default_name);
 
-        for (name, entry) in entries {
+        for (name, entry) in &augmented {
             match build_provider(name.as_str(), entry) {
                 Ok(p) => { r.providers.insert(name.clone(), p); }
                 Err(e) => warn!(name, err = %e, "failed to build provider"),
             }
         }
 
+        // Smart route overrides if not explicitly configured
         if let Some(ref f) = router_cfg.fast_model {
-            r.fast_name = Some(f.split(':').next().unwrap_or(f).to_string());
+            let pname = f.split(':').next().unwrap_or(f).to_string();
+            r.fast_name = Some(pname);
+        } else {
+            // fast: haiku > grok-fast > openai-mini > ollama
+            let fast = if has_anthropic { "anthropic" }
+                else if has_xai { "xai" }
+                else if has_openai { "openai" }
+                else { "ollama" };
+            r.fast_name = Some(fast.to_string());
         }
+
         if let Some(ref h) = router_cfg.heavy_model {
-            r.heavy_name = Some(h.split(':').next().unwrap_or(h).to_string());
+            let pname = h.split(':').next().unwrap_or(h).to_string();
+            r.heavy_name = Some(pname);
+        } else {
+            // heavy: opus > grok-reasoning > gpt-5.5 > ollama
+            let heavy = if has_anthropic { "anthropic" }
+                else if has_xai { "xai" }
+                else if has_openai { "openai" }
+                else { "ollama" };
+            r.heavy_name = Some(heavy.to_string());
         }
+
         if let Some(ref e) = router_cfg.embed_model {
-            r.embed_name = Some(e.split(':').next().unwrap_or(e).to_string());
+            let pname = e.split(':').next().unwrap_or(e).to_string();
+            r.embed_name = Some(pname);
+        } else if has_ollama {
+            r.embed_name = Some("ollama".to_string());
+        } else if has_anthropic {
+            r.embed_name = Some("anthropic".to_string());
         }
+
+        // Fallback chain: explicit → smart order
         if let Some(ref fb) = router_cfg.fallback {
             r.fallback = fb.clone();
+        } else {
+            let mut fb = Vec::new();
+            for n in &["anthropic", "xai", "openai", "ollama"] {
+                if r.providers.contains_key(*n) && *n != default_name.as_str() {
+                    fb.push(n.to_string());
+                }
+            }
+            r.fallback = fb;
+        }
+
+        if r.providers.is_empty() {
+            warn!("No providers configured. Set ANTHROPIC_API_KEY, XAI_API_KEY, or OPENAI_API_KEY.");
+        } else {
+            info!(
+                default = %default_name,
+                providers = ?r.providers.keys().collect::<Vec<_>>(),
+                "router initialised"
+            );
         }
 
         Ok(r)

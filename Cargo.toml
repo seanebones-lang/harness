@@ -11,6 +11,7 @@ members = [
     "crates/harness-mcp",
     "crates/harness-browser",
     "crates/harness-lsp",
+    "crates/harness-voice",
 ]
 resolver = "2"
 
@@ -69,6 +70,7 @@ harness-memory = { path = "crates/harness-memory" }
 harness-mcp = { path = "crates/harness-mcp" }
 harness-browser = { path = "crates/harness-browser" }
 harness-lsp = { path = "crates/harness-lsp" }
+harness-voice = { path = "crates/harness-voice" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
@@ -87,7 +89,12 @@ reqwest = { workspace = true }
 bytes = { workspace = true }
 syntect = { workspace = true }
 chrono = { workspace = true }
+rusqlite = { workspace = true }
 dotenvy = "0.15.7"
+age = "0.11.3"
+keyring = "4.0.0"
+tar = "0.4.45"
+notify-rust = "4.16.0"
 
 [dev-dependencies]
 tokio = { workspace = true }

@@ -1,4 +1,4 @@
-# SEAN START HERE — Harness User Manual
+# SEAN START HERE — Harness User Manual (April 2026)
 
 This guide explains how to use Harness in plain English.
 
@@ -6,7 +6,9 @@ This guide explains how to use Harness in plain English.
 
 ## What Harness Does
 
-Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports multiple AI providers (xAI Grok, Anthropic Claude, OpenAI, local Ollama models), has a full TUI with syntax highlighting, remembers past sessions semantically, and integrates with your language server.
+Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports multiple AI providers (Anthropic Claude, xAI Grok, OpenAI, local Ollama), has a full TUI with syntax highlighting, remembers past sessions semantically, and integrates with your language server.
+
+**Default model: `claude-sonnet-4-6`** — 10x cheaper than base price on repeated context thanks to Anthropic prompt caching. Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
 
 ---
 
@@ -21,33 +23,29 @@ cargo build --profile release-lto
 install -m 755 target/release-lto/harness ~/.local/bin/harness
 ```
 
-Then add `~/.local/bin` to your PATH permanently. In `~/.zshrc`:
+Add `~/.local/bin` to your PATH in `~/.zshrc`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-```
-
-Reload your shell:
-
-```bash
 source ~/.zshrc
+harness --version  # confirm it works
 ```
 
-Confirm it works:
+### Step 2 — Set your API key
 
 ```bash
-harness --version
+export ANTHROPIC_API_KEY="sk-ant-..."   # preferred (get at console.anthropic.com)
+export XAI_API_KEY="xai-..."            # fallback (console.x.ai)
+export OPENAI_API_KEY="sk-..."          # fallback (platform.openai.com)
 ```
 
-### Step 2 — Initialize
+Add to `~/.zshrc` to make permanent. Harness auto-detects which keys are set.
 
-Run this once to create your global config and store your API key:
+### Step 3 — Initialize
 
 ```bash
 harness init
 ```
-
-It will prompt you for your xAI API key (get one at https://console.x.ai).
 
 ---
 
@@ -60,10 +58,10 @@ harness
 
 That's it. No `source .env`, no `cargo run`.
 
-You will see a two-panel interface:
+Two-panel interface:
 - **Left panel** — conversation
 - **Right panel** — tool calls and events
-- **Bottom bar** — type your message here, press `Enter` to send
+- **Bottom bar** — type your message, press `Enter`
 
 ### Good first prompts
 
@@ -75,15 +73,50 @@ Find all TODO comments and list them by file.
 
 ---
 
-## Approve Mode (review before changes apply)
+## April 2026 Models
 
-If you want to see what Harness is about to do before it writes files or runs commands:
+Pick the right model for the job:
+
+| Model | Use When |
+|-------|----------|
+| `claude-sonnet-4-6` (default) | Most tasks — fast, cheap with caching |
+| `claude-opus-4-7` | Complex architecture, long tasks, adaptive thinking |
+| `claude-haiku-4-5` | Summaries, quick lookups — ultra-fast |
+| `grok-4.20-0309-reasoning` | Code reasoning, 2M context window |
+| `grok-4-1-fast-reasoning` | Real-time low-latency tasks |
+| `gpt-5.5` | When you want OpenAI's latest |
+| `qwen3-coder:30b` | Fully local (no API key), 256K context |
+
+Switch models:
+```bash
+harness models                                 # list all available
+harness models --set anthropic:claude-opus-4-7 # set default for this project
+```
+
+Or mid-session: `/model claude-opus-4-7`
+
+---
+
+## Extended Thinking (Opus 4.7 + Sonnet 4.6)
+
+Enable the model to "think aloud" before answering — great for complex architecture tasks:
+
+```bash
+harness --think 10000    # 10k token thinking budget
+harness --think 0        # disable (default)
+```
+
+Or in TUI: `/think 10000`
+
+---
+
+## Approve Mode (review before changes apply)
 
 ```bash
 harness --plan
 ```
 
-Or type `/plan` inside the TUI to toggle it on. You'll be shown a preview and asked to confirm before any write, patch, or shell command executes.
+Or type `/plan` inside the TUI. Shows a preview and asks for confirmation before any write, patch, or shell command.
 
 ---
 
@@ -91,57 +124,179 @@ Or type `/plan` inside the TUI to toggle it on. You'll be shown a preview and as
 
 Type any of these in the input bar and press Enter:
 
-| Command | What it does |
-|---|---|
-| `/help` | Show this list in the event log |
-| `/clear` | Clear the chat panel (keeps session) |
-| `/undo` | Restore files from the last git checkpoint |
-| `/diff` | Show `git diff` in the event log |
-| `/test` | Run the test suite and stream output |
-| `/compact` | Summarise old messages to free up context |
-| `/cost` | Show running token count and dollar estimate |
-| `/plan` | Toggle plan mode on/off |
-| `/model <name>` | Switch model for new turns (e.g. `/model grok-3`) |
-| `/runs` | List background agent runs |
-| `/fork` | Note about session forking (use Ctrl+E) |
+| Command              | What it does                                              |
+|----------------------|-----------------------------------------------------------|
+| `/help`              | Show this list in the event log                           |
+| `/clear`             | Clear the chat panel (keeps session)                      |
+| `/undo`              | Restore files from the last git checkpoint                |
+| `/diff`              | Show `git diff` in the event log                          |
+| `/test`              | Run the test suite and stream output                      |
+| `/compact`           | Summarise old messages to free up context                 |
+| `/cost`              | Show running token count + dollar estimate + cache hit %  |
+| `/plan`              | Toggle plan mode on/off                                   |
+| `/model <name>`      | Switch model for new turns                                |
+| `/think [N]`         | Enable extended thinking with N-token budget              |
+| `/remember t: fact`  | Store fact under topic t in `.harness/memory/`            |
+| `/forget t`          | Delete memory topic t                                     |
+| `/memories`          | List all memory topics                                    |
+| `/pr [N]`            | List open PRs or load PR #N for review                    |
+| `/issues`            | List open GitHub issues                                   |
+| `/ci`                | Show recent CI workflow runs                              |
+| `/notify test`       | Send a test desktop notification                          |
+| `/runs`              | List background agent runs                                |
+| `/fork`              | Note about session forking (use Ctrl+E)                   |
 
 ---
 
 ## TUI Keybindings
 
-| Key | Action |
-|---|---|
-| `Enter` | Send message |
-| `Tab` | Autocomplete `@file` paths in input |
-| `↑ / ↓` | Scroll chat panel |
-| `PgUp / PgDn` | Scroll event log |
-| `Ctrl+E` | Fork session — enter a turn number to branch from that point |
-| `Ctrl+C` | Quit |
+| Key       | Action                                          |
+|-----------|-------------------------------------------------|
+| `Enter`   | Send message                                    |
+| `Tab`     | Autocomplete `@file` paths in input             |
+| `↑ / ↓`   | Scroll chat panel                               |
+| `PgUp/Dn` | Scroll event log                                |
+| `Ctrl+V`  | Hold to voice-record, release to transcribe     |
+| `Ctrl+E`  | Fork session — branch from a past turn          |
+| `Ctrl+C`  | Quit                                            |
 
 ---
 
 ## Pinning Files into Messages (`@file`)
 
-Prefix any file path with `@` in your message to attach its full contents before sending:
-
 ```
 @src/api.rs Add input validation to reject empty strings with a 400 error.
 ```
 
-Press `Tab` after `@` to autocomplete paths from the current directory. You can pin multiple files in one message.
+Press `Tab` after `@` to autocomplete. Pin multiple files in one message.
+
+---
+
+## Voice Input (Ctrl+V / `harness voice`)
+
+Hold `Ctrl+V` in TUI to record; release to transcribe and insert into input.
+
+Or one-shot CLI:
+```bash
+harness voice            # record + print transcript
+harness voice --send     # record + send to agent immediately
+```
+
+Backends (auto-detected):
+- **OpenAI Whisper** — if `OPENAI_API_KEY` is set, uses `gpt-4o-transcribe`
+- **Local** — if `whisper-cli` is on PATH, uses whisper.cpp offline
+
+---
+
+## Project Memory
+
+Store persistent facts about your project — automatically injected into every session:
+
+```bash
+harness memorize architecture "Monorepo: crates/ + src/. Provider abstraction in harness-provider-core."
+harness memorize tests "Run cargo test --workspace. Lints via cargo clippy."
+harness memorize deploy "Deploy with cargo build --release + scp to prod."
+harness memories         # list all topics
+harness forget tests     # delete a topic
+```
+
+Or in TUI:
+```
+/remember tests: run cargo nextest for speed
+/forget tests
+/memories
+```
+
+Memory files live in `.harness/memory/<topic>.md` and are version-controlled with your project.
+
+---
+
+## GitHub Workflow
+
+```bash
+harness pr 123                   # load PR #123 diff + comments into session
+harness pr 123 --comment "LGTM"  # post a review comment
+```
+
+In TUI:
+```
+/pr           → list open PRs for this branch
+/pr 123       → load PR #123 context
+/issues       → list open issues
+/ci           → show recent CI run status
+```
+
+Requires `gh` CLI installed and authenticated (`gh auth login`).
+
+---
+
+## Cost Tracking
+
+```bash
+harness cost today               # today's spend
+harness cost week                # last 7 days
+harness cost month               # last 30 days
+harness cost by-model            # breakdown by model
+harness cost by-project          # breakdown by project directory
+harness cost watch               # live tail (updates every 5s)
+```
+
+Set budget limits in `~/.harness/config.toml`:
+```toml
+[budget]
+daily_usd = 5.00
+monthly_usd = 50.00
+```
+
+Status bar shows cost in real time. Turns yellow at 80%, red at 100%.
+Desktop notification fires at each threshold.
+
+The status bar also shows **prompt cache hit rate** — when using Claude, repeated context (system prompt, pinned files) is served at 10x discount automatically.
+
+---
+
+## Desktop Notifications
+
+Harness sends macOS Notification Center / libnotify alerts for:
+- Background agent runs completing (done or failed)
+- Auto-test failures
+- Budget threshold crossings (80%, 100%)
+
+Test them with `/notify test` in the TUI, or disable in config:
+```toml
+[notifications]
+enabled = false
+```
+
+---
+
+## Cross-Machine Sync
+
+Encrypt and sync `~/.harness` state (sessions, memory, cost DB) to a private git repo:
+
+```bash
+harness sync init git@github.com:you/harness-state.git
+harness sync push      # encrypt with age + push
+harness sync pull      # pull + decrypt (on another machine)
+harness sync status    # show recent syncs
+harness sync auth      # show passphrase storage info
+```
+
+Passphrase is stored in macOS Keychain (or `~/.harness/.sync-key` as fallback).
+Encryption uses `age` with scrypt — no plaintext secrets ever leave your machine.
 
 ---
 
 ## Undo / Checkpoints
 
-Before every destructive tool call (write, patch, shell command), Harness automatically creates a git stash checkpoint. To roll back:
+Before every destructive tool call, Harness automatically creates a git stash checkpoint:
 
 ```bash
-harness undo           # restore from the most recent checkpoint
-harness checkpoint list  # see all saved checkpoints
+harness undo               # restore from most recent checkpoint
+harness checkpoint list    # see all saved checkpoints
 ```
 
-Or type `/undo` in the TUI.
+Or type `/undo` in TUI.
 
 ---
 
@@ -149,28 +304,100 @@ Or type `/undo` in the TUI.
 
 ```bash
 harness --resume <session-id>
-```
-
-Find session IDs with:
-
-```bash
-harness sessions
+harness sessions    # find session IDs
 ```
 
 ---
 
 ## Per-Project Setup
 
-To give Harness a custom system prompt tuned for one repo:
-
 ```bash
 cd my-project
-harness init --project
+harness init --project   # writes .harness/config.toml
 ```
 
-This writes `.harness/config.toml` in the current directory. Edit the `system_prompt` there to describe the project, conventions, testing approach, etc.
-
 You can also create `.harness/SYSTEM.md`, `AGENTS.md`, or `CLAUDE.md` in your project root — Harness reads whichever it finds first and prepends it to every session automatically.
+
+---
+
+## Computer Use (macOS, opt-in)
+
+Enable the agent to control your mouse and keyboard:
+
+```toml
+[computer_use]
+enabled = true   # DANGER: agent can move mouse, type, take screenshots
+```
+
+Requires `cliclick` (`brew install cliclick`). Only works with `claude-opus-4-7` or newer.
+TUI shows a red `[COMPUTER USE LIVE]` banner whenever active.
+
+---
+
+## Native Server-Side Tools
+
+Enable provider-managed tools (billed per call, no local plumbing needed):
+
+```toml
+[native_tools]
+web_search = true       # Anthropic/xAI native web search
+code_execution = false  # sandboxed code execution
+x_search = false        # xAI X (Twitter) post search
+```
+
+---
+
+## Session Management
+
+```bash
+harness sessions                     # list recent sessions
+harness export <id>                  # print as Markdown
+harness export <id> --output out.md  # save to file
+harness delete <id>                  # delete a session
+```
+
+---
+
+## Background Runs
+
+```bash
+harness run-bg "fix all clippy warnings in the codebase"
+harness runs                         # show status of all background runs
+```
+
+Output streams to `~/.harness/runs/<id>/output.log`. Desktop notification fires on completion.
+
+---
+
+## Fork a Past Turn (Ctrl+E)
+
+1. Press `Ctrl+E` in the TUI
+2. Type the turn number to branch from (e.g. `3`)
+3. Press `Enter`
+
+A new session is created with messages up to that turn. Continue with a corrected prompt.
+
+---
+
+## Auto-Test Loop
+
+```toml
+[autotest]
+enabled = true
+scope = "package"   # "package" or omit for full suite
+```
+
+Runs tests automatically after every file write. Agent self-corrects on failures. Desktop notification fires when tests fail.
+
+---
+
+## Auto-Format
+
+After every file write, Harness automatically runs:
+- `.rs` → `rustfmt`
+- `.ts/.tsx/.js/.jsx/.json` → `prettier`
+- `.py` → `ruff format`
+- `.go` → `gofmt`
 
 ---
 
@@ -180,179 +407,7 @@ You can also create `.harness/SYSTEM.md`, `AGENTS.md`, or `CLAUDE.md` in your pr
 harness status
 ```
 
-Shows: which API key is loaded, which config file is active, which MCP servers are configured, and your last 5 sessions.
-
----
-
-## Session Management
-
-```bash
-harness sessions                     # list recent sessions
-harness export <id>                  # print a session as Markdown
-harness export <id> --output out.md  # save to file
-harness delete <id>                  # delete a session
-```
-
----
-
-## Background Runs
-
-Run the agent on a task without tying up your terminal:
-
-```bash
-harness run-bg "fix all clippy warnings in the codebase"
-```
-
-Output streams to `~/.harness/runs/<id>/output.log`. Check status with:
-
-```bash
-harness runs
-```
-
-Or type `/runs` in any TUI session.
-
----
-
-## Fork a Past Turn (Ctrl+E)
-
-If the agent went off-rails three turns ago, you can branch from that point instead of starting over:
-
-1. Press `Ctrl+E` in the TUI
-2. Type the turn number you want to fork at (e.g. `3`)
-3. Press `Enter`
-
-A new session is created with messages up to that turn. Continue from there with a corrected prompt.
-
----
-
-## Multi-Provider Support
-
-Harness supports xAI Grok (default), Anthropic Claude, OpenAI, and local Ollama models. Configure in `~/.harness/config.toml`:
-
-```toml
-[providers.anthropic]
-api_key = "sk-ant-..."
-model = "claude-sonnet-4-5"
-
-[providers.xai]
-api_key = "xai-..."
-model = "grok-3-fast"
-
-[providers.ollama]
-base_url = "http://localhost:11434"
-model = "qwen2.5-coder:7b"
-
-[router]
-default = "anthropic"
-fast_model = "xai:grok-3-mini-fast"
-heavy_model = "anthropic:claude-sonnet-4-5"
-embed_model = "ollama:nomic-embed-text"
-fallback = ["anthropic", "xai", "openai", "ollama"]
-```
-
-Switch models mid-session with `/model <name>`.
-
----
-
-## Attach an Image
-
-Pass a screenshot or diagram to support vision-capable models:
-
-```bash
-harness "what's wrong in this screenshot?" --image error.png
-```
-
-In the TUI, paste an image file path (the TUI detects `.png`, `.jpg`, etc. from bracketed paste and converts it to an `@file` reference automatically).
-
----
-
-## Auto-Test Loop
-
-Enable in config to automatically run tests after every file write and feed failures straight back to the agent:
-
-```toml
-[autotest]
-enabled = true
-scope = "package"   # "package" or omit for full suite
-```
-
-The agent sees test failures immediately and self-corrects without you needing to prompt it again.
-
----
-
-## Auto-Format
-
-After every file write, Harness automatically runs the appropriate formatter:
-- `.rs` → `rustfmt`
-- `.ts/.tsx/.js/.jsx/.json` → `prettier`
-- `.py` → `ruff format`
-- `.go` → `gofmt`
-
-Best-effort: if the formatter isn't installed, the file is written as-is.
-
----
-
-## Trust Rules (skip confirmation for known-safe commands)
-
-In `--plan` mode, you can permanently skip confirmation for commands you always approve:
-
-```bash
-harness trust shell "cargo check"       # never ask about cargo check
-harness trust write_file "*"            # never ask about any file write
-harness trust-list                      # show all rules
-harness untrust shell "cargo check"     # remove a rule
-```
-
-After approving the same command 3 times in a row, the TUI will suggest the matching `harness trust` command for you.
-
----
-
-## LSP Integration (find definition, references, rename)
-
-If `rust-analyzer`, `typescript-language-server`, `pyright`, or `gopls` is installed, Harness auto-detects and connects to it. The agent gains four tools:
-
-- **`find_definition`** — jump to where a symbol is defined
-- **`find_references`** — list every usage site
-- **`rename_symbol`** — project-wide rename (returns a diff to review)
-- **`diagnostics`** — live errors and warnings
-
-No configuration required — it just works if the language server binary is on your PATH.
-
----
-
-## Daemon Mode (fast startup)
-
-Start a long-lived background process that holds all resources (SQLite, LSP, provider clients):
-
-```bash
-harness daemon
-```
-
-Other `harness` invocations auto-connect to it via `~/.harness/daemon.sock`. This eliminates the 1-2 second cold start on every launch. Check status with:
-
-```bash
-harness daemon-status
-```
-
-Stop it with `Ctrl+C` in the terminal running `harness daemon`.
-
----
-
-## Context Compaction
-
-Harness automatically summarises the oldest half of the conversation when it approaches 70% of the model's context window — preserving all file paths, decisions, and tool results in a compact form.
-
-Force it manually at any time with `/compact` in the TUI.
-
----
-
-## Web UI (optional)
-
-```bash
-harness serve --addr 127.0.0.1:8787
-```
-
-Then open `http://127.0.0.1:8787` in a browser. Your session is remembered across refreshes. Use the "New session" button to start fresh.
+Shows: which API key is loaded, which config is active, which MCP servers are configured, recent sessions.
 
 ---
 
@@ -360,11 +415,12 @@ Then open `http://127.0.0.1:8787` in a browser. Your session is remembered acros
 
 ### "command not found: harness"
 
-Install Rust, build, copy the binary to `~/.local/bin`, add that to `$PATH`. See One-Time Setup above.
+Install Rust, build, copy binary to `~/.local/bin`, add to `$PATH`. See One-Time Setup above.
 
 ### API key errors
 
-Run `harness status` to see which key is being used. Re-run `harness init --force` to update it.
+Run `harness status`. Re-run `harness init --force` to update the stored key.
+Or set the env var: `export ANTHROPIC_API_KEY="..."`
 
 ### Nothing happens after pressing Enter
 
@@ -372,22 +428,17 @@ Check the bottom status bar — the agent may still be running. Wait for it to f
 
 ### Checkpoint/undo fails with "not a git repo"
 
-Checkpoints require a git repository. Run `git init` in your project root if you haven't already.
+Run `git init` in your project root.
 
 ---
 
 ## Writing Good Prompts
 
-Use this formula:
-
-1. **What** you want done
-2. **Where** to do it (file/directory)
-3. What **done** looks like
-
-Example:
+Formula: **What** you want + **Where** + What **done** looks like
 
 ```
-Add input validation to src/api.rs. Reject empty strings with a 400 error.
+Add input validation to src/api.rs.
+Reject empty strings with a 400 error.
 Run tests after. Keep all existing tests passing.
 ```
 
@@ -400,21 +451,12 @@ cd my-project
 harness
 ```
 
-Then type these prompts in sequence:
+Then type in sequence:
 
 ```
 Run the full test suite and show me only the failing tests.
-```
-
-```
 Fix the first failing test. Keep the fix minimal and explain what changed.
-```
-
-```
 Run clippy and tests again and confirm everything is green.
-```
-
-```
 Create a git commit with a clear message for this fix.
 ```
 
@@ -430,3 +472,5 @@ Create a git commit with a clear message for this fix.
 - `Show me all files changed in the last commit and explain each change.`
 - `Find all usages of <function> and rename it to <new_name> across the project.`
 - `Run diagnostics on src/main.rs and fix every error and warning.`
+- `Summarize today's work as a standup update.`
+- `Review PR 123 and suggest improvements.`

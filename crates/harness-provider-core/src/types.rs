@@ -196,6 +196,13 @@ pub enum Delta {
     ToolCall(ToolCall),
     /// Token usage for the completed request (emitted just before Done).
     Usage { input_tokens: u32, output_tokens: u32 },
+    /// Prompt-cache statistics (Anthropic only). Emitted alongside Usage.
+    CacheUsage {
+        /// Tokens written to cache this request (incurs a write surcharge).
+        cache_creation_tokens: u32,
+        /// Tokens read from cache (cheapest — ~10% of normal input price).
+        cache_read_tokens: u32,
+    },
     /// Model stopped generating; stream is done.
     Done { stop_reason: StopReason },
 }
@@ -218,6 +225,15 @@ pub struct ChatRequest {
     pub max_tokens: u32,
     pub temperature: f32,
     pub system: Option<String>,
+    /// Enable extended thinking. When Some(budget), the model will use up to
+    /// `budget` tokens for internal reasoning (billed as output tokens).
+    /// When None, adaptive thinking is used on Opus 4.7 (model decides).
+    pub thinking_budget: Option<u32>,
+    /// Enable provider-side native tools (web_search, code_execution, x_search).
+    /// These are appended to the tool list sent to the provider.
+    pub native_web_search: bool,
+    pub native_code_execution: bool,
+    pub native_x_search: bool,
 }
 
 impl ChatRequest {
@@ -229,6 +245,10 @@ impl ChatRequest {
             max_tokens: 8192,
             temperature: 0.7,
             system: None,
+            thinking_budget: None,
+            native_web_search: false,
+            native_code_execution: false,
+            native_x_search: false,
         }
     }
 
@@ -244,6 +264,21 @@ impl ChatRequest {
 
     pub fn with_system(mut self, system: impl Into<String>) -> Self {
         self.system = Some(system.into());
+        self
+    }
+
+    /// Enable extended thinking with a token budget.
+    /// Pass `None` for Opus 4.7's adaptive thinking (model decides when to think).
+    pub fn with_thinking(mut self, budget: Option<u32>) -> Self {
+        self.thinking_budget = budget;
+        self
+    }
+
+    /// Enable provider-managed native tools for this request.
+    pub fn with_native_tools(mut self, web_search: bool, code_execution: bool, x_search: bool) -> Self {
+        self.native_web_search = web_search;
+        self.native_code_execution = code_execution;
+        self.native_x_search = x_search;
         self
     }
 }
