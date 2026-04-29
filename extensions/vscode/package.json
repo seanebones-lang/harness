@@ -1,0 +1,109 @@
+{
+  "name": "harness",
+  "displayName": "Harness — AI Coding Agent",
+  "description": "AI coding agent with Claude 4.x, GPT-5, Grok 4, and Qwen3 in VS Code",
+  "version": "0.1.0",
+  "publisher": "harness-ai",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["AI", "Chat", "Other"],
+  "keywords": ["ai", "coding", "assistant", "claude", "gpt", "agent"],
+  "icon": "media/icon.png",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "harness.openChat",
+        "title": "Harness: Open Chat",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "harness.inlineEdit",
+        "title": "Harness: Inline Edit (Cmd+I)",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "harness.explainCode",
+        "title": "Harness: Explain Selected Code"
+      },
+      {
+        "command": "harness.fixDiagnostics",
+        "title": "Harness: Fix Diagnostics"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "harness.openChat",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h"
+      },
+      {
+        "command": "harness.inlineEdit",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorHasSelection"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "harness",
+          "title": "Harness AI",
+          "icon": "$(sparkle)"
+        }
+      ]
+    },
+    "views": {
+      "harness": [
+        {
+          "id": "harness.chatView",
+          "name": "Chat",
+          "type": "webview"
+        }
+      ]
+    },
+    "statusBar": [
+      {
+        "id": "harness.status",
+        "name": "Harness Status",
+        "alignment": "right",
+        "priority": 100
+      }
+    ],
+    "configuration": {
+      "title": "Harness",
+      "properties": {
+        "harness.daemonSocket": {
+          "type": "string",
+          "default": "~/.harness/daemon.sock",
+          "description": "Path to the Harness daemon Unix socket."
+        },
+        "harness.model": {
+          "type": "string",
+          "default": "claude-sonnet-4-6",
+          "description": "Default model to use."
+        },
+        "harness.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect to the Harness daemon on startup."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.0",
+    "@vscode/vsce": "^2.26.0"
+  }
+}

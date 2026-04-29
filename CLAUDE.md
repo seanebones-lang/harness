@@ -56,8 +56,31 @@ harness memories
 # Voice input (one-shot)
 harness voice
 
+# Real-time voice (duplex WebSocket)
+harness voice --realtime
+
 # Self-development mode (agent edits itself)
 harness self-dev --src . --model claude-sonnet-4-6
+
+# Diagnostics
+harness doctor
+
+# Shell completions
+harness completions bash > ~/.bash_completion.d/harness
+harness completions zsh > ~/.zsh/completions/_harness
+harness completions fish > ~/.config/fish/completions/harness.fish
+
+# Parallel swarm
+harness swarm status
+harness swarm cancel <task-id>
+harness swarm results <task-id>
+
+# Observability traces
+harness trace list
+harness trace show <span-id>
+
+# Collaborative sessions
+harness join <session-id>
 ```
 
 ## Workspace layout
@@ -75,20 +98,31 @@ harness/
 │   ├── cost_db.rs                  SQLite cost tracking (~/.harness/cost.db)
 │   ├── memory_project.rs           .harness/memory/ project facts
 │   ├── sync.rs                     age-encrypted cross-machine git sync
-│   └── notifications.rs            desktop notification helpers (notify-rust)
+│   ├── notifications.rs            desktop notification helpers (notify-rust), E16 rich kinds
+│   ├── diff_review.rs              inline diff review + staging buffer (E4)
+│   ├── observability.rs            OpenTelemetry tracing + OTLP export (E7)
+│   ├── swarm.rs                    parallel sub-agent swarm + SQLite registry (E9)
+│   ├── bridges.rs                  Obsidian / Apple Notes / Calendar / GitHub Projects (E12)
+│   └── collab.rs                   collaborative WebSocket sessions (E13)
 ├── crates/
-│   ├── harness-provider-core/      Provider trait, Message/Delta/Tool types
+│   ├── harness-provider-core/      Provider trait, Message/Delta/Tool types, ResponseSchema
 │   ├── harness-provider-anthropic/ Claude Sonnet/Opus/Haiku + prompt caching + thinking
-│   ├── harness-provider-openai/    GPT-5.x streaming SSE client
-│   ├── harness-provider-xai/       Grok 4.x streaming + native tools
+│   ├── harness-provider-openai/    GPT-5.x streaming SSE client + strict JSON schema
+│   ├── harness-provider-xai/       Grok 4.x streaming + native tools + strict JSON schema
 │   ├── harness-provider-ollama/    Local Ollama (Qwen3-Coder 30B default)
+│   ├── harness-provider-mlx/       MLX-native local models (macOS/aarch64, E11)
 │   ├── harness-provider-router/    Smart multi-provider router (env-key detection)
 │   ├── harness-tools/              Tool trait + built-ins (shell/gh/computer/file/search)
 │   ├── harness-memory/             SQLite session store + vector memory store
-│   ├── harness-mcp/                MCP stdio protocol client + tool adapter
+│   ├── harness-mcp/                MCP 2025-03-26 client: tools, resources, sampling, roots, progress (E8)
 │   ├── harness-browser/            Chrome CDP browser tool
-│   └── harness-voice/              Whisper transcription (OpenAI API + local whisper.cpp)
+│   ├── harness-voice/              Whisper transcription + OpenAI Realtime API duplex (E5)
+│   └── harness-term-graphics/      Inline image rendering (Kitty/iTerm2/Sixel, E6)
+├── extensions/vscode/              VS Code extension (TypeScript, E14)
+├── apps/desktop/                   Tauri 2 desktop shell (macOS .app, E15)
 ├── config/default.toml             Annotated default configuration
+├── docs/SHORTCUTS.md               TUI keyboard shortcuts cheat sheet
+├── docs/MIGRATION.md               Phase D→E breaking changes
 ├── tests/smoke_test.rs             Integration tests (no API key required)
 └── scripts/install.sh              Install from source to ~/.local/bin
 ```
@@ -101,6 +135,7 @@ harness/
 | OpenAI    | `gpt-5.5`                        | 1M context, Dec 2025 cutoff   |
 | xAI       | `grok-4.20-0309-reasoning`       | 2M context, native tools      |
 | Ollama    | `qwen3-coder:30b`                | Local, 256K ctx, SWE-bench RL |
+| MLX       | `mlx-community/Qwen3-Coder-30B`  | Apple Silicon native          |
 | Embed     | `nomic-embed-text` (Ollama)      | RAG default                   |
 
 Smart router picks the best available provider based on which `*_API_KEY` env vars are set:
@@ -116,13 +151,15 @@ Smart router picks the best available provider based on which `*_API_KEY` env va
 | `Message` | `{role: Role, content: MessageContent, tool_call_id?}` |
 | `Delta` | `Text(String)` \| `ToolCall(ToolCall)` \| `Done{stop_reason}` \| `CacheUsage{creation, read}` \| `Usage{input, output}` |
 | `ToolDefinition` | OpenAI-format function schema |
-| `ChatRequest` | Builder: `.with_messages()`, `.with_tools()`, `.with_system()`, `.thinking_budget`, `.native_web_search` |
+| `ChatRequest` | Builder: `.with_messages()`, `.with_tools()`, `.with_system()`, `.thinking_budget`, `.native_web_search`, `.response_schema` |
+| `ResponseSchema` | Strict JSON schema constraint (`name`, `schema: Value`, `strict: bool`) |
 
-`ChatRequest` new fields (April 2026):
+`ChatRequest` fields (April 2026):
 - `thinking_budget: Option<u32>` — adaptive thinking budget (Anthropic)
 - `native_web_search: bool` — enable provider-native web search
 - `native_code_execution: bool` — enable sandboxed code execution
 - `native_x_search: bool` — enable xAI X (Twitter) search
+- `response_schema: Option<ResponseSchema>` — strict structured JSON output (E10)
 
 ### `harness-provider-anthropic`
 
@@ -130,10 +167,16 @@ Prompt caching: attaches `cache_control: {type: "ephemeral"}` to system, tools, 
 
 Extended thinking: if `thinking_budget` > 0 on the request, sends `thinking: {type: "enabled", budget_tokens: N}` in the body + `anthropic-beta: interleaved-thinking-2025-05-14` header.
 
+Structured output: injects a synthetic tool named `respond_<schema-name>` so the model is forced to call it with valid JSON matching the schema.
+
+### `harness-provider-openai` / `harness-provider-xai`
+
+Structured output: sets `response_format: {type: "json_schema", json_schema: {name, schema, strict: true}}` on the request when `response_schema` is set.
+
 ### `harness-provider-router`
 
 Auto-builds providers from env keys when no `[providers]` block is configured. Smart routing:
-- `default` → anthropic > xai > openai > ollama
+- `default` → anthropic > xai > openai > ollama > mlx
 - `fast` → same priority, uses fast/cheap model
 - `heavy` → same priority, uses opus/grok-reasoning
 - `embed` → ollama:nomic-embed-text if available
@@ -156,6 +199,8 @@ Built-in tools:
 
 `record_and_transcribe()` — captures audio via `sox rec` / `afrecord`, transcribes via OpenAI Whisper API or local `whisper-cli`. `WhisperBackend::detect()` picks the best available backend.
 
+`RealtimeVoiceSession` — OpenAI Realtime API over WebSocket, bidirectional audio/text streaming (E5).
+
 ### `harness-memory`
 
 `SessionStore` — SQLite WAL, sessions table. `save/load/find(prefix-or-name)/list`.
@@ -171,15 +216,42 @@ Built-in tools:
 
 `init(git_url)` / `push()` / `pull()` / `status()` — age-encrypted sync of `~/.harness/{sessions.db, memory.db, trust.json, cost.db, memory/}` to a private git repo. Passphrase stored in macOS Keychain via `security` CLI, falls back to `~/.harness/.sync-key` (mode 0600).
 
-### `notifications`
+### `notifications` (E16)
 
-`notify(cfg, summary, body)` — thin wrapper over `notify-rust`. Three semantic hooks:
-`background_done`, `autotest_failed`, `budget_alert`. Test via `/notify test` in TUI or any of the hook functions.
+Rich notification system with kinds: `BackgroundDone`, `AutotestFailed`, `BudgetAlert`, `PrOpened`, `CiFailed`, `LongSubagentDone`, `VoiceResponseDone`, `SwarmComplete`, `DaemonDied`, `UpdateAvailable`.
 
-### `harness-mcp`
+macOS notifications include subtitle and group_id for grouping. Focus mode (`/focus N`) silences notifications for N minutes.
 
-`McpClient::spawn(name, config)` — forks process, runs initialize handshake, exposes `list_tools()` and `call_tool()`.
-`load_mcp_tools(path, registry)` — reads `mcp.json`, registers all server tools automatically.
+### `harness-mcp` (E8 — MCP 2025-03-26)
+
+`McpClient::spawn(name, config)` — forks process, runs initialize handshake with full capabilities negotiation.
+
+New MCP 2.0 features:
+- `resources/list` + `resources/read` — fetch server-exposed resources
+- `sampling/createMessage` — with user approval callback
+- Roots advertisement in `initialize` (CWD + home)
+- Progress notifications forwarded to `mpsc::UnboundedSender<ProgressEvent>`
+- `ServerCapabilities` struct captures `has_resources`, `has_sampling`, `has_logging`, `has_prompts`, `protocol_version`
+
+### `observability` (E7)
+
+`ObservabilityConfig`, `Span`, `Tracer` — local JSONL traces at `~/.harness/traces/`. Optional OTLP/HTTP export.
+
+### `swarm` (E9)
+
+`TaskEntry`, `TaskStatus`, SQLite persistence at `~/.harness/swarm.db`, `tokio::sync::Semaphore` for concurrency. CLI: `harness swarm status/cancel/results`.
+
+### `bridges` (E12)
+
+`BridgesConfig` — Obsidian vault write, Apple Notes (osascript), Calendar events (EventKit osascript), GitHub Projects (gh graphql). Gated by `[bridges]` config block.
+
+### `collab` (E13)
+
+`CollabConfig`, `CollabEvent`, `CollabSession`, `CollabRegistry` — multi-user shared sessions over WebSocket. Events: `UserJoined`, `UserLeft`, `Typing`, `Message`. CLI: `harness join <session-id>`.
+
+### `diff_review` (E4)
+
+`StagingBuffer`, `FileDiff`, `DiffHunk` — inline diff viewer with LCS-based diffing, `AutoTrustPatterns` for glob-based auto-approval.
 
 ## Agent loop (`src/agent.rs`)
 
@@ -205,6 +277,11 @@ drive_agent(provider, tools, memory?, embed_model?, session, system_prompt, even
        if no tool calls → break
 ```
 
+New entry points:
+- `drive_agent_with_options(…, thinking_budget)` — extended thinking
+- `drive_agent_with_schema(…, thinking_budget, response_schema)` — structured output (E10)
+- `drive_agent_full(…, native_web_search, native_code_execution, native_x_search, response_schema)` — all flags
+
 ## TUI layout (`src/tui.rs`)
 
 ```
@@ -221,9 +298,9 @@ drive_agent(provider, tools, memory?, embed_model?, session, system_prompt, even
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-Status bar shows: session ID · model · turns · cost · cache hit rate · `[COMPUTER USE LIVE]` / `[🎙 REC]` when active.
+Status bar shows: session ID · model · turns · cost · cache hit rate · `[FOCUS Nm]` when in focus mode · `[COMPUTER USE LIVE]` / `[🎙 REC]` when active.
 
-Keys: `Enter` send · `↑↓` scroll chat · `PgUp/PgDn` scroll event log · `Ctrl+V` voice · `Ctrl+C` quit.
+See `docs/SHORTCUTS.md` for full keyboard reference.
 
 ## HTTP API (`src/server.rs`)
 
@@ -232,6 +309,7 @@ POST /api/chat          body: {prompt, session_id?}   → SSE AgentEvent stream
 GET  /api/sessions      → [{id, name, updated_at}]
 GET  /api/sessions/:id  → full Session JSON
 GET  /api/health        → {status, model}
+WS   /ws/session/:id    → collaborative session events (E13)
 ```
 
 SSE event types: `text_chunk`, `tool_start`, `tool_result`, `memory_recall`,
@@ -276,6 +354,25 @@ fast_model = "anthropic:claude-haiku-4-5"
 heavy_model = "anthropic:claude-opus-4-7"
 embed_model = "ollama:nomic-embed-text"
 fallback = ["anthropic", "xai", "openai", "ollama"]
+
+[observability]
+enabled = true
+traces_dir = "~/.harness/traces"
+otlp_endpoint = ""   # optional: "http://localhost:4318/v1/traces"
+
+[swarm]
+max_concurrency = 4
+db_path = "~/.harness/swarm.db"
+
+[bridges]
+obsidian_vault = ""            # e.g. "/Users/you/Documents/Obsidian/Vault"
+apple_notes_folder = "Harness"
+github_project_number = 0
+github_owner = ""
+
+[collab]
+enabled = false
+bind = "127.0.0.1:9090"
 ```
 
 ## Adding a new tool

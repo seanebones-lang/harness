@@ -74,6 +74,8 @@ struct ApiRequest {
     temperature: f32,
     stream: bool,
     stream_options: StreamOptions,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -211,6 +213,18 @@ impl Provider for OpenAIProvider {
         let messages = build_api_messages(&req);
         let tools = build_tool_schemas(&req.tools);
 
+        // Build response_format for strict JSON schema if requested
+        let response_format = req.response_schema.as_ref().map(|rs| {
+            json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": rs.name,
+                    "schema": rs.schema,
+                    "strict": rs.strict
+                }
+            })
+        });
+
         let body = ApiRequest {
             model: self.config.model.clone(),
             messages,
@@ -219,6 +233,7 @@ impl Provider for OpenAIProvider {
             temperature: self.config.temperature,
             stream: true,
             stream_options: StreamOptions { include_usage: true },
+            response_format,
         };
 
         let url = format!("{}/chat/completions", self.config.base_url);
