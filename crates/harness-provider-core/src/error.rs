@@ -8,6 +8,8 @@ pub enum ProviderError {
     StreamEnded,
     #[error("API error {status}: {message}")]
     Api { status: u16, message: String },
+    #[error("Unsupported operation: {0}")]
+    Unsupported(String),
     #[error("{0}")]
     Other(String),
 }
@@ -17,3 +19,4 @@ impl From<anyhow::Error> for ProviderError {
         ProviderError::Other(e.to_string())
     }
 }
+

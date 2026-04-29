@@ -1,18 +1,11 @@
 //! Ambient memory consolidation: a background tokio task that periodically
-//! compacts the vector memory store by asking Grok to summarise clusters of
+//! compacts the vector memory store by asking the model to summarise clusters of
 //! related memories into a single higher-level memory.
-//!
-//! The task wakes every INTERVAL seconds and only runs a consolidation pass
-//! when at least MIN_NEW_SINCE_LAST new memories have been inserted since the
-//! previous pass.
 
 use anyhow::Result;
 use futures::StreamExt;
 use harness_memory::{Memory, MemoryStore};
-use harness_provider_core::{ChatRequest, Delta, Message, Provider};
-use harness_provider_xai::XaiProvider;
-use std::future::Future;
-use std::pin::Pin;
+use harness_provider_core::{ArcProvider, ChatRequest, Delta, Message};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
@@ -21,31 +14,13 @@ const INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
 const MIN_NEW: usize = 5;
 const TOP_K: usize = 20;
 
-pub trait AmbientProvider: Provider + Clone + Send + Sync + 'static {
-    fn embed_for_memory<'a>(
-        &'a self,
-        model: &'a str,
-        text: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send + 'a>>;
-}
-
-impl AmbientProvider for XaiProvider {
-    fn embed_for_memory<'a>(
-        &'a self,
-        model: &'a str,
-        text: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<f32>>> + Send + 'a>> {
-        Box::pin(async move { self.embed(model, text).await })
-    }
-}
-
 /// Spawn the ambient consolidation task.
 ///
 /// Returns a `(shutdown_tx, join_handle)` pair.
 /// Send `()` on `shutdown_tx` (or drop it) to request a clean stop;
 /// `await` the `JoinHandle` to confirm the task has exited.
 pub fn spawn(
-    provider: impl AmbientProvider,
+    provider: ArcProvider,
     memory: Arc<MemoryStore>,
     embed_model: String,
 ) -> (watch::Sender<()>, tokio::task::JoinHandle<()>) {
@@ -87,7 +62,7 @@ pub fn spawn(
 /// Pull the most recent TOP_K memories, ask the model to summarise them,
 /// store the summary as a new memory, and delete the originals.
 async fn consolidate(
-    provider: &impl AmbientProvider,
+    provider: &ArcProvider,
     memory: &MemoryStore,
     embed_model: &str,
 ) -> Result<usize> {
@@ -124,16 +99,13 @@ async fn consolidate(
         anyhow::bail!("consolidation produced empty summary");
     }
 
-    // Embed the summary.
-    let embedding = provider.embed_for_memory(embed_model, &summary).await?;
+    let embedding = provider.embed(embed_model, &summary).await
+        .map_err(|e| anyhow::anyhow!("embed failed: {e}"))?;
 
-    // Store the consolidated memory under a synthetic session id.
     memory.insert("__consolidated__", &summary, &embedding)?;
 
-    // Delete the originals.
     let ids: Vec<String> = memories.iter().map(|m| m.id.clone()).collect();
     memory.delete_memories(&ids)?;
 
     Ok(memories.len())
 }
-

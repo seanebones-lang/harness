@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use harness_provider_core::{
-    ChatRequest, DeltaStream, Message, MessageContent, Provider, ProviderError, Role,
+    ChatRequest, DeltaStream, Message, MessageContent, Pricing, Provider, ProviderError, Role,
     ToolDefinition,
 };
 use reqwest::Client;
@@ -153,6 +153,29 @@ impl Provider for XaiProvider {
         &self.config.model
     }
 
+    async fn embed(&self, model: &str, text: &str) -> Result<Vec<f32>, ProviderError> {
+        crate::embed::embed_text(
+            &self.client,
+            &self.config.api_key,
+            &self.config.base_url,
+            model,
+            text,
+        )
+        .await
+        .map_err(ProviderError::from)
+    }
+
+    fn pricing(&self) -> Option<Pricing> {
+        let m = self.config.model.to_lowercase();
+        if m.contains("grok-3-mini") {
+            Some(Pricing { input_per_m_usd: 0.30, output_per_m_usd: 0.50 })
+        } else if m.contains("grok-3") || m.contains("grok-4") {
+            Some(Pricing { input_per_m_usd: 3.00, output_per_m_usd: 15.00 })
+        } else {
+            None
+        }
+    }
+
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
         let messages = self.build_api_messages(&req);
         let tools = self.build_tool_schemas(&req.tools);
@@ -239,9 +262,9 @@ impl Provider for XaiProvider {
 }
 
 impl XaiProvider {
-    /// Embed a text string using the xAI embeddings endpoint.
-    /// Returns a float vector suitable for cosine-similarity search.
-    pub async fn embed(&self, model: &str, text: &str) -> anyhow::Result<Vec<f32>> {
+    /// Embed a text string using the xAI embeddings endpoint (inherent method).
+    /// Prefer using the `Provider::embed` trait method for generic code.
+    pub async fn embed_direct(&self, model: &str, text: &str) -> anyhow::Result<Vec<f32>> {
         crate::embed::embed_text(&self.client, &self.config.api_key, &self.config.base_url, model, text).await
     }
 }

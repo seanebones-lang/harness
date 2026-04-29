@@ -27,8 +27,7 @@ use axum::{
 };
 use futures::stream::{self, StreamExt};
 use harness_memory::{MemoryStore, Session, SessionStore};
-use harness_provider_core::Message;
-use harness_provider_xai::XaiProvider;
+use harness_provider_core::{ArcProvider, Message};
 use harness_tools::ToolExecutor;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -43,7 +42,7 @@ use crate::events::AgentEvent;
 
 #[derive(Clone)]
 pub struct ServerState {
-    pub provider: XaiProvider,
+    pub provider: ArcProvider,
     pub session_store: Arc<SessionStore>,
     pub memory_store: Option<Arc<MemoryStore>>,
     pub embed_model: Option<String>,

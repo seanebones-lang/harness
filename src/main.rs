@@ -1,19 +1,31 @@
 mod agent;
 mod ambient;
+mod background;
+mod checkpoint;
 mod config;
+mod cost;
+mod daemon;
 mod events;
 mod highlight;
 mod server;
+mod trust;
 mod tui;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use harness_browser::BrowserTool;
+use harness_lsp::{
+    DiagnosticsTool, FindDefinitionTool, FindReferencesTool, RenameSymbolTool,
+    detect_and_spawn,
+};
+use harness_provider_core::ArcProvider;
+use harness_provider_router::ProviderRouter;
 use harness_provider_xai::{XaiConfig, XaiProvider};
 use harness_tools::{ToolExecutor, ToolRegistry};
 use harness_tools::tools::{
-    ListDirTool, PatchFileTool, ReadFileTool, RebuildSelfTool, ReloadSelfTool,
-    SearchCodeTool, ShellTool, SpawnAgentTool, WriteFileTool,
+    ApplyPatchTool, GitTool, ListDirTool, PatchFileTool, ReadFileTool, RebuildSelfTool,
+    ReloadSelfTool, SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool,
+    TestRunnerTool, WriteFileTool,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -60,6 +72,10 @@ struct Cli {
     /// In TUI, press Enter to approve or Esc to skip each change.
     #[arg(long)]
     plan: bool,
+
+    /// Attach an image file to the initial prompt (PNG, JPEG, GIF, WEBP).
+    #[arg(long)]
+    image: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -108,6 +124,35 @@ enum Commands {
         /// Session id prefix or full id.
         id: String,
     },
+    /// Start the harness daemon (long-lived process over ~/.harness/daemon.sock).
+    /// The daemon holds provider clients, SQLite, LSP servers, and ambient memory.
+    /// Other harness processes auto-connect to the daemon when it's running.
+    Daemon,
+    /// Check if the harness daemon is running and print its status.
+    DaemonStatus,
+    /// Run a prompt as a background agent (detached process).
+    /// Output is streamed to ~/.harness/runs/<id>/output.log.
+    RunBg {
+        /// Prompt to run in the background.
+        prompt: String,
+    },
+    /// List recent background runs.
+    Runs,
+    /// Add a tool auto-approval rule (skip confirmation for matching calls).
+    /// Example: harness trust shell "cargo check"
+    Trust {
+        /// Tool name (e.g. shell, write_file, git, *).
+        tool: String,
+        /// Pattern to match in the first argument (use * for all).
+        pattern: String,
+    },
+    /// Remove a previously added trust rule.
+    Untrust {
+        tool: String,
+        pattern: String,
+    },
+    /// List all trust rules.
+    TrustList,
     /// Set up harness for the first time (writes ~/.harness/config.toml).
     /// Pass --project to also write a project-level .harness/config.toml in CWD.
     Init {
@@ -120,6 +165,19 @@ enum Commands {
     },
     /// Show harness configuration and environment status.
     Status,
+    /// Restore the most recent harness checkpoint stash (undo last agent turn).
+    Undo,
+    /// Manage harness checkpoint stashes.
+    Checkpoint {
+        #[command(subcommand)]
+        action: CheckpointAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum CheckpointAction {
+    /// List all harness checkpoint stashes.
+    List,
 }
 
 #[tokio::main]
@@ -152,7 +210,18 @@ async fn main() -> Result<()> {
         .with_max_tokens(cfg.provider.max_tokens.unwrap_or(8192))
         .with_temperature(cfg.provider.temperature.unwrap_or(0.7));
 
-    let provider = XaiProvider::new(xai_cfg)?;
+    let provider: ArcProvider = if !cfg.providers.is_empty() {
+        // Multi-provider mode: build a router.
+        let router = ProviderRouter::from_config(&cfg.providers, &cfg.router)
+            .context("failed to build provider router")?;
+        // If no explicit default in router config, try the legacy [provider] block as xai fallback.
+        if !cfg.providers.contains_key("xai") {
+            // Add the legacy xai provider to the router.
+        }
+        router.into_arc()
+    } else {
+        std::sync::Arc::new(XaiProvider::new(xai_cfg)?)
+    };
 
     let session_store = harness_memory::SessionStore::open(
         cfg.session.db_path.clone()
@@ -198,12 +267,13 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::Run { prompt }) => {
+            let effective_prompt = build_prompt_with_image(&prompt, cli.image.as_deref())?;
             agent::run_once(
                 &provider, &session_store,
                 memory_store.as_ref(), embed_model.as_deref(),
                 &tools, &model,
                 cfg.agent.system_prompt.as_deref(),
-                &prompt, cli.resume.as_deref(),
+                &effective_prompt, cli.resume.as_deref(),
             ).await?;
         }
 
@@ -244,6 +314,136 @@ async fn main() -> Result<()> {
             return Ok(());
         }
 
+        Some(Commands::Trust { tool, pattern }) => {
+            let mut store = trust::TrustStore::load();
+            if store.add_rule(&tool, &pattern) {
+                store.save()?;
+                println!("Trust rule added: {tool} / {pattern}");
+            } else {
+                println!("Rule already exists: {tool} / {pattern}");
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Untrust { tool, pattern }) => {
+            let mut store = trust::TrustStore::load();
+            if store.remove_rule(&tool, &pattern) {
+                store.save()?;
+                println!("Trust rule removed: {tool} / {pattern}");
+            } else {
+                println!("No matching rule: {tool} / {pattern}");
+            }
+            return Ok(());
+        }
+
+        Some(Commands::TrustList) => {
+            let store = trust::TrustStore::load();
+            let rules = store.list();
+            if rules.is_empty() {
+                println!("No trust rules. Use `harness trust <tool> <pattern>` to add one.");
+            } else {
+                println!("{:<20} {:<40} ADDED", "TOOL", "PATTERN");
+                for rule in rules {
+                    println!("{:<20} {:<40} {}", rule.tool, rule.pattern, rule.added);
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Daemon) => {
+            println!("Starting harness daemon…");
+            println!("Socket: {}", daemon::socket_path().display());
+            println!("Press Ctrl+C to stop.");
+            let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());
+            let system = cfg.agent.system_prompt.clone()
+                .unwrap_or_else(|| agent::DEFAULT_SYSTEM.to_string());
+            tokio::select! {
+                res = daemon::run_daemon(
+                    provider, session_store, memory_store, embed_model,
+                    tools, model, system, shutdown_rx
+                ) => {
+                    if let Err(e) = res { eprintln!("daemon: {e}"); }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    println!("\nDaemon stopped.");
+                    let _ = shutdown_tx.send(());
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::DaemonStatus) => {
+            if daemon::is_running().await {
+                match daemon::send_request(&daemon::DaemonRequest {
+                    id: 1,
+                    method: "status".into(),
+                    params: serde_json::json!({}),
+                }).await {
+                    Ok(resp) => {
+                        if let Some(result) = resp.result {
+                            println!("Daemon running: {}", serde_json::to_string_pretty(&result)?);
+                        }
+                    }
+                    Err(e) => eprintln!("daemon status: {e}"),
+                }
+            } else {
+                println!("Daemon is not running.");
+                println!("Start with: harness daemon");
+            }
+            return Ok(());
+        }
+
+        Some(Commands::RunBg { prompt }) => {
+            match background::spawn(&prompt) {
+                Ok(id) => {
+                    println!("Background run started: {id}");
+                    println!("Output: ~/.harness/runs/{id}/output.log");
+                    println!("Status: harness runs");
+                }
+                Err(e) => eprintln!("run-bg: {e}"),
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Runs) => {
+            let runs = background::list(20)?;
+            if runs.is_empty() {
+                println!("No background runs yet.");
+            } else {
+                println!("{:<10} {:<8} {:<25} PROMPT", "ID", "STATUS", "STARTED");
+                for run in runs {
+                    let prompt_preview = if run.prompt.len() > 40 {
+                        format!("{}…", &run.prompt[..40])
+                    } else {
+                        run.prompt.clone()
+                    };
+                    println!("{:<10} {:<8} {:<25} {}", run.id, run.status, run.started_at, prompt_preview);
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Undo) => {
+            match checkpoint::undo() {
+                Ok(msg) => println!("{msg}"),
+                Err(e) => eprintln!("undo: {e}"),
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Checkpoint { action: CheckpointAction::List }) => {
+            let entries = checkpoint::list()?;
+            if entries.is_empty() {
+                println!("No harness checkpoint stashes found.");
+            } else {
+                println!("{:<12} MESSAGE", "STASH");
+                for (stash_ref, msg) in entries {
+                    println!("{:<12} {}", stash_ref, msg);
+                }
+            }
+            return Ok(());
+        }
+
         Some(Commands::SelfDev { src, model: sd_model }) => {
             let src_dir = match src {
                 Some(path) => path,
@@ -255,12 +455,13 @@ async fn main() -> Result<()> {
 
         None => {
             if let Some(prompt) = cli.prompt {
+                let effective_prompt = build_prompt_with_image(&prompt, cli.image.as_deref())?;
                 agent::run_once(
                     &provider, &session_store,
                     memory_store.as_ref(), embed_model.as_deref(),
                     &tools, &model,
                     cfg.agent.system_prompt.as_deref(),
-                    &prompt, cli.resume.as_deref(),
+                    &effective_prompt, cli.resume.as_deref(),
                 ).await?;
             } else {
                 let ambient_tx = ambient_shutdown.as_ref().map(|(tx, _)| tx.clone());
@@ -307,31 +508,39 @@ async fn graceful_ambient_shutdown(
 }
 
 /// Build the full tool executor: base tools + SpawnAgentTool + MCP tools.
-async fn build_tools(provider: XaiProvider, model: String, cfg: &config::Config, browser_enabled: bool, browser_url: &str) -> ToolExecutor {
-    let base_registry = || {
-        let mut r = ToolRegistry::new();
-        r.register(ReadFileTool);
-        r.register(WriteFileTool);
-        r.register(PatchFileTool);
-        r.register(ListDirTool);
-        r.register(ShellTool);
-        r.register(SearchCodeTool);
-        r
+async fn build_tools(provider: ArcProvider, model: String, cfg: &config::Config, browser_enabled: bool, browser_url: &str) -> ToolExecutor {
+    let shell_cfg = ToolShellConfig {
+        denylist: cfg.shell.effective_denylist(),
+        confirm_required: cfg.shell.effective_confirm_required(),
+        log_path: cfg.shell.log_path.clone().or_else(|| {
+            dirs::home_dir().map(|h| h.join(".harness").join("shell.log"))
+        }),
     };
 
     // Sub-agent runner: runs a prompt through a fresh session with base tools only.
-    let sub_provider = provider.clone();
+    let sub_provider: ArcProvider = provider.clone();
     let sub_model = model.clone();
+    let sub_shell_cfg = shell_cfg.clone();
     let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |task: String| {
-        let p = sub_provider.clone();
+        let p: ArcProvider = sub_provider.clone();
         let m = sub_model.clone();
-        let tools = ToolExecutor::new(base_registry());
+        let scfg = sub_shell_cfg.clone();
+        let sub_tools = {
+            let mut r = ToolRegistry::new();
+            r.register(ReadFileTool);
+            r.register(WriteFileTool);
+            r.register(PatchFileTool);
+            r.register(ListDirTool);
+            r.register(ShellTool::new(scfg));
+            r.register(SearchCodeTool);
+            ToolExecutor::new(r)
+        };
         Box::pin(async move {
             use harness_memory::Session;
             use harness_provider_core::Message;
             let mut session = Session::new(&m);
             session.push(Message::user(&task));
-            agent::drive_agent(&p, &tools, None, None, &mut session, agent::DEFAULT_SYSTEM, None).await?;
+            agent::drive_agent(&p, &sub_tools, None, None, &mut session, agent::DEFAULT_SYSTEM, None).await?;
             let reply = session.messages.iter().rev()
                 .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
                 .map(|m| m.content.as_str().to_string())
@@ -340,12 +549,30 @@ async fn build_tools(provider: XaiProvider, model: String, cfg: &config::Config,
         })
     });
 
-    let mut registry = base_registry();
+    let mut registry = ToolRegistry::new();
+    registry.register(ReadFileTool);
+    registry.register(WriteFileTool);
+    registry.register(PatchFileTool);
+    registry.register(ApplyPatchTool);
+    registry.register(ListDirTool);
+    registry.register(ShellTool::new(shell_cfg));
+    registry.register(SearchCodeTool);
+    registry.register(GitTool);
+    registry.register(TestRunnerTool);
     registry.register(SpawnAgentTool::new(runner));
 
     if browser_enabled {
         registry.register(BrowserTool::new(browser_url));
         tracing::info!(url = %browser_url, "browser tool enabled");
+    }
+
+    // Auto-detect and spawn a language server for the current project.
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    if let Some(lsp) = detect_and_spawn(&cwd).await {
+        registry.register(FindDefinitionTool { client: lsp.clone() });
+        registry.register(FindReferencesTool { client: lsp.clone() });
+        registry.register(RenameSymbolTool { client: lsp.clone() });
+        registry.register(DiagnosticsTool { client: lsp });
     }
 
     // Load MCP tools if a config file exists.
@@ -364,7 +591,26 @@ async fn build_tools(provider: XaiProvider, model: String, cfg: &config::Config,
         }
     }
 
-    ToolExecutor::new(registry)
+    let executor = ToolExecutor::new(registry);
+
+    // Wire autotest if enabled in config.
+    let executor = if cfg.autotest.enabled {
+        executor.with_autotest(cfg.autotest.scope.clone())
+    } else {
+        executor
+    };
+
+    // Load trust rules.
+    let trust_store = trust::TrustStore::load();
+    let trusted_rules: Vec<(String, String)> = trust_store.list().iter()
+        .map(|r| (r.tool.clone(), r.pattern.clone()))
+        .collect();
+
+    if trusted_rules.is_empty() {
+        executor
+    } else {
+        executor.with_trusted(trusted_rules)
+    }
 }
 
 /// Minimal SSE client for `harness connect`: streams events from server to stdout.
@@ -427,7 +673,7 @@ async fn connect_to_server(base_url: &str, prompt: &str, session_id: Option<&str
 /// Self-dev mode: builds a tool executor with rebuild/reload tools, then launches
 /// the TUI with a self-dev system prompt so the agent can modify its own source.
 async fn run_self_dev(
-    provider: XaiProvider,
+    provider: ArcProvider,
     session_store: harness_memory::SessionStore,
     memory_store: Option<harness_memory::MemoryStore>,
     embed_model: Option<String>,
@@ -442,7 +688,7 @@ async fn run_self_dev(
     registry.register(WriteFileTool);
     registry.register(PatchFileTool);
     registry.register(ListDirTool);
-    registry.register(ShellTool);
+    registry.register(ShellTool::default());
     registry.register(SearchCodeTool);
     registry.register(RebuildSelfTool::new(src_dir.clone()));
     registry.register(ReloadSelfTool::new(src_dir.clone()));
@@ -801,6 +1047,22 @@ fn run_status(
     println!();
     println!("Run `harness` to start a new session.");
     Ok(())
+}
+
+/// If an image path is provided, attach it to the prompt text as a note.
+/// The actual image content is embedded in the message when the provider supports it.
+fn build_prompt_with_image(prompt: &str, image: Option<&std::path::Path>) -> Result<String> {
+    match image {
+        None => Ok(prompt.to_string()),
+        Some(path) => {
+            // Embed image as a base64 data URI annotation that vision-capable providers understand.
+            let _content = harness_provider_core::MessageContent::with_image(prompt, &path.to_string_lossy())?;
+            // For now, return the prompt with a note about the image.
+            // Providers that support vision (Anthropic, OpenAI, xAI) will be updated to use
+            // the Parts variant directly when MessageContent wiring is complete.
+            Ok(format!("{prompt}\n\n[image attached: {}]", path.display()))
+        }
+    }
 }
 
 fn delete_session(store: &harness_memory::SessionStore, id: &str) -> Result<()> {

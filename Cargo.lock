@@ -825,15 +825,21 @@ dependencies = [
  "anyhow",
  "axum",
  "bytes",
+ "chrono",
  "clap",
  "crossterm",
  "dirs",
  "dotenvy",
  "futures",
  "harness-browser",
+ "harness-lsp",
  "harness-mcp",
  "harness-memory",
+ "harness-provider-anthropic",
  "harness-provider-core",
+ "harness-provider-ollama",
+ "harness-provider-openai",
+ "harness-provider-router",
  "harness-provider-xai",
  "harness-tools",
  "ratatui",
@@ -864,6 +870,20 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "harness-lsp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "harness-provider-core",
+ "harness-tools",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -901,6 +921,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "harness-provider-anthropic"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "futures",
+ "harness-provider-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
 name = "harness-provider-core"
 version = "0.1.0"
 dependencies = [
@@ -914,6 +952,59 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "uuid",
+]
+
+[[package]]
+name = "harness-provider-ollama"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "futures",
+ "harness-provider-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "harness-provider-openai"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "futures",
+ "harness-provider-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "harness-provider-router"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "harness-provider-anthropic",
+ "harness-provider-core",
+ "harness-provider-ollama",
+ "harness-provider-openai",
+ "harness-provider-xai",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -940,6 +1031,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
+ "dirs",
  "harness-provider-core",
  "ignore",
  "regex",

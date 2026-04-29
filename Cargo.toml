@@ -2,10 +2,15 @@
 members = [
     "crates/harness-provider-core",
     "crates/harness-provider-xai",
+    "crates/harness-provider-anthropic",
+    "crates/harness-provider-openai",
+    "crates/harness-provider-ollama",
+    "crates/harness-provider-router",
     "crates/harness-tools",
     "crates/harness-memory",
     "crates/harness-mcp",
     "crates/harness-browser",
+    "crates/harness-lsp",
 ]
 resolver = "2"
 
@@ -55,10 +60,15 @@ path = "src/main.rs"
 [dependencies]
 harness-provider-core = { path = "crates/harness-provider-core" }
 harness-provider-xai = { path = "crates/harness-provider-xai" }
+harness-provider-anthropic = { path = "crates/harness-provider-anthropic" }
+harness-provider-openai = { path = "crates/harness-provider-openai" }
+harness-provider-ollama = { path = "crates/harness-provider-ollama" }
+harness-provider-router = { path = "crates/harness-provider-router" }
 harness-tools = { path = "crates/harness-tools" }
 harness-memory = { path = "crates/harness-memory" }
 harness-mcp = { path = "crates/harness-mcp" }
 harness-browser = { path = "crates/harness-browser" }
+harness-lsp = { path = "crates/harness-lsp" }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
@@ -76,6 +86,7 @@ axum = { workspace = true }
 reqwest = { workspace = true }
 bytes = { workspace = true }
 syntect = { workspace = true }
+chrono = { workspace = true }
 dotenvy = "0.15.7"
 
 [dev-dependencies]
