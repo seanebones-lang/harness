@@ -41,6 +41,18 @@
     margin-left: auto;
   }
   header .status.connected { color: var(--accent2); }
+  #new-session {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--dim);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  #new-session:hover { border-color: var(--accent); color: var(--accent); }
   #chat {
     flex: 1;
     overflow-y: auto;
@@ -147,6 +159,7 @@
 <body>
 <header>
   <h1>⬡ harness</h1>
+  <button id="new-session" title="Clear session and start fresh">+ New session</button>
   <span id="status" class="status">connecting…</span>
 </header>
 <div id="chat"></div>
@@ -156,10 +169,11 @@
 </footer>
 
 <script>
-  const chat   = document.getElementById('chat');
-  const prompt = document.getElementById('prompt');
-  const send   = document.getElementById('send');
-  const status = document.getElementById('status');
+  const chat       = document.getElementById('chat');
+  const prompt     = document.getElementById('prompt');
+  const send       = document.getElementById('send');
+  const status     = document.getElementById('status');
+  const newSession = document.getElementById('new-session');
 
   const SESSION_KEY = 'harness.session_id';
   let sessionId = localStorage.getItem(SESSION_KEY);
@@ -209,6 +223,15 @@
   if (sessionId) {
     setStatus(`ready · session ${sessionId.slice(0, 8)}`, true);
   }
+
+  newSession.addEventListener('click', () => {
+    if (streaming) return;
+    localStorage.removeItem(SESSION_KEY);
+    sessionId = null;
+    chat.innerHTML = '';
+    setStatus('new session — ready', true);
+    prompt.focus();
+  });
 
   // ── auto-resize textarea ──────────────────────────────────────────────────
 

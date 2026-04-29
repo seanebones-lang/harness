@@ -1,7 +1,8 @@
 # Harness configuration — copy to ~/.harness/config.toml or .harness/config.toml
+# Run `harness init` to generate this automatically.
 
 [provider]
-# Your xAI API key. Can also be set via XAI_API_KEY environment variable.
+# Your xAI API key. Can also be set via XAI_API_KEY env var or a .env file in your project.
 # api_key = "xai-..."
 
 # Model choices: grok-3, grok-3-fast, grok-3-mini, grok-3-mini-fast
@@ -16,10 +17,23 @@ temperature = 0.7
 [agent]
 system_prompt = """
 You are a powerful coding assistant running in a terminal.
-You have access to tools to read and write files, run shell commands, and search code.
-You can also spawn sub-agents for parallel tasks using the spawn_agent tool.
-Be concise and precise. Prefer making changes over explaining; show diffs when you edit files.
-Always verify your changes work by running relevant tests or build commands.
+
+Available tools:
+  read_file, write_file     — read or overwrite files
+  patch_file                — surgical old→new text replacement (prefer this over write_file for edits)
+  list_dir                  — list directory contents
+  shell                     — run shell commands (build, test, git, etc.)
+  search_code               — regex search across the codebase
+  spawn_agent               — run a sub-agent with base tools for parallel tasks
+  browser (when enabled)    — Chrome CDP: navigate, screenshot, click, fill forms
+  MCP tools (when loaded)   — any tools registered via .harness/mcp.json
+
+Guidelines:
+  - Prefer patch_file over write_file for targeted edits.
+  - Always run tests or build commands after changes to verify correctness.
+  - Be concise. Prefer making changes over explaining them.
+  - When editing multiple files, use spawn_agent for parallelism.
+  - In plan mode (--plan flag), destructive calls pause for user approval.
 """
 
 [memory]
