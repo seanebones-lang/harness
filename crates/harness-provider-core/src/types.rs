@@ -23,15 +23,27 @@ pub struct Message {
 
 impl Message {
     pub fn system(text: impl Into<String>) -> Self {
-        Self { role: Role::System, content: MessageContent::Text(text.into()), tool_call_id: None }
+        Self {
+            role: Role::System,
+            content: MessageContent::Text(text.into()),
+            tool_call_id: None,
+        }
     }
 
     pub fn user(text: impl Into<String>) -> Self {
-        Self { role: Role::User, content: MessageContent::Text(text.into()), tool_call_id: None }
+        Self {
+            role: Role::User,
+            content: MessageContent::Text(text.into()),
+            tool_call_id: None,
+        }
     }
 
     pub fn assistant(text: impl Into<String>) -> Self {
-        Self { role: Role::Assistant, content: MessageContent::Text(text.into()), tool_call_id: None }
+        Self {
+            role: Role::Assistant,
+            content: MessageContent::Text(text.into()),
+            tool_call_id: None,
+        }
     }
 
     pub fn tool_result(tool_call_id: impl Into<String>, result: impl Into<String>) -> Self {
@@ -56,9 +68,7 @@ impl MessageContent {
             MessageContent::Text(s) => s,
             MessageContent::Parts(parts) => {
                 // Return the first text part if available.
-                parts.iter()
-                    .find_map(|p| p.text.as_deref())
-                    .unwrap_or("")
+                parts.iter().find_map(|p| p.text.as_deref()).unwrap_or("")
             }
         }
     }
@@ -84,18 +94,48 @@ fn base64_encode(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as usize;
-        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
+        let b1 = if chunk.len() > 1 {
+            chunk[1] as usize
+        } else {
+            0
+        };
+        let b2 = if chunk.len() > 2 {
+            chunk[2] as usize
+        } else {
+            0
+        };
         let _ = write!(out, "{}", TABLE[(b0 >> 2) & 63] as char);
         let _ = write!(out, "{}", TABLE[((b0 << 4) | (b1 >> 4)) & 63] as char);
-        let _ = write!(out, "{}", if chunk.len() > 1 { TABLE[((b1 << 2) | (b2 >> 6)) & 63] as char } else { '=' });
-        let _ = write!(out, "{}", if chunk.len() > 2 { TABLE[b2 & 63] as char } else { '=' });
+        let _ = write!(
+            out,
+            "{}",
+            if chunk.len() > 1 {
+                TABLE[((b1 << 2) | (b2 >> 6)) & 63] as char
+            } else {
+                '='
+            }
+        );
+        let _ = write!(
+            out,
+            "{}",
+            if chunk.len() > 2 {
+                TABLE[b2 & 63] as char
+            } else {
+                '='
+            }
+        );
     }
     out
 }
 
 fn mime_for_path(path: &str) -> &'static str {
-    match path.rsplit('.').next().unwrap_or("").to_lowercase().as_str() {
+    match path
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
@@ -123,14 +163,20 @@ pub struct ImageUrl {
 
 impl ContentPart {
     pub fn text(t: impl Into<String>) -> Self {
-        Self { kind: "text".into(), text: Some(t.into()), image_url: None }
+        Self {
+            kind: "text".into(),
+            text: Some(t.into()),
+            image_url: None,
+        }
     }
 
     pub fn image_base64(mime: &str, data: &str) -> Self {
         Self {
             kind: "image_url".into(),
             text: None,
-            image_url: Some(ImageUrl { url: format!("data:{mime};base64,{data}") }),
+            image_url: Some(ImageUrl {
+                url: format!("data:{mime};base64,{data}"),
+            }),
         }
     }
 }
@@ -195,7 +241,10 @@ pub enum Delta {
     /// The model wants to call a tool (may arrive in fragments; provider assembles).
     ToolCall(ToolCall),
     /// Token usage for the completed request (emitted just before Done).
-    Usage { input_tokens: u32, output_tokens: u32 },
+    Usage {
+        input_tokens: u32,
+        output_tokens: u32,
+    },
     /// Prompt-cache statistics (Anthropic only). Emitted alongside Usage.
     CacheUsage {
         /// Tokens written to cache this request (incurs a write surcharge).
@@ -315,7 +364,12 @@ impl ChatRequest {
     }
 
     /// Enable provider-managed native tools for this request.
-    pub fn with_native_tools(mut self, web_search: bool, code_execution: bool, x_search: bool) -> Self {
+    pub fn with_native_tools(
+        mut self,
+        web_search: bool,
+        code_execution: bool,
+        x_search: bool,
+    ) -> Self {
         self.native_web_search = web_search;
         self.native_code_execution = code_execution;
         self.native_x_search = x_search;

@@ -104,7 +104,9 @@ pub fn list(limit: usize) -> Result<Vec<BackgroundRun>> {
         }
         if let Ok(data) = std::fs::read_to_string(&status_file) {
             if let Ok(run) = serde_json::from_str::<BackgroundRun>(&data) {
-                let mtime = entry.metadata().ok()
+                let mtime = entry
+                    .metadata()
+                    .ok()
                     .and_then(|m| m.modified().ok())
                     .unwrap_or(std::time::UNIX_EPOCH);
                 runs.push((mtime, run));
@@ -121,7 +123,8 @@ pub fn list(limit: usize) -> Result<Vec<BackgroundRun>> {
 pub fn tail_output(run_id: &str, lines: usize) -> Result<Vec<String>> {
     let log_file = runs_dir().join(run_id).join("output.log");
     let content = std::fs::read_to_string(log_file)?;
-    let result: Vec<String> = content.lines()
+    let result: Vec<String> = content
+        .lines()
         .rev()
         .take(lines)
         .map(|l| l.to_string())

@@ -37,7 +37,10 @@ impl Backend {
         let term_program = std::env::var("TERM_PROGRAM").unwrap_or_default();
         let term_gi = std::env::var("TERM_GRAPHICS_ID").unwrap_or_default();
 
-        if term.contains("kitty") || term_program.to_lowercase().contains("kitty") || !term_gi.is_empty() {
+        if term.contains("kitty")
+            || term_program.to_lowercase().contains("kitty")
+            || !term_gi.is_empty()
+        {
             return Backend::Kitty;
         }
         if term_program.contains("iTerm") {
@@ -77,7 +80,12 @@ pub fn display_image(path: &str, max_cols: u32, max_rows: u32, backend: Backend)
 }
 
 /// Render raw image bytes (PNG or JPEG) inline.
-pub fn display_image_bytes(data: &[u8], max_cols: u32, max_rows: u32, backend: Backend) -> Result<()> {
+pub fn display_image_bytes(
+    data: &[u8],
+    max_cols: u32,
+    max_rows: u32,
+    backend: Backend,
+) -> Result<()> {
     let img = image::load_from_memory(data).context("decoding image")?;
     let target_w = max_cols * 8;
     let target_h = max_rows * 16;
@@ -105,7 +113,8 @@ fn render_kitty(img: &image::DynamicImage) -> Result<()> {
     // Kitty APC: \x1b_Ga=T,f=32,s=W,v=H,m=1;<chunk>\x1b\\
     // Send in chunks of ≤4096 chars (base64)
     let chunk_size = 4096;
-    let chunks: Vec<&str> = b64_data.as_bytes()
+    let chunks: Vec<&str> = b64_data
+        .as_bytes()
         .chunks(chunk_size)
         .map(|c| std::str::from_utf8(c).unwrap_or(""))
         .collect();
@@ -210,13 +219,20 @@ fn build_simple_palette(img: &image::RgbImage) -> Vec<(u8, u8, u8)> {
 }
 
 fn quantize_to_palette(img: &image::RgbImage, palette: &[(u8, u8, u8)]) -> Vec<u8> {
-    img.pixels().map(|p| {
-        let (r, g, b) = (p[0], p[1], p[2]);
-        palette.iter().enumerate().min_by_key(|(_, (pr, pg, pb))| {
-            let dr = (*pr as i32 - r as i32).abs();
-            let dg = (*pg as i32 - g as i32).abs();
-            let db = (*pb as i32 - b as i32).abs();
-            dr + dg + db
-        }).map(|(i, _)| i as u8).unwrap_or(0)
-    }).collect()
+    img.pixels()
+        .map(|p| {
+            let (r, g, b) = (p[0], p[1], p[2]);
+            palette
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, (pr, pg, pb))| {
+                    let dr = (*pr as i32 - r as i32).abs();
+                    let dg = (*pg as i32 - g as i32).abs();
+                    let db = (*pb as i32 - b as i32).abs();
+                    dr + dg + db
+                })
+                .map(|(i, _)| i as u8)
+                .unwrap_or(0)
+        })
+        .collect()
 }

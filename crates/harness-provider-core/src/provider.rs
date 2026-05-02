@@ -1,8 +1,8 @@
+use crate::{ChatRequest, Delta, ProviderError};
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
 use std::sync::Arc;
-use crate::{ChatRequest, Delta, ProviderError};
 
 pub type DeltaStream = Pin<Box<dyn Stream<Item = Result<Delta, ProviderError>> + Send>>;
 
@@ -29,9 +29,10 @@ pub trait Provider: Send + Sync {
     /// Compute text embeddings. Returns a float vector.
     /// Default: returns `Err(ProviderError::Unsupported)`.
     async fn embed(&self, _model: &str, _text: &str) -> Result<Vec<f32>, ProviderError> {
-        Err(ProviderError::Unsupported(
-            format!("{} does not support embeddings", self.name())
-        ))
+        Err(ProviderError::Unsupported(format!(
+            "{} does not support embeddings",
+            self.name()
+        )))
     }
 
     /// Return per-million-token pricing for the current model, if known.

@@ -44,7 +44,11 @@ pub fn spawn(
                 continue;
             }
 
-            tracing::info!(new_since, total = current, "ambient: running consolidation pass");
+            tracing::info!(
+                new_since,
+                total = current,
+                "ambient: running consolidation pass"
+            );
 
             match consolidate(&provider, &memory, &embed_model).await {
                 Ok(n) => {
@@ -99,7 +103,9 @@ async fn consolidate(
         anyhow::bail!("consolidation produced empty summary");
     }
 
-    let embedding = provider.embed(embed_model, &summary).await
+    let embedding = provider
+        .embed(embed_model, &summary)
+        .await
         .map_err(|e| anyhow::anyhow!("embed failed: {e}"))?;
 
     memory.insert("__consolidated__", &summary, &embedding)?;

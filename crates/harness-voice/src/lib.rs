@@ -30,8 +30,14 @@ impl WhisperBackend {
     pub fn detect(openai_key: Option<&str>) -> Self {
         // Prefer local if whisper-cli is available (free, offline, fast)
         if is_available("whisper-cli") || is_available("whisper") {
-            let exe = if is_available("whisper-cli") { "whisper-cli" } else { "whisper" };
-            return WhisperBackend::Local { executable: exe.to_string() };
+            let exe = if is_available("whisper-cli") {
+                "whisper-cli"
+            } else {
+                "whisper"
+            };
+            return WhisperBackend::Local {
+                executable: exe.to_string(),
+            };
         }
         // Fall back to OpenAI API
         if let Some(key) = openai_key {
@@ -50,10 +56,7 @@ impl WhisperBackend {
 
 /// Record audio to a temp WAV file for `duration` seconds, then transcribe.
 /// Returns the transcribed text.
-pub async fn record_and_transcribe(
-    duration: Duration,
-    backend: &WhisperBackend,
-) -> Result<String> {
+pub async fn record_and_transcribe(duration: Duration, backend: &WhisperBackend) -> Result<String> {
     let wav_path = record_audio(duration).await?;
     let text = transcribe(&wav_path, backend).await?;
     // Clean up temp file
@@ -94,7 +97,13 @@ async fn record_audio(duration: Duration) -> Result<PathBuf> {
     // macOS: use afconvert pipeline via built-in CoreAudio
     if cfg!(target_os = "macos") && is_available("afrecord") {
         let status = Command::new("afrecord")
-            .args(["-d", &secs, "-f", "WAVE", path.to_str().unwrap_or("audio.wav")])
+            .args([
+                "-d",
+                &secs,
+                "-f",
+                "WAVE",
+                path.to_str().unwrap_or("audio.wav"),
+            ])
             .status()
             .await
             .context("failed to run afrecord")?;
@@ -115,9 +124,7 @@ pub async fn transcribe(wav_path: &std::path::Path, backend: &WhisperBackend) ->
         WhisperBackend::OpenAI { api_key, base_url } => {
             transcribe_openai(wav_path, api_key, base_url).await
         }
-        WhisperBackend::Local { executable } => {
-            transcribe_local(wav_path, executable).await
-        }
+        WhisperBackend::Local { executable } => transcribe_local(wav_path, executable).await,
     }
 }
 
@@ -127,11 +134,15 @@ async fn transcribe_openai(
     base_url: &str,
 ) -> Result<String> {
     if api_key.is_empty() {
-        anyhow::bail!("OPENAI_API_KEY not set. Set it or install whisper.cpp for local transcription.");
+        anyhow::bail!(
+            "OPENAI_API_KEY not set. Set it or install whisper.cpp for local transcription."
+        );
     }
 
     let url = format!("{base_url}/audio/transcriptions");
-    let file_bytes = tokio::fs::read(wav_path).await.context("reading audio file")?;
+    let file_bytes = tokio::fs::read(wav_path)
+        .await
+        .context("reading audio file")?;
     let file_part = reqwest::multipart::Part::bytes(file_bytes)
         .file_name("audio.wav")
         .mime_str("audio/wav")?;
@@ -158,13 +169,11 @@ async fn transcribe_openai(
     Ok(text.trim().to_string())
 }
 
-async fn transcribe_local(
-    wav_path: &std::path::Path,
-    executable: &str,
-) -> Result<String> {
+async fn transcribe_local(wav_path: &std::path::Path, executable: &str) -> Result<String> {
     let out = Command::new(executable)
         .args([
-            "--model", "base.en",
+            "--model",
+            "base.en",
             "--output-txt",
             "--no-timestamps",
             wav_path.to_str().unwrap_or("audio.wav"),
@@ -181,7 +190,9 @@ async fn transcribe_local(
     // whisper.cpp writes a .txt file alongside the input
     let txt_path = wav_path.with_extension("txt");
     if txt_path.exists() {
-        let text = tokio::fs::read_to_string(&txt_path).await.unwrap_or_default();
+        let text = tokio::fs::read_to_string(&txt_path)
+            .await
+            .unwrap_or_default();
         let _ = tokio::fs::remove_file(&txt_path).await;
         return Ok(text.trim().to_string());
     }
@@ -200,9 +211,10 @@ pub fn is_available(cmd: &str) -> bool {
 
 /// Returns true if any audio capture tool is available on this system.
 pub fn voice_available() -> bool {
-    is_available("rec") || is_available("sox") || (cfg!(target_os = "macos") && is_available("afrecord"))
+    is_available("rec")
+        || is_available("sox")
+        || (cfg!(target_os = "macos") && is_available("afrecord"))
 }
 
 pub mod realtime;
-pub use realtime::{RealtimeVoiceSession, RealtimeEvent};
-
+pub use realtime::{RealtimeEvent, RealtimeVoiceSession};

@@ -69,9 +69,7 @@ pub async fn embed_text(
                 .unwrap_or(BASE_DELAY_MS << attempt);
             warn!(
                 status = status.as_u16(),
-                attempt,
-                delay_ms,
-                "xAI embedding retryable error; waiting before retry"
+                attempt, delay_ms, "xAI embedding retryable error; waiting before retry"
             );
             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
             attempt += 1;

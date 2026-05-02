@@ -66,7 +66,10 @@ pub struct LspTransport {
 
 impl LspTransport {
     pub fn new(stdin: ChildStdin, stdout: ChildStdout) -> Self {
-        Self { stdin, stdout: BufReader::new(stdout) }
+        Self {
+            stdin,
+            stdout: BufReader::new(stdout),
+        }
     }
 
     pub async fn send_notification(&mut self, notif: &Notification) -> Result<()> {

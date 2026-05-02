@@ -14,7 +14,11 @@ pub struct TokenPrice {
 
 impl TokenPrice {
     const fn new(input_per_m: f64, cached_input_per_m: f64, output_per_m: f64) -> Self {
-        Self { input_per_m, cached_input_per_m, output_per_m }
+        Self {
+            input_per_m,
+            cached_input_per_m,
+            output_per_m,
+        }
     }
 
     /// Compute cost in USD for standard (non-cached) token counts.
@@ -25,7 +29,12 @@ impl TokenPrice {
 
     /// Compute cost in USD factoring in prompt-cache hits.
     #[allow(dead_code)]
-    pub fn cost_with_cache(&self, input_tokens: u64, cached_tokens: u64, output_tokens: u64) -> f64 {
+    pub fn cost_with_cache(
+        &self,
+        input_tokens: u64,
+        cached_tokens: u64,
+        output_tokens: u64,
+    ) -> f64 {
         let cache_rate = if self.cached_input_per_m > 0.0 {
             self.cached_input_per_m
         } else {
@@ -65,11 +74,17 @@ pub fn price_for_model(model: &str) -> Option<TokenPrice> {
 
     // Anthropic / Claude — April 2026 SKUs
     // Opus 4.7 / 4.6 / 4.5: $5/$25, cached reads $0.50
-    if m.contains("claude-opus-4-7") || m.contains("claude-opus-4-6") || m.contains("claude-opus-4-5") {
+    if m.contains("claude-opus-4-7")
+        || m.contains("claude-opus-4-6")
+        || m.contains("claude-opus-4-5")
+    {
         return Some(TokenPrice::new(5.00, 0.50, 25.00));
     }
     // Opus 4.1 / 4 (legacy): $15/$75
-    if m.contains("claude-opus-4-1") || m.contains("claude-opus-4-0") || m.contains("claude-opus-4-20250514") {
+    if m.contains("claude-opus-4-1")
+        || m.contains("claude-opus-4-0")
+        || m.contains("claude-opus-4-20250514")
+    {
         return Some(TokenPrice::new(15.00, 1.50, 75.00));
     }
     // Opus 3 (deprecated): $15/$75
@@ -129,9 +144,14 @@ pub fn price_for_model(model: &str) -> Option<TokenPrice> {
     }
 
     // Ollama / local: free
-    if m.contains("qwen") || m.contains("llama") || m.contains("mistral")
-        || m.contains("deepseek") || m.contains("gemma") || m.contains("phi")
-        || m.contains("nomic") || m.contains("ollama")
+    if m.contains("qwen")
+        || m.contains("llama")
+        || m.contains("mistral")
+        || m.contains("deepseek")
+        || m.contains("gemma")
+        || m.contains("phi")
+        || m.contains("nomic")
+        || m.contains("ollama")
     {
         return Some(TokenPrice::new(0.0, 0.0, 0.0));
     }

@@ -36,7 +36,9 @@ impl SessionStore {
         )?;
 
         debug!(db = %path.display(), "session store opened");
-        Ok(Self { conn: Arc::new(Mutex::new(conn)) })
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+        })
     }
 
     pub fn default_path() -> PathBuf {
@@ -48,7 +50,10 @@ impl SessionStore {
 
     pub fn save(&self, session: &Session) -> anyhow::Result<()> {
         let data = serde_json::to_string(session)?;
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in save: {}", e))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex lock failed in save: {}", e))?;
         conn.execute(
             "INSERT INTO sessions (id, name, created_at, updated_at, data)
              VALUES (?1, ?2, ?3, ?4, ?5)
@@ -68,7 +73,10 @@ impl SessionStore {
     }
 
     pub fn load(&self, id: &SessionId) -> anyhow::Result<Option<Session>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in load: {}", e))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex lock failed in load: {}", e))?;
         let mut stmt = conn.prepare("SELECT data FROM sessions WHERE id=?1")?;
         let mut rows = stmt.query(params![id])?;
         if let Some(row) = rows.next()? {
@@ -81,7 +89,10 @@ impl SessionStore {
 
     /// Find a session by prefix of id or by name (case-insensitive).
     pub fn find(&self, query: &str) -> anyhow::Result<Option<Session>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in find: {}", e))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex lock failed in find: {}", e))?;
         let pattern = format!("{query}%");
         let mut stmt = conn.prepare(
             "SELECT data FROM sessions
@@ -97,18 +108,28 @@ impl SessionStore {
     }
 
     pub fn list(&self, limit: usize) -> anyhow::Result<Vec<(String, Option<String>, String)>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in list: {}", e))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex lock failed in list: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, updated_at FROM sessions ORDER BY updated_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, String>(2)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+            ))
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     pub fn delete(&self, id_or_prefix: &str) -> anyhow::Result<bool> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in delete: {}", e))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex lock failed in delete: {}", e))?;
         let id = if id_or_prefix.len() < 36 {
             let pattern = format!("{id_or_prefix}%");
             let mut stmt = conn.prepare(
@@ -129,7 +150,10 @@ impl SessionStore {
     }
 
     pub fn set_name_if_missing(&self, id: &str, name: &str) -> anyhow::Result<bool> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("mutex lock failed in set_name_if_missing: {}", e))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("mutex lock failed in set_name_if_missing: {}", e))?;
         let mut stmt = conn.prepare("SELECT data FROM sessions WHERE id = ?1")?;
         let mut rows = stmt.query(params![id])?;
         let Some(row) = rows.next()? else {
@@ -149,7 +173,12 @@ impl SessionStore {
             "UPDATE sessions
              SET name = ?2, updated_at = ?3, data = ?4
              WHERE id = ?1",
-            params![id, session.name, session.updated_at.to_rfc3339(), updated_data],
+            params![
+                id,
+                session.name,
+                session.updated_at.to_rfc3339(),
+                updated_data
+            ],
         )?;
         Ok(changed == 1)
     }

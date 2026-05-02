@@ -61,7 +61,9 @@ pub struct GithubProjectsConfig {
 /// Write a note to Obsidian via the obsidian:// URI scheme.
 pub async fn obsidian_write(cfg: &ObsidianConfig, title: &str, content: &str) -> Result<()> {
     if !cfg.enabled {
-        anyhow::bail!("Obsidian bridge not enabled. Set [bridges.obsidian] enabled = true in config.");
+        anyhow::bail!(
+            "Obsidian bridge not enabled. Set [bridges.obsidian] enabled = true in config."
+        );
     }
 
     let vault = cfg.vault.as_deref().unwrap_or("");
@@ -75,7 +77,9 @@ pub async fn obsidian_write(cfg: &ObsidianConfig, title: &str, content: &str) ->
         format!("obsidian://new?file={encoded_path}&content={encoded_content}")
     } else {
         let encoded_vault = urlencoding::encode(vault);
-        format!("obsidian://new?vault={encoded_vault}&file={encoded_path}&content={encoded_content}")
+        format!(
+            "obsidian://new?vault={encoded_vault}&file={encoded_path}&content={encoded_content}"
+        )
     };
 
     // Open via `open` command (macOS/Linux)
@@ -147,7 +151,11 @@ end tell"#
         .context("running osascript for Calendar")?;
 
     let result = String::from_utf8_lossy(&out.stdout).to_string();
-    Ok(result.split(", ").map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+    Ok(result
+        .split(", ")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect())
 }
 
 /// Create a calendar event.
@@ -188,12 +196,19 @@ pub async fn github_project_list(cfg: &GithubProjectsConfig) -> Result<Vec<Strin
         anyhow::bail!("GitHub Projects bridge not enabled.");
     }
 
-    let owner = cfg.owner.as_deref().context("bridges.github_projects.owner not set")?;
-    let project_number = cfg.project_number.context("bridges.github_projects.project_number not set")?;
+    let owner = cfg
+        .owner
+        .as_deref()
+        .context("bridges.github_projects.owner not set")?;
+    let project_number = cfg
+        .project_number
+        .context("bridges.github_projects.project_number not set")?;
 
-    let query = format!(r#"{{
+    let query = format!(
+        r#"{{
         "query": "query {{ user(login: \"{owner}\") {{ projectV2(number: {project_number}) {{ items(first: 20) {{ nodes {{ id content {{ ... on Issue {{ title number }} ... on PullRequest {{ title number }} }} }} }} }} }} }}"
-    }}"#);
+    }}"#
+    );
 
     let out = tokio::process::Command::new("gh")
         .args(["api", "graphql", "--input", "-"])
@@ -209,9 +224,11 @@ pub async fn github_project_list(cfg: &GithubProjectsConfig) -> Result<Vec<Strin
     let val: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
     let items = val["data"]["user"]["projectV2"]["items"]["nodes"]
         .as_array()
-        .map(|arr| arr.iter()
-            .filter_map(|item| item["content"]["title"].as_str().map(String::from))
-            .collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item["content"]["title"].as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     let _ = query;

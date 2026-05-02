@@ -22,7 +22,9 @@ pub fn memory_dir() -> PathBuf {
 /// concatenated string suitable for injecting into the system prompt.
 pub fn load_all() -> String {
     let dir = memory_dir();
-    let Ok(entries) = std::fs::read_dir(&dir) else { return String::new() };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return String::new();
+    };
 
     let mut parts: Vec<String> = Vec::new();
     let mut paths: Vec<PathBuf> = entries
@@ -78,7 +80,9 @@ pub fn forget(topic: &str) -> Result<bool> {
 /// List all memory topics.
 pub fn list_topics() -> Vec<String> {
     let dir = memory_dir();
-    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
     let mut topics: Vec<String> = entries
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map(|x| x == "md").unwrap_or(false))
@@ -94,7 +98,13 @@ pub fn list_topics() -> Vec<String> {
 
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .to_lowercase()
 }

@@ -86,9 +86,7 @@ impl BrowserSession {
         let text = serde_json::to_string(&req)?;
         {
             let mut ws = self.ws.lock().await;
-            ws.send(Message::Text(text))
-                .await
-                .context("CDP send")?;
+            ws.send(Message::Text(text)).await.context("CDP send")?;
         }
 
         // Read frames until we find the response matching our id.
@@ -99,8 +97,7 @@ impl BrowserSession {
             };
             let msg = frame.context("CDP frame error")?;
             if let Message::Text(txt) = msg {
-                let resp: CdpResponse =
-                    serde_json::from_str(&txt).context("CDP response parse")?;
+                let resp: CdpResponse = serde_json::from_str(&txt).context("CDP response parse")?;
                 if resp.id == Some(id) {
                     if let Some(err) = resp.error {
                         anyhow::bail!("CDP error {}: {}", err.code, err.message);
@@ -117,28 +114,21 @@ impl BrowserSession {
     /// Navigate to `url` and wait for load.
     pub async fn navigate(&self, url: &str) -> Result<String> {
         self.send("Page.enable", json!({})).await.ok();
-        let _result = self
-            .send("Page.navigate", json!({ "url": url }))
-            .await?;
+        let _result = self.send("Page.navigate", json!({ "url": url })).await?;
         // Wait for loadEventFired or a short settle period.
         self.wait_for_load().await.ok();
         Ok(format!("Navigated to {url}"))
     }
 
     async fn wait_for_load(&self) -> Result<()> {
-        let deadline = tokio::time::Instant::now()
-            + std::time::Duration::from_secs(15);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
         loop {
             if tokio::time::Instant::now() > deadline {
                 break;
             }
             let frame = {
                 let mut ws = self.ws.lock().await;
-                tokio::time::timeout(
-                    std::time::Duration::from_millis(200),
-                    ws.next(),
-                )
-                .await
+                tokio::time::timeout(std::time::Duration::from_millis(200), ws.next()).await
             };
             if let Ok(Some(Ok(Message::Text(txt)))) = frame {
                 let resp: CdpResponse = serde_json::from_str(&txt).unwrap_or(CdpResponse {
@@ -277,14 +267,8 @@ impl BrowserSession {
 
     /// Return the page title and current URL.
     pub async fn page_info(&self) -> Result<String> {
-        let title = self
-            .evaluate("document.title")
-            .await
-            .unwrap_or_default();
-        let url = self
-            .evaluate("location.href")
-            .await
-            .unwrap_or_default();
+        let title = self.evaluate("document.title").await.unwrap_or_default();
+        let url = self.evaluate("location.href").await.unwrap_or_default();
         Ok(format!("URL: {url}\nTitle: {title}"))
     }
 

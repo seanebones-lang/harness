@@ -21,7 +21,10 @@ pub struct RebuildSelfTool {
 
 impl RebuildSelfTool {
     pub fn new(src_dir: PathBuf) -> Self {
-        Self { src_dir, profile: "selfdev".into() }
+        Self {
+            src_dir,
+            profile: "selfdev".into(),
+        }
     }
 
     pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
@@ -80,7 +83,8 @@ impl Tool for RebuildSelfTool {
         let combined = format!("{stdout}{stderr}").trim().to_string();
 
         if output.status.success() {
-            let binary = self.src_dir
+            let binary = self
+                .src_dir
                 .join("target")
                 .join(&self.profile)
                 .join("harness");
@@ -90,7 +94,10 @@ impl Tool for RebuildSelfTool {
                 combined
             ))
         } else {
-            Ok(format!("Build FAILED (exit {}):\n\n{}", output.status, combined))
+            Ok(format!(
+                "Build FAILED (exit {}):\n\n{}",
+                output.status, combined
+            ))
         }
     }
 }
@@ -104,7 +111,10 @@ pub struct ReloadSelfTool {
 
 impl ReloadSelfTool {
     pub fn new(src_dir: PathBuf) -> Self {
-        Self { src_dir, profile: "selfdev".into() }
+        Self {
+            src_dir,
+            profile: "selfdev".into(),
+        }
     }
 }
 
@@ -121,7 +131,8 @@ impl Tool for ReloadSelfTool {
     }
 
     async fn execute(&self, _args: Value) -> anyhow::Result<String> {
-        let binary = self.src_dir
+        let binary = self
+            .src_dir
             .join("target")
             .join(&self.profile)
             .join("harness");
@@ -139,7 +150,7 @@ impl Tool for ReloadSelfTool {
             let err = std::process::Command::new(&binary)
                 .args(std::env::args().skip(1))
                 .exec(); // replaces current process
-            // exec() only returns on error
+                         // exec() only returns on error
             anyhow::bail!("exec failed: {err}");
         }
 

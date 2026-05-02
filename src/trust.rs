@@ -83,7 +83,11 @@ impl TrustStore {
     /// Add a trust rule. Returns true if the rule was newly added.
     pub fn add_rule(&mut self, tool: &str, pattern: &str) -> bool {
         // Don't duplicate.
-        if self.rules.iter().any(|r| r.tool == tool && r.pattern == pattern) {
+        if self
+            .rules
+            .iter()
+            .any(|r| r.tool == tool && r.pattern == pattern)
+        {
             return false;
         }
         self.rules.push(TrustRule {
@@ -97,7 +101,8 @@ impl TrustStore {
     /// Remove a trust rule matching tool + pattern. Returns true if removed.
     pub fn remove_rule(&mut self, tool: &str, pattern: &str) -> bool {
         let before = self.rules.len();
-        self.rules.retain(|r| !(r.tool == tool && r.pattern == pattern));
+        self.rules
+            .retain(|r| !(r.tool == tool && r.pattern == pattern));
         self.rules.len() < before
     }
 

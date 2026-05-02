@@ -22,21 +22,40 @@ pub struct CollabConfig {
     pub max_users: usize,
 }
 
-fn default_max_users() -> usize { 10 }
+fn default_max_users() -> usize {
+    10
+}
 
 // ── Event types ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CollabEvent {
-    UserJoined { user_id: String },
-    UserLeft { user_id: String },
-    UserTyping { user_id: String, partial: String },
-    AgentTextChunk { content: String },
-    AgentToolStart { name: String },
-    AgentToolResult { name: String, preview: String },
+    UserJoined {
+        user_id: String,
+    },
+    UserLeft {
+        user_id: String,
+    },
+    UserTyping {
+        user_id: String,
+        partial: String,
+    },
+    AgentTextChunk {
+        content: String,
+    },
+    AgentToolStart {
+        name: String,
+    },
+    AgentToolResult {
+        name: String,
+        preview: String,
+    },
     AgentDone,
-    SessionInfo { session_id: String, user_count: usize },
+    SessionInfo {
+        session_id: String,
+        user_count: usize,
+    },
 }
 
 // ── Session registry ──────────────────────────────────────────────────────────
@@ -73,12 +92,16 @@ impl CollabSession {
 
     pub fn user_joined(&mut self, user_id: &str) {
         self.users.push(user_id.to_string());
-        self.broadcast(CollabEvent::UserJoined { user_id: user_id.to_string() });
+        self.broadcast(CollabEvent::UserJoined {
+            user_id: user_id.to_string(),
+        });
     }
 
     pub fn user_left(&mut self, user_id: &str) {
         self.users.retain(|u| u != user_id);
-        self.broadcast(CollabEvent::UserLeft { user_id: user_id.to_string() });
+        self.broadcast(CollabEvent::UserLeft {
+            user_id: user_id.to_string(),
+        });
     }
 }
 
@@ -100,5 +123,7 @@ pub fn broadcast_to_session(registry: &CollabRegistry, session_id: &str, event: 
 /// List active sessions.
 pub fn list_sessions(registry: &CollabRegistry) -> Vec<(String, usize)> {
     let reg = registry.lock().unwrap();
-    reg.values().map(|s| (s.session_id.clone(), s.users.len())).collect()
+    reg.values()
+        .map(|s| (s.session_id.clone(), s.users.len()))
+        .collect()
 }

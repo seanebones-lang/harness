@@ -29,7 +29,10 @@ pub struct TestFailure {
 impl TestReport {
     pub fn to_agent_string(&self) -> String {
         let status = if self.failed == 0 { "PASS" } else { "FAIL" };
-        let mut out = format!("[{status}] {} passed, {} failed\n", self.passed, self.failed);
+        let mut out = format!(
+            "[{status}] {} passed, {} failed\n",
+            self.passed, self.failed
+        );
         for f in &self.errors {
             out.push_str(&format!("  FAILED: {}\n    {}\n", f.name, f.message));
         }
@@ -106,7 +109,10 @@ enum Runner {
 fn detect_test_command(scope: Option<&str>) -> (String, Runner) {
     if std::path::Path::new("Cargo.toml").exists() {
         let cmd = match scope {
-            Some(s) if s.contains('/') => format!("cargo test --package {} 2>&1", s.split('/').next().unwrap_or(s)),
+            Some(s) if s.contains('/') => format!(
+                "cargo test --package {} 2>&1",
+                s.split('/').next().unwrap_or(s)
+            ),
             Some(s) => format!("cargo test {} 2>&1", s),
             None => "cargo test 2>&1".to_string(),
         };
@@ -121,8 +127,7 @@ fn detect_test_command(scope: Option<&str>) -> (String, Runner) {
         return (cmd, Runner::Npm);
     }
 
-    if std::path::Path::new("pyproject.toml").exists()
-        || std::path::Path::new("setup.py").exists()
+    if std::path::Path::new("pyproject.toml").exists() || std::path::Path::new("setup.py").exists()
     {
         let cmd = match scope {
             Some(s) => format!("python -m pytest {s} -v 2>&1"),
@@ -161,12 +166,24 @@ fn parse_cargo(output: &str, _success: bool) -> TestReport {
             passed += 1;
         } else if line.starts_with("test ") && line.contains("FAILED") {
             failed += 1;
-            let name = line.trim_start_matches("test ").split(" ...").next().unwrap_or("?").to_string();
-            errors.push(TestFailure { name, message: "test failed".to_string() });
+            let name = line
+                .trim_start_matches("test ")
+                .split(" ...")
+                .next()
+                .unwrap_or("?")
+                .to_string();
+            errors.push(TestFailure {
+                name,
+                message: "test failed".to_string(),
+            });
         } else if line.contains("test result:") {
             // e.g. "test result: FAILED. 3 passed; 2 failed; ..."
-            if let Some(p) = extract_number(line, "passed") { passed = p; }
-            if let Some(f) = extract_number(line, "failed") { failed = f; }
+            if let Some(p) = extract_number(line, "passed") {
+                passed = p;
+            }
+            if let Some(f) = extract_number(line, "failed") {
+                failed = f;
+            }
         }
     }
 
@@ -185,7 +202,12 @@ fn parse_cargo(output: &str, _success: bool) -> TestReport {
                         e.message = current_msg.trim().to_string();
                     }
                 }
-                current_name = line.trim_start_matches("---- ").split(' ').next().unwrap_or("?").to_string();
+                current_name = line
+                    .trim_start_matches("---- ")
+                    .split(' ')
+                    .next()
+                    .unwrap_or("?")
+                    .to_string();
                 current_msg = String::new();
             } else if !line.is_empty() && !line.starts_with("failures:") {
                 current_msg.push_str(line);
@@ -194,7 +216,12 @@ fn parse_cargo(output: &str, _success: bool) -> TestReport {
         }
     }
 
-    TestReport { passed, failed, errors, raw_output: output.to_string() }
+    TestReport {
+        passed,
+        failed,
+        errors,
+        raw_output: output.to_string(),
+    }
 }
 
 fn parse_pytest(output: &str, success: bool) -> TestReport {
@@ -205,14 +232,21 @@ fn parse_pytest(output: &str, success: bool) -> TestReport {
     for line in output.lines() {
         // "== 3 passed, 1 failed in 0.12s =="
         if line.contains(" passed") || line.contains(" failed") {
-            if let Some(p) = extract_number(line, "passed") { passed = p; }
-            if let Some(f) = extract_number(line, "failed") { failed = f; }
+            if let Some(p) = extract_number(line, "passed") {
+                passed = p;
+            }
+            if let Some(f) = extract_number(line, "failed") {
+                failed = f;
+            }
         }
         // "FAILED test_file.py::test_name - AssertionError"
         if line.starts_with("FAILED ") {
             let rest = line.trim_start_matches("FAILED ");
             let (name, msg) = rest.split_once(" - ").unwrap_or((rest, "failed"));
-            errors.push(TestFailure { name: name.to_string(), message: msg.to_string() });
+            errors.push(TestFailure {
+                name: name.to_string(),
+                message: msg.to_string(),
+            });
         }
     }
 
@@ -220,7 +254,12 @@ fn parse_pytest(output: &str, success: bool) -> TestReport {
         failed = 1;
     }
 
-    TestReport { passed, failed, errors, raw_output: output.to_string() }
+    TestReport {
+        passed,
+        failed,
+        errors,
+        raw_output: output.to_string(),
+    }
 }
 
 fn parse_go(output: &str, _success: bool) -> TestReport {
@@ -233,12 +272,25 @@ fn parse_go(output: &str, _success: bool) -> TestReport {
             passed += 1;
         } else if line.starts_with("--- FAIL:") {
             failed += 1;
-            let name = line.trim_start_matches("--- FAIL: ").split(' ').next().unwrap_or("?").to_string();
-            errors.push(TestFailure { name, message: "test failed".to_string() });
+            let name = line
+                .trim_start_matches("--- FAIL: ")
+                .split(' ')
+                .next()
+                .unwrap_or("?")
+                .to_string();
+            errors.push(TestFailure {
+                name,
+                message: "test failed".to_string(),
+            });
         }
     }
 
-    TestReport { passed, failed, errors, raw_output: output.to_string() }
+    TestReport {
+        passed,
+        failed,
+        errors,
+        raw_output: output.to_string(),
+    }
 }
 
 fn parse_generic(output: &str, success: bool) -> TestReport {
@@ -247,7 +299,10 @@ fn parse_generic(output: &str, success: bool) -> TestReport {
         passed: 0,
         failed,
         errors: if failed > 0 {
-            vec![TestFailure { name: "test".into(), message: output.lines().last().unwrap_or("failed").to_string() }]
+            vec![TestFailure {
+                name: "test".into(),
+                message: output.lines().last().unwrap_or("failed").to_string(),
+            }]
         } else {
             vec![]
         },

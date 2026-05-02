@@ -26,12 +26,7 @@ const KEYCHAIN_SERVICE: &str = "harness-sync";
 const KEYCHAIN_ACCOUNT: &str = "passphrase";
 
 /// Files to sync (relative to `~/.harness/`).
-const SYNC_FILES: &[&str] = &[
-    "sessions.db",
-    "memory.db",
-    "trust.json",
-    "cost.db",
-];
+const SYNC_FILES: &[&str] = &["sessions.db", "memory.db", "trust.json", "cost.db"];
 
 fn harness_dir() -> PathBuf {
     dirs::home_dir().unwrap_or_default().join(".harness")
@@ -78,9 +73,12 @@ async fn keychain_set(passphrase: &str) -> bool {
     Command::new("security")
         .args([
             "add-generic-password",
-            "-s", KEYCHAIN_SERVICE,
-            "-a", KEYCHAIN_ACCOUNT,
-            "-w", passphrase,
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            KEYCHAIN_ACCOUNT,
+            "-w",
+            passphrase,
             "-U",
         ])
         .status()
@@ -94,8 +92,10 @@ async fn keychain_get() -> Option<String> {
     let out = Command::new("security")
         .args([
             "find-generic-password",
-            "-s", KEYCHAIN_SERVICE,
-            "-a", KEYCHAIN_ACCOUNT,
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            KEYCHAIN_ACCOUNT,
             "-w",
         ])
         .output()
@@ -103,7 +103,11 @@ async fn keychain_get() -> Option<String> {
         .ok()?;
     if out.status.success() {
         let pw = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !pw.is_empty() { Some(pw) } else { None }
+        if !pw.is_empty() {
+            Some(pw)
+        } else {
+            None
+        }
     } else {
         None
     }
@@ -153,11 +157,7 @@ fn generate_passphrase() -> String {
     let t = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
-    format!(
-        "hrns-{:x}-{:x}",
-        t.as_secs(),
-        t.subsec_nanos() ^ 0xdeadbeef
-    )
+    format!("hrns-{:x}-{:x}", t.as_secs(), t.subsec_nanos() ^ 0xdeadbeef)
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +205,13 @@ pub async fn init(git_url: &str) -> Result<()> {
 
     if repo_dir.exists() {
         let out = Command::new("git")
-            .args(["-C", &repo_dir.to_string_lossy(), "remote", "get-url", "origin"])
+            .args([
+                "-C",
+                &repo_dir.to_string_lossy(),
+                "remote",
+                "get-url",
+                "origin",
+            ])
             .output()
             .await?;
         let existing = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -228,14 +234,26 @@ pub async fn init(git_url: &str) -> Result<()> {
 
     if !status.success() {
         std::fs::create_dir_all(&repo_dir)?;
-        Command::new("git").args(["-C", &repo_dir.to_string_lossy(), "init"]).status().await?;
         Command::new("git")
-            .args(["-C", &repo_dir.to_string_lossy(), "remote", "add", "origin", git_url])
+            .args(["-C", &repo_dir.to_string_lossy(), "init"])
+            .status()
+            .await?;
+        Command::new("git")
+            .args([
+                "-C",
+                &repo_dir.to_string_lossy(),
+                "remote",
+                "add",
+                "origin",
+                git_url,
+            ])
             .status()
             .await?;
     }
 
-    save_sync_config(&SyncConfig { git_url: git_url.to_string() })?;
+    save_sync_config(&SyncConfig {
+        git_url: git_url.to_string(),
+    })?;
     let _ = get_or_create_passphrase().await?;
 
     println!("✓ Sync initialised → {git_url}");
@@ -253,7 +271,14 @@ pub async fn push() -> Result<()> {
 
     // Pull first to avoid trivial conflicts
     let _ = Command::new("git")
-        .args(["-C", &repo_dir.to_string_lossy(), "pull", "--rebase", "origin", "main"])
+        .args([
+            "-C",
+            &repo_dir.to_string_lossy(),
+            "pull",
+            "--rebase",
+            "origin",
+            "main",
+        ])
         .status()
         .await;
 
@@ -273,7 +298,10 @@ pub async fn push() -> Result<()> {
     let mem = src_dir.join("memory");
     if mem.exists() {
         if let Ok(tar) = tar_dir(&mem) {
-            std::fs::write(repo_dir.join("memory.tar.age"), encrypt_bytes(&tar, &passphrase)?)?;
+            std::fs::write(
+                repo_dir.join("memory.tar.age"),
+                encrypt_bytes(&tar, &passphrase)?,
+            )?;
             count += 1;
         }
     }
@@ -283,7 +311,10 @@ pub async fn push() -> Result<()> {
         return Ok(());
     }
 
-    Command::new("git").args(["-C", &repo_dir.to_string_lossy(), "add", "."]).status().await?;
+    Command::new("git")
+        .args(["-C", &repo_dir.to_string_lossy(), "add", "."])
+        .status()
+        .await?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -297,7 +328,14 @@ pub async fn push() -> Result<()> {
 
     if committed.success() {
         Command::new("git")
-            .args(["-C", &repo_dir.to_string_lossy(), "push", "-u", "origin", "main"])
+            .args([
+                "-C",
+                &repo_dir.to_string_lossy(),
+                "push",
+                "-u",
+                "origin",
+                "main",
+            ])
             .status()
             .await?;
         println!("✓ Pushed {count} file(s) to {}", cfg.git_url);
@@ -330,7 +368,8 @@ pub async fn pull() -> Result<()> {
             continue;
         }
         let enc = std::fs::read(&src)?;
-        let data = decrypt_bytes(&enc, &passphrase).with_context(|| format!("decrypting {name}"))?;
+        let data =
+            decrypt_bytes(&enc, &passphrase).with_context(|| format!("decrypting {name}"))?;
         std::fs::write(dst_dir.join(name), data)?;
         count += 1;
     }

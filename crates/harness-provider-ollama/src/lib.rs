@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use harness_provider_core::{
-    ChatRequest, Delta, DeltaStream, Pricing, Provider, ProviderError,
-    Role, StopReason, ToolCall, ToolCallFunction,
+    ChatRequest, Delta, DeltaStream, Pricing, Provider, ProviderError, Role, StopReason, ToolCall,
+    ToolCallFunction,
 };
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -72,7 +72,9 @@ fn build_messages(req: &ChatRequest) -> Vec<Value> {
         match &msg.role {
             Role::System => msgs.push(json!({"role": "system", "content": msg.content.as_str()})),
             Role::User => msgs.push(json!({"role": "user", "content": msg.content.as_str()})),
-            Role::Assistant => msgs.push(json!({"role": "assistant", "content": msg.content.as_str()})),
+            Role::Assistant => {
+                msgs.push(json!({"role": "assistant", "content": msg.content.as_str()}))
+            }
             Role::Tool => msgs.push(json!({
                 "role": "tool",
                 "content": msg.content.as_str()
@@ -83,14 +85,19 @@ fn build_messages(req: &ChatRequest) -> Vec<Value> {
 }
 
 fn build_tools(tools: &[harness_provider_core::ToolDefinition]) -> Vec<Value> {
-    tools.iter().map(|t| json!({
-        "type": "function",
-        "function": {
-            "name": t.function.name,
-            "description": t.function.description,
-            "parameters": t.function.parameters
-        }
-    })).collect()
+    tools
+        .iter()
+        .map(|t| {
+            json!({
+                "type": "function",
+                "function": {
+                    "name": t.function.name,
+                    "description": t.function.description,
+                    "parameters": t.function.parameters
+                }
+            })
+        })
+        .collect()
 }
 
 #[async_trait]
@@ -105,12 +112,17 @@ impl Provider for OllamaProvider {
 
     fn pricing(&self) -> Option<Pricing> {
         // Local models are free.
-        Some(Pricing { input_per_m_usd: 0.0, cached_input_per_m_usd: 0.0, output_per_m_usd: 0.0 })
+        Some(Pricing {
+            input_per_m_usd: 0.0,
+            cached_input_per_m_usd: 0.0,
+            output_per_m_usd: 0.0,
+        })
     }
 
     async fn embed(&self, model: &str, text: &str) -> Result<Vec<f32>, ProviderError> {
         let url = format!("{}/api/embeddings", self.config.base_url);
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .json(&json!({"model": model, "prompt": text}))
             .send()
@@ -119,10 +131,16 @@ impl Provider for OllamaProvider {
 
         if !resp.status().is_success() {
             let msg = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Api { status: 0, message: msg });
+            return Err(ProviderError::Api {
+                status: 0,
+                message: msg,
+            });
         }
 
-        let body: Value = resp.json().await.map_err(|e| ProviderError::Other(e.to_string()))?;
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::Other(e.to_string()))?;
         let emb: Vec<f32> = body["embedding"]
             .as_array()
             .ok_or_else(|| ProviderError::Other("missing embedding in Ollama response".into()))?
@@ -157,7 +175,8 @@ impl Provider for OllamaProvider {
 
         debug!(model = %self.config.model, "sending Ollama chat request");
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .json(&body)
             .send()
@@ -167,7 +186,10 @@ impl Provider for OllamaProvider {
         let status = resp.status();
         if !status.is_success() {
             let msg = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Api { status: status.as_u16(), message: msg });
+            return Err(ProviderError::Api {
+                status: status.as_u16(),
+                message: msg,
+            });
         }
 
         let stream = parse_ollama_stream(resp.bytes_stream());
@@ -179,7 +201,8 @@ fn parse_ollama_stream(
     byte_stream: impl futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 ) -> impl futures::Stream<Item = Result<Delta, ProviderError>> + Send {
     use std::pin::Pin;
-    type ByteStream = Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>;
+    type ByteStream =
+        Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>;
 
     struct State {
         stream: ByteStream,
@@ -194,25 +217,39 @@ fn parse_ollama_stream(
     };
 
     futures::stream::unfold(state, |mut s| async move {
-        if s.done { return None; }
+        if s.done {
+            return None;
+        }
 
         loop {
             while let Some(nl) = s.buf.find('\n') {
                 let line = s.buf[..nl].trim().to_string();
                 s.buf = s.buf[nl + 1..].to_string();
 
-                if line.is_empty() { continue; }
+                if line.is_empty() {
+                    continue;
+                }
 
                 if let Ok(v) = serde_json::from_str::<Value>(&line) {
                     // Tool calls — emit first one; subsequent calls handled next iteration
-                    if let Some(call) = v["message"]["tool_calls"].as_array().and_then(|a| a.first()) {
+                    if let Some(call) = v["message"]["tool_calls"]
+                        .as_array()
+                        .and_then(|a| a.first())
+                    {
                         let id = call["id"].as_str().unwrap_or("tool_0").to_string();
                         let name = call["function"]["name"].as_str().unwrap_or("").to_string();
                         let args = call["function"]["arguments"].to_string();
-                        return Some((Ok(Delta::ToolCall(ToolCall {
-                            id, kind: "function".into(),
-                            function: ToolCallFunction { name, arguments: args },
-                        })), s));
+                        return Some((
+                            Ok(Delta::ToolCall(ToolCall {
+                                id,
+                                kind: "function".into(),
+                                function: ToolCallFunction {
+                                    name,
+                                    arguments: args,
+                                },
+                            })),
+                            s,
+                        ));
                     }
 
                     // Text content
@@ -228,17 +265,39 @@ fn parse_ollama_stream(
                         let out_tok = v["eval_count"].as_u64().unwrap_or(0) as u32;
                         s.done = true;
                         if in_tok > 0 || out_tok > 0 {
-                            return Some((Ok(Delta::Usage { input_tokens: in_tok, output_tokens: out_tok }), s));
+                            return Some((
+                                Ok(Delta::Usage {
+                                    input_tokens: in_tok,
+                                    output_tokens: out_tok,
+                                }),
+                                s,
+                            ));
                         }
-                        return Some((Ok(Delta::Done { stop_reason: StopReason::EndTurn }), s));
+                        return Some((
+                            Ok(Delta::Done {
+                                stop_reason: StopReason::EndTurn,
+                            }),
+                            s,
+                        ));
                     }
                 }
             }
 
             match s.stream.next().await {
                 Some(Ok(chunk)) => s.buf.push_str(&String::from_utf8_lossy(&chunk)),
-                Some(Err(e)) => { s.done = true; return Some((Err(ProviderError::Other(e.to_string())), s)); }
-                None => { s.done = true; return Some((Ok(Delta::Done { stop_reason: StopReason::EndTurn }), s)); }
+                Some(Err(e)) => {
+                    s.done = true;
+                    return Some((Err(ProviderError::Other(e.to_string())), s));
+                }
+                None => {
+                    s.done = true;
+                    return Some((
+                        Ok(Delta::Done {
+                            stop_reason: StopReason::EndTurn,
+                        }),
+                        s,
+                    ));
+                }
             }
         }
     })

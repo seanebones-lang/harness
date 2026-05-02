@@ -10,8 +10,14 @@ use std::sync::Arc;
 use crate::registry::Tool;
 
 /// Closure type: given a task string, run a sub-agent and return its output.
-pub type SubAgentRunner =
-    Arc<dyn Fn(String) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>> + Send + Sync>;
+pub type SubAgentRunner = Arc<
+    dyn Fn(
+            String,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>>
+        + Send
+        + Sync,
+>;
 
 pub struct SpawnAgentTool {
     runner: SubAgentRunner,
@@ -49,7 +55,10 @@ impl Tool for SpawnAgentTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let task = args["task"].as_str().ok_or_else(|| anyhow::anyhow!("missing task"))?.to_string();
+        let task = args["task"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing task"))?
+            .to_string();
         let context = args["context"].as_str().unwrap_or("").to_string();
         let full_prompt = if context.is_empty() {
             task.clone()

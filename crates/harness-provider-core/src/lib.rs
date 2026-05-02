@@ -1,7 +1,7 @@
-pub mod types;
-pub mod provider;
 pub mod error;
+pub mod provider;
+pub mod types;
 
-pub use types::*;
-pub use provider::{ArcProvider, DeltaStream, Pricing, Provider};
 pub use error::ProviderError;
+pub use provider::{ArcProvider, DeltaStream, Pricing, Provider};
+pub use types::*;

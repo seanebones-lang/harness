@@ -13,7 +13,7 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::process::Command;
 use tracing::{debug, warn};
 
@@ -123,7 +123,8 @@ impl Tool for ComputerUseTool {
 }
 
 fn extract_coord(args: &Value) -> Result<(i32, i32)> {
-    let coord = args["coordinate"].as_array()
+    let coord = args["coordinate"]
+        .as_array()
         .ok_or_else(|| anyhow::anyhow!("'coordinate' array is required for this action"))?;
     let x = coord.first().and_then(|v| v.as_i64()).unwrap_or(0) as i32;
     let y = coord.get(1).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
@@ -143,17 +144,38 @@ async fn take_screenshot() -> Result<String> {
     let captured = if cfg!(target_os = "macos") {
         Command::new("screencapture")
             .args(["-x", "-t", "png", path_str])
-            .status().await
+            .status()
+            .await
             .context("screencapture failed")?
             .success()
     } else {
         // Linux: try scrot, then maim
-        if Command::new("which").arg("scrot").status().await.map(|s| s.success()).unwrap_or(false) {
-            Command::new("scrot").arg(path_str).status().await
-                .context("scrot failed")?.success()
-        } else if Command::new("which").arg("maim").status().await.map(|s| s.success()).unwrap_or(false) {
-            Command::new("maim").arg(path_str).status().await
-                .context("maim failed")?.success()
+        if Command::new("which")
+            .arg("scrot")
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            Command::new("scrot")
+                .arg(path_str)
+                .status()
+                .await
+                .context("scrot failed")?
+                .success()
+        } else if Command::new("which")
+            .arg("maim")
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            Command::new("maim")
+                .arg(path_str)
+                .status()
+                .await
+                .context("maim failed")?
+                .success()
         } else {
             anyhow::bail!("No screenshot tool found. Install: brew install --cask flameshot (or scrot/maim on Linux)");
         }
@@ -182,12 +204,25 @@ async fn get_cursor_position() -> Result<String> {
 
 async fn mouse_move(x: i32, y: i32) -> Result<String> {
     if cfg!(target_os = "macos") {
-        if let Ok(_) = Command::new("cliclick").arg(format!("m:{x},{y}")).status().await {
+        if let Ok(_) = Command::new("cliclick")
+            .arg(format!("m:{x},{y}"))
+            .status()
+            .await
+        {
             return Ok(format!("Mouse moved to {x},{y}"));
         }
-    } else if Command::new("which").arg("xdotool").status().await.map(|s| s.success()).unwrap_or(false) {
-        Command::new("xdotool").args(["mousemove", &x.to_string(), &y.to_string()])
-            .status().await.ok();
+    } else if Command::new("which")
+        .arg("xdotool")
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        Command::new("xdotool")
+            .args(["mousemove", &x.to_string(), &y.to_string()])
+            .status()
+            .await
+            .ok();
         return Ok(format!("Mouse moved to {x},{y}"));
     }
     warn!("No mouse control tool available (install cliclick on macOS, xdotool on Linux)");
@@ -203,65 +238,135 @@ async fn mouse_click(x: i32, y: i32, button: &str) -> Result<String> {
         };
         if let Ok(_) = Command::new("cliclick")
             .arg(format!("{cliclick_btn}:{x},{y}"))
-            .status().await
+            .status()
+            .await
         {
             return Ok(format!("{button} click at {x},{y}"));
         }
-    } else if Command::new("which").arg("xdotool").status().await.map(|s| s.success()).unwrap_or(false) {
-        let btn = match button { "right" => "3", "middle" => "2", _ => "1" };
+    } else if Command::new("which")
+        .arg("xdotool")
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        let btn = match button {
+            "right" => "3",
+            "middle" => "2",
+            _ => "1",
+        };
         Command::new("xdotool")
             .args(["mousemove", &x.to_string(), &y.to_string(), "click", btn])
-            .status().await.ok();
+            .status()
+            .await
+            .ok();
         return Ok(format!("{button} click at {x},{y}"));
     }
-    Ok(format!("{button} click at {x},{y} — no control tool available"))
+    Ok(format!(
+        "{button} click at {x},{y} — no control tool available"
+    ))
 }
 
 async fn mouse_double_click(x: i32, y: i32) -> Result<String> {
     if cfg!(target_os = "macos") {
-        if let Ok(_) = Command::new("cliclick").arg(format!("dc:{x},{y}")).status().await {
+        if let Ok(_) = Command::new("cliclick")
+            .arg(format!("dc:{x},{y}"))
+            .status()
+            .await
+        {
             return Ok(format!("Double click at {x},{y}"));
         }
-    } else if Command::new("which").arg("xdotool").status().await.map(|s| s.success()).unwrap_or(false) {
+    } else if Command::new("which")
+        .arg("xdotool")
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
         Command::new("xdotool")
-            .args(["mousemove", &x.to_string(), &y.to_string(), "click", "--repeat", "2", "1"])
-            .status().await.ok();
+            .args([
+                "mousemove",
+                &x.to_string(),
+                &y.to_string(),
+                "click",
+                "--repeat",
+                "2",
+                "1",
+            ])
+            .status()
+            .await
+            .ok();
         return Ok(format!("Double click at {x},{y}"));
     }
-    Ok(format!("Double click at {x},{y} — no control tool available"))
+    Ok(format!(
+        "Double click at {x},{y} — no control tool available"
+    ))
 }
 
 async fn type_text(text: &str) -> Result<String> {
     if cfg!(target_os = "macos") {
-        if let Ok(_) = Command::new("cliclick").arg(format!("t:{text}")).status().await {
+        if let Ok(_) = Command::new("cliclick")
+            .arg(format!("t:{text}"))
+            .status()
+            .await
+        {
             let preview: String = text.chars().take(40).collect();
             return Ok(format!("Typed: {preview}"));
         }
-    } else if Command::new("which").arg("xdotool").status().await.map(|s| s.success()).unwrap_or(false) {
-        Command::new("xdotool").args(["type", "--clearmodifiers", text]).status().await.ok();
+    } else if Command::new("which")
+        .arg("xdotool")
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        Command::new("xdotool")
+            .args(["type", "--clearmodifiers", text])
+            .status()
+            .await
+            .ok();
         let preview: String = text.chars().take(40).collect();
         return Ok(format!("Typed: {preview}"));
     }
-    Ok(format!("Type '{}' — no control tool available", &text[..text.len().min(40)]))
+    Ok(format!(
+        "Type '{}' — no control tool available",
+        &text[..text.len().min(40)]
+    ))
 }
 
 async fn press_key(key: &str) -> Result<String> {
     // Normalise key combo (e.g. "ctrl+c" → platform-specific)
     if cfg!(target_os = "macos") {
         // cliclick uses kc: for key codes; use osascript for combos
-        let script = format!(
-            "tell application \"System Events\" to keystroke \"{key}\" using {{}}",
-        );
+        let script =
+            format!("tell application \"System Events\" to keystroke \"{key}\" using {{}}",);
         // For simple keys, try cliclick
-        if let Ok(_) = Command::new("cliclick").arg(format!("kp:{key}")).status().await {
+        if let Ok(_) = Command::new("cliclick")
+            .arg(format!("kp:{key}"))
+            .status()
+            .await
+        {
             return Ok(format!("Key pressed: {key}"));
         }
         // Fall back to osascript (works for combos like "cmd+c")
-        let _ = Command::new("osascript").args(["-e", &script]).status().await;
+        let _ = Command::new("osascript")
+            .args(["-e", &script])
+            .status()
+            .await;
         return Ok(format!("Key pressed: {key}"));
-    } else if Command::new("which").arg("xdotool").status().await.map(|s| s.success()).unwrap_or(false) {
+    } else if Command::new("which")
+        .arg("xdotool")
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
         let xdo_key = key.replace("ctrl+", "ctrl+").replace("cmd+", "super+");
-        Command::new("xdotool").args(["key", &xdo_key]).status().await.ok();
+        Command::new("xdotool")
+            .args(["key", &xdo_key])
+            .status()
+            .await
+            .ok();
         return Ok(format!("Key pressed: {key}"));
     }
     Ok(format!("Key press {key} — no control tool available"))
@@ -277,23 +382,42 @@ async fn scroll(x: i32, y: i32, direction: &str, amount: i32) -> Result<String> 
             _ => (0, -amount),
         };
         // Move to position first, then scroll
-        let _ = Command::new("cliclick").arg(format!("m:{x},{y}")).status().await;
+        let _ = Command::new("cliclick")
+            .arg(format!("m:{x},{y}"))
+            .status()
+            .await;
         if let Ok(_) = Command::new("cliclick")
             .arg(format!("w:{dx},{dy}"))
-            .status().await
+            .status()
+            .await
         {
             return Ok(format!("Scrolled {direction} {amount}x at {x},{y}"));
         }
-    } else if Command::new("which").arg("xdotool").status().await.map(|s| s.success()).unwrap_or(false) {
-        let btn = match direction { "up" => "4", "left" => "6", "right" => "7", _ => "5" };
+    } else if Command::new("which")
+        .arg("xdotool")
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+    {
+        let btn = match direction {
+            "up" => "4",
+            "left" => "6",
+            "right" => "7",
+            _ => "5",
+        };
         for _ in 0..amount {
             Command::new("xdotool")
                 .args(["mousemove", &x.to_string(), &y.to_string(), "click", btn])
-                .status().await.ok();
+                .status()
+                .await
+                .ok();
         }
         return Ok(format!("Scrolled {direction} {amount}x at {x},{y}"));
     }
-    Ok(format!("Scroll {direction} at {x},{y} — no control tool available"))
+    Ok(format!(
+        "Scroll {direction} at {x},{y} — no control tool available"
+    ))
 }
 
 fn encode_base64(data: &[u8]) -> String {
@@ -302,12 +426,36 @@ fn encode_base64(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as usize;
-        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
+        let b1 = if chunk.len() > 1 {
+            chunk[1] as usize
+        } else {
+            0
+        };
+        let b2 = if chunk.len() > 2 {
+            chunk[2] as usize
+        } else {
+            0
+        };
         let _ = write!(out, "{}", TABLE[(b0 >> 2) & 63] as char);
         let _ = write!(out, "{}", TABLE[((b0 << 4) | (b1 >> 4)) & 63] as char);
-        let _ = write!(out, "{}", if chunk.len() > 1 { TABLE[((b1 << 2) | (b2 >> 6)) & 63] as char } else { '=' });
-        let _ = write!(out, "{}", if chunk.len() > 2 { TABLE[b2 & 63] as char } else { '=' });
+        let _ = write!(
+            out,
+            "{}",
+            if chunk.len() > 1 {
+                TABLE[((b1 << 2) | (b2 >> 6)) & 63] as char
+            } else {
+                '='
+            }
+        );
+        let _ = write!(
+            out,
+            "{}",
+            if chunk.len() > 2 {
+                TABLE[b2 & 63] as char
+            } else {
+                '='
+            }
+        );
     }
     out
 }

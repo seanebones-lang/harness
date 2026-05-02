@@ -7,7 +7,11 @@ pub enum AgentEvent {
     /// Agent is starting a tool call.
     ToolStart { name: String, id: String },
     /// A tool call completed with this result.
-    ToolResult { name: String, id: String, result: String },
+    ToolResult {
+        name: String,
+        id: String,
+        result: String,
+    },
     /// Agent recalled memories; injected N entries into context.
     MemoryRecall { count: usize },
     /// Sub-agent spawned for a task.

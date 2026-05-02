@@ -33,7 +33,9 @@ pub struct ObservabilityConfig {
     pub local_traces: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 // ── Trace types ───────────────────────────────────────────────────────────────
 
@@ -52,7 +54,10 @@ pub struct Span {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum SpanStatus { Ok, Error(String) }
+pub enum SpanStatus {
+    Ok,
+    Error(String),
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpanEvent {
@@ -168,7 +173,9 @@ impl Tracer {
     }
 
     fn record(&self, span: Span) {
-        if !self.config.enabled { return; }
+        if !self.config.enabled {
+            return;
+        }
         if self.config.local_traces {
             let _ = write_local_trace(&span);
         }
@@ -189,7 +196,10 @@ fn write_local_trace(span: &Span) -> Result<()> {
     let file = dir.join(format!("{}.jsonl", span.trace_id));
     let line = serde_json::to_string(span)?;
     use std::io::Write;
-    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&file)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file)?;
     writeln!(f, "{line}")?;
     Ok(())
 }
@@ -227,12 +237,19 @@ async fn export_otlp(span: &Span, endpoint: &str) -> Result<()> {
 /// List recent traces from ~/.harness/traces/.
 pub fn list_traces(limit: usize) -> Result<Vec<String>> {
     let dir = dirs::home_dir().unwrap_or_default().join(".harness/traces");
-    if !dir.exists() { return Ok(vec![]); }
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.extension().map(|e| e == "jsonl").unwrap_or(false))
         .collect();
-    files.sort_by(|a, b| b.metadata().and_then(|m| m.modified()).ok().cmp(&a.metadata().and_then(|m| m.modified()).ok()));
+    files.sort_by(|a, b| {
+        b.metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .cmp(&a.metadata().and_then(|m| m.modified()).ok())
+    });
     files.truncate(limit);
     Ok(files.iter().map(|p| p.display().to_string()).collect())
 }
@@ -240,9 +257,12 @@ pub fn list_traces(limit: usize) -> Result<Vec<String>> {
 /// Load the last trace file and return its spans.
 pub fn load_last_trace() -> Result<Vec<Span>> {
     let files = list_traces(1)?;
-    let Some(path) = files.first() else { return Ok(vec![]); };
+    let Some(path) = files.first() else {
+        return Ok(vec![]);
+    };
     let text = std::fs::read_to_string(path)?;
-    let spans = text.lines()
+    let spans = text
+        .lines()
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| serde_json::from_str::<Span>(l).ok())
         .collect();
@@ -257,7 +277,8 @@ pub fn export_trace(trace_id: &str) -> Result<()> {
         anyhow::bail!("trace {trace_id} not found");
     }
     let text = std::fs::read_to_string(&file)?;
-    let spans: Vec<Span> = text.lines()
+    let spans: Vec<Span> = text
+        .lines()
         .filter_map(|l| serde_json::from_str(l).ok())
         .collect();
     println!("{}", serde_json::to_string_pretty(&spans)?);

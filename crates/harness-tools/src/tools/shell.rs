@@ -181,7 +181,11 @@ impl ShellTool {
         // Best-effort: ignore errors.
         let _ = std::fs::create_dir_all(path.parent().unwrap_or(std::path::Path::new(".")));
         use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
             let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
             let _ = writeln!(f, "[{ts}] {cmd}");
         }

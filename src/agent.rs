@@ -4,7 +4,9 @@
 use anyhow::Result;
 use futures::StreamExt;
 use harness_memory::{MemoryStore, Session, SessionStore};
-use harness_provider_core::{ArcProvider, ChatRequest, Delta, DeltaStream, Message, Role, StopReason};
+use harness_provider_core::{
+    ArcProvider, ChatRequest, Delta, DeltaStream, Message, Role, StopReason,
+};
 use harness_provider_xai::tool_calls_to_message;
 use harness_tools::ToolExecutor;
 use tracing::debug;
@@ -54,7 +56,17 @@ pub async fn drive_agent(
     system_prompt: &str,
     tx: Option<&EventTx>,
 ) -> Result<()> {
-    drive_agent_with_options(provider, tools, memory_store, embed_model, session, system_prompt, tx, None).await
+    drive_agent_with_options(
+        provider,
+        tools,
+        memory_store,
+        embed_model,
+        session,
+        system_prompt,
+        tx,
+        None,
+    )
+    .await
 }
 
 pub async fn drive_agent_with_options(
@@ -67,7 +79,21 @@ pub async fn drive_agent_with_options(
     tx: Option<&EventTx>,
     thinking_budget: Option<u32>,
 ) -> Result<()> {
-    drive_agent_full(provider, tools, memory_store, embed_model, session, system_prompt, tx, thinking_budget, false, false, false, None).await
+    drive_agent_full(
+        provider,
+        tools,
+        memory_store,
+        embed_model,
+        session,
+        system_prompt,
+        tx,
+        thinking_budget,
+        false,
+        false,
+        false,
+        None,
+    )
+    .await
 }
 
 pub async fn drive_agent_with_schema(
@@ -81,7 +107,21 @@ pub async fn drive_agent_with_schema(
     thinking_budget: Option<u32>,
     response_schema: Option<harness_provider_core::ResponseSchema>,
 ) -> Result<()> {
-    drive_agent_full(provider, tools, memory_store, embed_model, session, system_prompt, tx, thinking_budget, false, false, false, response_schema).await
+    drive_agent_full(
+        provider,
+        tools,
+        memory_store,
+        embed_model,
+        session,
+        system_prompt,
+        tx,
+        thinking_budget,
+        false,
+        false,
+        false,
+        response_schema,
+    )
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -111,7 +151,12 @@ pub async fn drive_agent_full(
 
     // Memory recall: embed the last user message and inject top-k relevant past exchanges.
     let augmented_system = build_augmented_system(
-        provider, memory_store, embed_model, session, system_prompt, &emit,
+        provider,
+        memory_store,
+        embed_model,
+        session,
+        system_prompt,
+        &emit,
     )
     .await;
 
@@ -144,11 +189,23 @@ pub async fn drive_agent_full(
                 Delta::ToolCall(call) => {
                     pending_tool_calls.push(call);
                 }
-                Delta::Usage { input_tokens, output_tokens } => {
-                    emit(AgentEvent::TokenUsage { input: input_tokens, output: output_tokens });
+                Delta::Usage {
+                    input_tokens,
+                    output_tokens,
+                } => {
+                    emit(AgentEvent::TokenUsage {
+                        input: input_tokens,
+                        output: output_tokens,
+                    });
                 }
-                Delta::CacheUsage { cache_creation_tokens, cache_read_tokens } => {
-                    emit(AgentEvent::CacheUsage { creation: cache_creation_tokens, read: cache_read_tokens });
+                Delta::CacheUsage {
+                    cache_creation_tokens,
+                    cache_read_tokens,
+                } => {
+                    emit(AgentEvent::CacheUsage {
+                        creation: cache_creation_tokens,
+                        read: cache_read_tokens,
+                    });
                 }
                 Delta::Done { stop_reason: sr } => {
                     stop_reason = sr;
@@ -163,7 +220,10 @@ pub async fn drive_agent_full(
         if !pending_tool_calls.is_empty() {
             // Create a git checkpoint stash on the first destructive tool call of this turn.
             let has_destructive = pending_tool_calls.iter().any(|c| {
-                matches!(c.function.name.as_str(), "write_file" | "patch_file" | "shell")
+                matches!(
+                    c.function.name.as_str(),
+                    "write_file" | "patch_file" | "shell"
+                )
             });
             if has_destructive && !_checkpoint_taken.get() {
                 _checkpoint_taken.set(true);
@@ -214,11 +274,7 @@ pub async fn drive_agent_full(
 /// Load a project-specific system prompt prefix from well-known files in CWD.
 /// Checks (in order): .harness/SYSTEM.md, AGENTS.md, CLAUDE.md
 pub fn load_project_instructions() -> Option<String> {
-    let candidates = [
-        ".harness/SYSTEM.md",
-        "AGENTS.md",
-        "CLAUDE.md",
-    ];
+    let candidates = [".harness/SYSTEM.md", "AGENTS.md", "CLAUDE.md"];
     for path in &candidates {
         if let Ok(text) = std::fs::read_to_string(path) {
             if !text.trim().is_empty() {
@@ -253,7 +309,12 @@ async fn build_augmented_system(
         return system_prompt.to_string();
     };
 
-    let Some(last_user) = session.messages.iter().rev().find(|m| matches!(m.role, Role::User)) else {
+    let Some(last_user) = session
+        .messages
+        .iter()
+        .rev()
+        .find(|m| matches!(m.role, Role::User))
+    else {
         return system_prompt.to_string();
     };
 
@@ -270,7 +331,9 @@ async fn build_augmented_system(
         return system_prompt.to_string();
     }
 
-    emit(AgentEvent::MemoryRecall { count: memories.len() });
+    emit(AgentEvent::MemoryRecall {
+        count: memories.len(),
+    });
 
     let mem_block = memories
         .iter()
@@ -283,7 +346,10 @@ async fn build_augmented_system(
 
 /// Return a rough token count for a slice of messages (character heuristic: 4 chars/token).
 pub fn estimate_tokens(messages: &[harness_provider_core::Message]) -> usize {
-    messages.iter().map(|m| m.content.as_str().len() / 4 + 1).sum()
+    messages
+        .iter()
+        .map(|m| m.content.as_str().len() / 4 + 1)
+        .sum()
 }
 
 /// Context compaction: when the session exceeds `threshold` fraction of the model context
@@ -291,11 +357,7 @@ pub fn estimate_tokens(messages: &[harness_provider_core::Message]) -> usize {
 ///
 /// Uses the provider's fast model when available (falls back to the session model).
 /// Context limit is approximated at 128k tokens for modern models.
-pub async fn maybe_compact(
-    provider: &ArcProvider,
-    session: &mut Session,
-    threshold: f32,
-) {
+pub async fn maybe_compact(provider: &ArcProvider, session: &mut Session, threshold: f32) {
     const CONTEXT_LIMIT: usize = 128_000;
 
     let total = estimate_tokens(&session.messages);
@@ -310,7 +372,8 @@ pub async fn maybe_compact(
 /// Force-compact the oldest half of non-system messages into a summary block.
 pub async fn compact_context(provider: &ArcProvider, session: &mut Session) {
     // Separate system messages from the rest.
-    let (system_msgs, mut conv_msgs): (Vec<_>, Vec<_>) = session.messages
+    let (system_msgs, mut conv_msgs): (Vec<_>, Vec<_>) = session
+        .messages
         .drain(..)
         .partition(|m| matches!(m.role, Role::System));
 
@@ -327,15 +390,18 @@ pub async fn compact_context(provider: &ArcProvider, session: &mut Session) {
     let remaining = conv_msgs;
 
     // Build a summarisation prompt.
-    let segment: String = to_compact.iter().map(|m| {
-        let role = match m.role {
-            Role::User => "User",
-            Role::Assistant => "Assistant",
-            Role::Tool => "Tool",
-            Role::System => "System",
-        };
-        format!("{role}: {}\n", m.content.as_str())
-    }).collect();
+    let segment: String = to_compact
+        .iter()
+        .map(|m| {
+            let role = match m.role {
+                Role::User => "User",
+                Role::Assistant => "Assistant",
+                Role::Tool => "Tool",
+                Role::System => "System",
+            };
+            format!("{role}: {}\n", m.content.as_str())
+        })
+        .collect();
 
     let summary_prompt = format!(
         "Summarise this conversation segment concisely. \
@@ -343,8 +409,8 @@ pub async fn compact_context(provider: &ArcProvider, session: &mut Session) {
          Output only the summary — no preamble.\n\n{segment}"
     );
 
-    let summary_req = ChatRequest::new(&session.model)
-        .with_messages(vec![Message::user(&summary_prompt)]);
+    let summary_req =
+        ChatRequest::new(&session.model).with_messages(vec![Message::user(&summary_prompt)]);
 
     let summary = match provider.stream_chat(summary_req).await {
         Ok(mut stream) => {
@@ -370,7 +436,11 @@ pub async fn compact_context(provider: &ArcProvider, session: &mut Session) {
     session.messages.push(compact_msg);
     session.messages.extend(remaining);
 
-    tracing::info!("context compacted: {} messages → summary + {}", mid, session.messages.len());
+    tracing::info!(
+        "context compacted: {} messages → summary + {}",
+        mid,
+        session.messages.len()
+    );
 }
 
 /// Store the most recent user↔assistant exchange as an embedded memory.
@@ -436,10 +506,11 @@ pub async fn suggest_session_name(provider: &ArcProvider, session: &Session) -> 
          Reply with ONLY the title.\n\nTask: {snippet}"
     );
 
-    let req = ChatRequest::new(&session.model)
-        .with_messages(vec![Message::user(&prompt)]);
+    let req = ChatRequest::new(&session.model).with_messages(vec![Message::user(&prompt)]);
 
-    let Ok(mut stream) = provider.stream_chat(req).await else { return None };
+    let Ok(mut stream) = provider.stream_chat(req).await else {
+        return None;
+    };
     let mut title = String::new();
     while let Some(Ok(Delta::Text(chunk))) = stream.next().await {
         title.push_str(&chunk);
@@ -484,7 +555,16 @@ pub async fn run_once(
     let sys = system_prompt.unwrap_or(DEFAULT_SYSTEM).to_string();
 
     let handle = tokio::spawn(async move {
-        drive_agent(&provider2, &tools2, mem2.as_ref(), em2.as_deref(), &mut session, &sys, Some(&tx)).await?;
+        drive_agent(
+            &provider2,
+            &tools2,
+            mem2.as_ref(),
+            em2.as_deref(),
+            &mut session,
+            &sys,
+            Some(&tx),
+        )
+        .await?;
         Ok::<Session, anyhow::Error>(session)
     });
 

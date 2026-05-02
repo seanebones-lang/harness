@@ -98,11 +98,17 @@ pub struct NativeToolsConfig {
 
 impl NativeToolsConfig {
     #[allow(dead_code)]
-    pub fn web_search_enabled(&self) -> bool { self.web_search.unwrap_or(false) }
+    pub fn web_search_enabled(&self) -> bool {
+        self.web_search.unwrap_or(false)
+    }
     #[allow(dead_code)]
-    pub fn code_execution_enabled(&self) -> bool { self.code_execution.unwrap_or(false) }
+    pub fn code_execution_enabled(&self) -> bool {
+        self.code_execution.unwrap_or(false)
+    }
     #[allow(dead_code)]
-    pub fn x_search_enabled(&self) -> bool { self.x_search.unwrap_or(false) }
+    pub fn x_search_enabled(&self) -> bool {
+        self.x_search.unwrap_or(false)
+    }
 }
 
 /// Budget thresholds — warn when spending approaches limits.
@@ -147,7 +153,9 @@ pub struct ComputerUseConfig {
 }
 
 impl ComputerUseConfig {
-    pub fn is_enabled(&self) -> bool { self.enabled.unwrap_or(false) }
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(false)
+    }
 }
 
 /// Auto-test configuration — run tests after file writes and feed failures back to the agent.

@@ -1,6 +1,6 @@
 //! Structured `git` tool — typed operations instead of raw shell strings.
 //!
-//! Exposes: status, diff, add, commit, branch, push, log, blame, restore.
+//! Exposes: status, diff, add, commit, branch, push, log, blame, restore, clone, pull, fetch, checkout, switch.
 
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
@@ -17,7 +17,7 @@ impl Tool for GitTool {
         ToolDefinition::new(
             "git",
             "Perform git operations with typed, safe parameters. \
-             Actions: status, diff, add, commit, branch, push, log, blame, restore. \
+             Actions: status, diff, add, commit, branch, push, log, blame, restore, clone, pull, fetch, checkout, switch. \
              Prefer this over `shell` for git operations — it validates parameters \
              and prevents force-pushes to protected branches.",
             json!({
@@ -25,7 +25,7 @@ impl Tool for GitTool {
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["status", "diff", "add", "commit", "branch", "push", "log", "blame", "restore", "stash"],
+                        "enum": ["status", "diff", "add", "commit", "branch", "push", "log", "blame", "restore", "stash", "clone", "pull", "fetch", "checkout", "switch"],
                         "description": "Git operation to perform."
                     },
                     "paths": {
@@ -65,6 +65,14 @@ impl Tool for GitTool {
                     "staged": {
                         "type": "boolean",
                         "description": "Show staged diff (for diff action)."
+                    },
+                    "repo": {
+                        "type": "string",
+                        "description": "Repository URL/path (for clone)."
+                    },
+                    "directory": {
+                        "type": "string",
+                        "description": "Destination directory (for clone)."
                     }
                 },
                 "required": ["action"]
@@ -73,7 +81,9 @@ impl Tool for GitTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let action = args["action"].as_str().ok_or_else(|| anyhow::anyhow!("missing action"))?;
+        let action = args["action"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing action"))?;
 
         match action {
             "status" => run_git(&["status", "--short"]).await,
@@ -86,7 +96,9 @@ impl Tool for GitTool {
                     .unwrap_or_default();
 
                 let mut git_args = vec!["diff"];
-                if staged { git_args.push("--cached"); }
+                if staged {
+                    git_args.push("--cached");
+                }
                 git_args.extend(paths.iter().copied());
                 run_git(&git_args).await
             }
@@ -107,16 +119,16 @@ impl Tool for GitTool {
             }
 
             "commit" => {
-                let msg = args["message"].as_str().ok_or_else(|| anyhow::anyhow!("commit requires a message"))?;
+                let msg = args["message"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("commit requires a message"))?;
                 run_git(&["commit", "-m", msg]).await
             }
 
-            "branch" => {
-                match args["branch_name"].as_str() {
-                    Some(name) => run_git(&["checkout", "-b", name]).await,
-                    None => run_git(&["branch", "--list", "-v"]).await,
-                }
-            }
+            "branch" => match args["branch_name"].as_str() {
+                Some(name) => run_git(&["checkout", "-b", name]).await,
+                None => run_git(&["branch", "--list", "-v"]).await,
+            },
 
             "push" => {
                 let remote = args["remote"].as_str().unwrap_or("origin");
@@ -135,6 +147,53 @@ impl Tool for GitTool {
                 } else {
                     run_git(&["push", remote, branch]).await
                 }
+            }
+
+            "clone" => {
+                let repo = args["repo"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("clone requires `repo`"))?;
+                if let Some(directory) = args["directory"].as_str() {
+                    run_git(&["clone", repo, directory]).await
+                } else {
+                    run_git(&["clone", repo]).await
+                }
+            }
+
+            "pull" => {
+                let remote = args["remote"].as_str();
+                let branch = args["branch_name"].as_str();
+                match (remote, branch) {
+                    (Some(r), Some(b)) => run_git(&["pull", "--ff-only", r, b]).await,
+                    (Some(r), None) => run_git(&["pull", "--ff-only", r]).await,
+                    (None, Some(b)) => run_git(&["pull", "--ff-only", "origin", b]).await,
+                    (None, None) => run_git(&["pull", "--ff-only"]).await,
+                }
+            }
+
+            "fetch" => {
+                let remote = args["remote"].as_str();
+                let branch = args["branch_name"].as_str();
+                match (remote, branch) {
+                    (Some(r), Some(b)) => run_git(&["fetch", r, b]).await,
+                    (Some(r), None) => run_git(&["fetch", r]).await,
+                    (None, Some(b)) => run_git(&["fetch", "origin", b]).await,
+                    (None, None) => run_git(&["fetch", "--all", "--prune"]).await,
+                }
+            }
+
+            "checkout" => {
+                let branch = args["branch_name"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("checkout requires `branch_name`"))?;
+                run_git(&["checkout", branch]).await
+            }
+
+            "switch" => {
+                let branch = args["branch_name"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("switch requires `branch_name`"))?;
+                run_git(&["switch", branch]).await
             }
 
             "log" => {
@@ -195,10 +254,7 @@ impl Tool for GitTool {
 }
 
 async fn run_git(args: &[&str]) -> anyhow::Result<String> {
-    let output = Command::new("git")
-        .args(args)
-        .output()
-        .await?;
+    let output = Command::new("git").args(args).output().await?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -213,5 +269,9 @@ async fn run_git(args: &[&str]) -> anyhow::Result<String> {
         stdout
     };
 
-    Ok(if result.is_empty() { "(no output)".to_string() } else { result })
+    Ok(if result.is_empty() {
+        "(no output)".to_string()
+    } else {
+        result
+    })
 }

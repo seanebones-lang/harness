@@ -6,9 +6,9 @@ use harness_memory::{MemoryStore, Session, SessionStore};
 use harness_provider_core::{
     ChatRequest, Message, Role, ToolCall, ToolCallFunction, ToolDefinition,
 };
-use harness_tools::{ToolExecutor, ToolRegistry};
 use harness_tools::registry::Tool;
 use harness_tools::tools::{PatchFileTool, ReadFileTool, SearchCodeTool, ShellTool, WriteFileTool};
+use harness_tools::{ToolExecutor, ToolRegistry};
 use tempfile::tempdir;
 
 // ── Session / store ───────────────────────────────────────────────────────────
@@ -25,7 +25,10 @@ async fn session_round_trip() {
 
     store.save(&session).unwrap();
 
-    let loaded = store.load(&session.id).unwrap().expect("session should exist");
+    let loaded = store
+        .load(&session.id)
+        .unwrap()
+        .expect("session should exist");
     assert_eq!(loaded.id, session.id);
     assert_eq!(loaded.messages.len(), 2);
     assert_eq!(loaded.messages[0].content.as_str(), "hello");
@@ -100,9 +103,10 @@ async fn memory_store_insert_and_search() {
     let session_b = "session-b";
     let emb_a: Vec<f32> = vec![1.0, 0.0, 0.0];
     let emb_query: Vec<f32> = vec![0.9, 0.1, 0.0]; // close to emb_a
-    let emb_far: Vec<f32> = vec![0.0, 1.0, 0.0];   // orthogonal
+    let emb_far: Vec<f32> = vec![0.0, 1.0, 0.0]; // orthogonal
 
-    mem.insert(session_a, "text close to query", &emb_a).unwrap();
+    mem.insert(session_a, "text close to query", &emb_a)
+        .unwrap();
     mem.insert(session_b, "orthogonal text", &emb_far).unwrap();
 
     // Search excluding session_a itself
@@ -151,9 +155,11 @@ fn chat_request_builder() {
     let req = ChatRequest::new("grok-3-fast")
         .with_system("be helpful")
         .with_messages(vec![Message::user("hi")])
-        .with_tools(vec![
-            ToolDefinition::new("my_tool", "does stuff", serde_json::json!({"type":"object"}))
-        ]);
+        .with_tools(vec![ToolDefinition::new(
+            "my_tool",
+            "does stuff",
+            serde_json::json!({"type":"object"}),
+        )]);
 
     assert_eq!(req.model, "grok-3-fast");
     assert_eq!(req.system.as_deref(), Some("be helpful"));
@@ -182,11 +188,15 @@ async fn read_write_file_tools() {
             arguments: serde_json::json!({
                 "path": file_path.to_str().unwrap(),
                 "content": "hello world\nline 2\n"
-            }).to_string(),
+            })
+            .to_string(),
         },
     };
     let result = executor.execute(&write_call).await;
-    assert!(result.contains("bytes"), "write should report bytes: {result}");
+    assert!(
+        result.contains("bytes"),
+        "write should report bytes: {result}"
+    );
 
     // Read back
     let read_call = ToolCall {
@@ -196,11 +206,15 @@ async fn read_write_file_tools() {
             name: "read_file".into(),
             arguments: serde_json::json!({
                 "path": file_path.to_str().unwrap()
-            }).to_string(),
+            })
+            .to_string(),
         },
     };
     let result = executor.execute(&read_call).await;
-    assert!(result.contains("hello world"), "read should contain content: {result}");
+    assert!(
+        result.contains("hello world"),
+        "read should contain content: {result}"
+    );
 }
 
 #[tokio::test]
@@ -242,7 +256,11 @@ async fn shell_tool_timeout() {
 #[tokio::test]
 async fn search_code_tool() {
     let dir = tempdir().unwrap();
-    std::fs::write(dir.path().join("main.rs"), "fn main() { println!(\"hello\"); }").unwrap();
+    std::fs::write(
+        dir.path().join("main.rs"),
+        "fn main() { println!(\"hello\"); }",
+    )
+    .unwrap();
 
     let mut registry = ToolRegistry::new();
     registry.register(SearchCodeTool);
@@ -256,7 +274,8 @@ async fn search_code_tool() {
             arguments: serde_json::json!({
                 "pattern": "println",
                 "path": dir.path().to_str().unwrap()
-            }).to_string(),
+            })
+            .to_string(),
         },
     };
     let result = executor.execute(&call).await;
@@ -283,11 +302,15 @@ async fn patch_file_tool() {
                 "path": path.to_str().unwrap(),
                 "old_content": "    let x = 1;",
                 "new_content": "    let x = 42;"
-            }).to_string(),
+            })
+            .to_string(),
         },
     };
     let result = executor.execute(&call).await;
-    assert!(result.contains("Patched"), "expected patch success: {result}");
+    assert!(
+        result.contains("Patched"),
+        "expected patch success: {result}"
+    );
     let content = std::fs::read_to_string(&path).unwrap();
     assert!(content.contains("42"), "file should be updated: {content}");
 
@@ -301,11 +324,15 @@ async fn patch_file_tool() {
                 "path": path.to_str().unwrap(),
                 "old_content": "this does not exist",
                 "new_content": "replacement"
-            }).to_string(),
+            })
+            .to_string(),
         },
     };
     let result2 = executor.execute(&call2).await;
-    assert!(result2.contains("not found"), "expected not-found: {result2}");
+    assert!(
+        result2.contains("not found"),
+        "expected not-found: {result2}"
+    );
 }
 
 #[tokio::test]
@@ -322,7 +349,10 @@ async fn unknown_tool_returns_error_message() {
         },
     };
     let result = executor.execute(&call).await;
-    assert!(result.contains("Unknown tool"), "expected unknown tool message: {result}");
+    assert!(
+        result.contains("Unknown tool"),
+        "expected unknown tool message: {result}"
+    );
 }
 
 #[test]

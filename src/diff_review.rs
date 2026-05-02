@@ -60,10 +60,8 @@ impl StagingBuffer {
             compute_hunks(orig, new_content)
         } else {
             // New file: single hunk with all additions
-            let lines: Vec<(char, String)> = new_content
-                .lines()
-                .map(|l| ('+', l.to_string()))
-                .collect();
+            let lines: Vec<(char, String)> =
+                new_content.lines().map(|l| ('+', l.to_string())).collect();
             vec![DiffHunk {
                 header: "@@ -0,0 +1 @@ (new file)".to_string(),
                 lines,
@@ -83,24 +81,27 @@ impl StagingBuffer {
 
     /// Apply all accepted hunks to disk.
     pub fn commit(&self) -> Vec<Result<PathBuf>> {
-        self.entries.values().map(|diff| {
-            // If file-level decision: apply or skip entirely.
-            if let Some(accept) = diff.file_decision {
-                if accept {
-                    std::fs::write(&diff.path, &diff.proposed)?;
-                    return Ok(diff.path.clone());
-                } else {
-                    return Ok(diff.path.clone()); // rejected, no change
+        self.entries
+            .values()
+            .map(|diff| {
+                // If file-level decision: apply or skip entirely.
+                if let Some(accept) = diff.file_decision {
+                    if accept {
+                        std::fs::write(&diff.path, &diff.proposed)?;
+                        return Ok(diff.path.clone());
+                    } else {
+                        return Ok(diff.path.clone()); // rejected, no change
+                    }
                 }
-            }
-            // Apply accepted hunks only (reconstruct file)
-            let original = diff.original.as_deref().unwrap_or("");
-            let result = apply_accepted_hunks(original, &diff.hunks);
-            if result != original {
-                std::fs::write(&diff.path, &result)?;
-            }
-            Ok(diff.path.clone())
-        }).collect()
+                // Apply accepted hunks only (reconstruct file)
+                let original = diff.original.as_deref().unwrap_or("");
+                let result = apply_accepted_hunks(original, &diff.hunks);
+                if result != original {
+                    std::fs::write(&diff.path, &result)?;
+                }
+                Ok(diff.path.clone())
+            })
+            .collect()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -108,7 +109,8 @@ impl StagingBuffer {
     }
 
     pub fn pending_count(&self) -> usize {
-        self.entries.values()
+        self.entries
+            .values()
             .flat_map(|d| d.hunks.iter())
             .filter(|h| h.decision == HunkDecision::Pending)
             .count()
@@ -160,7 +162,8 @@ fn diff_to_edits(a: &[&str], b: &[&str], dp: &[Vec<usize>]) -> Vec<EditOp> {
     while i > 0 || j > 0 {
         if i > 0 && j > 0 && a[i - 1] == b[j - 1] {
             ops.push(EditOp::Keep(i - 1, j - 1));
-            i -= 1; j -= 1;
+            i -= 1;
+            j -= 1;
         } else if j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j]) {
             ops.push(EditOp::Insert(j - 1));
             j -= 1;
@@ -187,15 +190,26 @@ fn group_edits_into_hunks(
         match edit {
             EditOp::Keep(oi, _ni) => {
                 if let Some(ref mut hunk) = current_hunk {
-                    let dist_to_next_change = edits[edit_idx..].iter()
+                    let dist_to_next_change = edits[edit_idx..]
+                        .iter()
                         .position(|e| !matches!(e, EditOp::Keep(..)))
                         .unwrap_or(usize::MAX);
                     hunk.0.push((' ', orig[*oi].to_string()));
                     if dist_to_next_change > context * 2 {
                         // Flush hunk
                         let (lines, orig_start, new_start) = current_hunk.take().unwrap();
-                        let header = format!("@@ -{},{} +{},{} @@", orig_start + 1, lines.len(), new_start + 1, lines.len());
-                        hunks.push(DiffHunk { header, lines, decision: HunkDecision::Pending });
+                        let header = format!(
+                            "@@ -{},{} +{},{} @@",
+                            orig_start + 1,
+                            lines.len(),
+                            new_start + 1,
+                            lines.len()
+                        );
+                        hunks.push(DiffHunk {
+                            header,
+                            lines,
+                            decision: HunkDecision::Pending,
+                        });
                     }
                 }
             }
@@ -215,10 +229,16 @@ fn group_edits_into_hunks(
             }
             EditOp::Insert(ni) => {
                 if current_hunk.is_none() {
-                    let start_orig = if *ni > 0 { ni.saturating_sub(context) } else { 0 };
+                    let start_orig = if *ni > 0 {
+                        ni.saturating_sub(context)
+                    } else {
+                        0
+                    };
                     let mut lines = Vec::new();
                     for ctx in start_orig..*ni {
-                        if ctx < new.len() { lines.push((' ', new[ctx].to_string())); }
+                        if ctx < new.len() {
+                            lines.push((' ', new[ctx].to_string()));
+                        }
                     }
                     current_hunk = Some((lines, start_orig, start_orig));
                 }
@@ -231,8 +251,18 @@ fn group_edits_into_hunks(
     }
 
     if let Some((lines, orig_start, new_start)) = current_hunk {
-        let header = format!("@@ -{},{} +{},{} @@", orig_start + 1, lines.len(), new_start + 1, lines.len());
-        hunks.push(DiffHunk { header, lines, decision: HunkDecision::Pending });
+        let header = format!(
+            "@@ -{},{} +{},{} @@",
+            orig_start + 1,
+            lines.len(),
+            new_start + 1,
+            lines.len()
+        );
+        hunks.push(DiffHunk {
+            header,
+            lines,
+            decision: HunkDecision::Pending,
+        });
     }
 
     let _ = last_change_idx;
@@ -259,11 +289,15 @@ fn apply_accepted_hunks(original: &str, hunks: &[DiffHunk]) -> String {
     // Reconstruct from hunk lines (accepted = apply changes, rejected = use original)
     let mut result = original.to_string();
     // For simplicity, apply all accepted hunks by filtering lines
-    let accepted_lines: Vec<String> = hunks.iter()
+    let accepted_lines: Vec<String> = hunks
+        .iter()
         .filter(|h| h.decision == HunkDecision::Accept || h.decision == HunkDecision::Pending)
-        .flat_map(|h| h.lines.iter()
-            .filter(|(op, _)| *op != '-')
-            .map(|(_, l)| l.clone()))
+        .flat_map(|h| {
+            h.lines
+                .iter()
+                .filter(|(op, _)| *op != '-')
+                .map(|(_, l)| l.clone())
+        })
         .collect();
 
     if !accepted_lines.is_empty() {
@@ -284,17 +318,27 @@ pub struct AutoTrustPatterns {
 
 impl AutoTrustPatterns {
     pub fn load() -> Self {
-        let path = dirs::home_dir().unwrap_or_default().join(".harness/diff-trust.toml");
+        let path = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".harness/diff-trust.toml");
         if !path.exists() {
             return Self::default();
         }
-        let Ok(text) = std::fs::read_to_string(&path) else { return Self::default(); };
-        let Ok(val) = text.parse::<toml::Value>() else { return Self::default(); };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Self::default();
+        };
+        let Ok(val) = text.parse::<toml::Value>() else {
+            return Self::default();
+        };
 
         let get_list = |key: &str| -> Vec<String> {
             val.get(key)
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default()
         };
 
@@ -306,12 +350,16 @@ impl AutoTrustPatterns {
 
     pub fn should_auto_accept(&self, path: &Path) -> bool {
         let path_str = path.to_string_lossy();
-        self.always_accept.iter().any(|pat| glob_match(pat, &path_str))
+        self.always_accept
+            .iter()
+            .any(|pat| glob_match(pat, &path_str))
     }
 
     pub fn should_auto_reject(&self, path: &Path) -> bool {
         let path_str = path.to_string_lossy();
-        self.always_reject.iter().any(|pat| glob_match(pat, &path_str))
+        self.always_reject
+            .iter()
+            .any(|pat| glob_match(pat, &path_str))
     }
 }
 
@@ -322,7 +370,9 @@ fn glob_match(pattern: &str, path: &str) -> bool {
         .replace("**", "\x00")
         .replace('*', "[^/]*")
         .replace('\x00', ".*");
-    regex::Regex::new(&format!("^{re_pat}$")).map(|r| r.is_match(path)).unwrap_or(false)
+    regex::Regex::new(&format!("^{re_pat}$"))
+        .map(|r| r.is_match(path))
+        .unwrap_or(false)
 }
 
 // ── TUI overlay rendering helpers ─────────────────────────────────────────────
@@ -337,9 +387,7 @@ pub fn format_hunk_for_display(hunk: &DiffHunk) -> Vec<(char, String)> {
 /// Render a diff summary: X files, Y hunks pending.
 pub fn render_staging_summary(buf: &StagingBuffer) -> String {
     let file_count = buf.entries.len();
-    let hunk_count = buf.entries.values()
-        .flat_map(|d| d.hunks.iter())
-        .count();
+    let hunk_count = buf.entries.values().flat_map(|d| d.hunks.iter()).count();
     let pending = buf.pending_count();
     format!("{file_count} file(s), {hunk_count} hunk(s), {pending} pending")
 }

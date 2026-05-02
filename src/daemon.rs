@@ -234,7 +234,8 @@ async fn handle_connection(
             let req_model = req.params["model"].as_str().unwrap_or(&model).to_string();
 
             let mut session = if let Some(sid) = &session_id {
-                session_store.find(sid)?
+                session_store
+                    .find(sid)?
                     .unwrap_or_else(|| harness_memory::Session::new(&req_model))
             } else {
                 harness_memory::Session::new(&req_model)
@@ -250,10 +251,15 @@ async fn handle_connection(
 
             let handle = tokio::spawn(async move {
                 crate::agent::drive_agent(
-                    &p2, &t2,
-                    ms2.as_ref(), em2.as_deref(),
-                    &mut session, &sys2, Some(&tx),
-                ).await?;
+                    &p2,
+                    &t2,
+                    ms2.as_ref(),
+                    em2.as_deref(),
+                    &mut session,
+                    &sys2,
+                    Some(&tx),
+                )
+                .await?;
                 Ok::<harness_memory::Session, anyhow::Error>(session)
             });
 

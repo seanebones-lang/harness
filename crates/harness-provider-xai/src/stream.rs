@@ -86,9 +86,9 @@ impl SseStream {
             Some(reason) => {
                 let stop_reason = match reason {
                     "tool_calls" => StopReason::ToolUse,
-                    "stop"       => StopReason::EndTurn,
-                    "length"     => StopReason::MaxTokens,
-                    other        => StopReason::Other(other.to_string()),
+                    "stop" => StopReason::EndTurn,
+                    "length" => StopReason::MaxTokens,
+                    other => StopReason::Other(other.to_string()),
                 };
 
                 // For tool_calls, queue all assembled calls first.
@@ -184,14 +184,10 @@ impl Stream for SseStream {
 
             // Need more bytes from the underlying stream
             match Pin::new(&mut self.inner).poll_next(cx) {
-                Poll::Ready(Some(Ok(bytes))) => {
-                    match std::str::from_utf8(&bytes) {
-                        Ok(s) => self.buffer.push_str(s),
-                        Err(e) => {
-                            return Poll::Ready(Some(Err(ProviderError::Other(e.to_string()))))
-                        }
-                    }
-                }
+                Poll::Ready(Some(Ok(bytes))) => match std::str::from_utf8(&bytes) {
+                    Ok(s) => self.buffer.push_str(s),
+                    Err(e) => return Poll::Ready(Some(Err(ProviderError::Other(e.to_string())))),
+                },
                 Poll::Ready(Some(Err(e))) => {
                     return Poll::Ready(Some(Err(ProviderError::Other(e.to_string()))))
                 }

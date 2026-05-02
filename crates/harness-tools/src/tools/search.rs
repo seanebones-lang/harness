@@ -28,7 +28,9 @@ impl Tool for SearchCodeTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let pattern = args["pattern"].as_str().ok_or_else(|| anyhow::anyhow!("missing pattern"))?;
+        let pattern = args["pattern"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing pattern"))?;
         let root = args["path"].as_str().unwrap_or(".");
         let file_glob = args["file_glob"].as_str();
         let max_results = args["max_results"].as_u64().unwrap_or(50) as usize;
@@ -55,11 +57,18 @@ impl Tool for SearchCodeTool {
                 }
             }
 
-            let Ok(content) = std::fs::read_to_string(path) else { continue };
+            let Ok(content) = std::fs::read_to_string(path) else {
+                continue;
+            };
 
             for (line_no, line) in content.lines().enumerate() {
                 if re.is_match(line) {
-                    results.push(format!("{}:{}: {}", path.display(), line_no + 1, line.trim()));
+                    results.push(format!(
+                        "{}:{}: {}",
+                        path.display(),
+                        line_no + 1,
+                        line.trim()
+                    ));
                     if results.len() >= max_results {
                         break;
                     }

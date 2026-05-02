@@ -170,16 +170,36 @@ impl Provider for XaiProvider {
         // April 2026 Grok 4.x SKUs
         if m.contains("grok-4.20") || m.contains("grok-4-20") {
             // Grok 4.20: $2/$6, 90% cached discount → $0.20 cached
-            Some(Pricing { input_per_m_usd: 2.00, cached_input_per_m_usd: 0.20, output_per_m_usd: 6.00 })
+            Some(Pricing {
+                input_per_m_usd: 2.00,
+                cached_input_per_m_usd: 0.20,
+                output_per_m_usd: 6.00,
+            })
         } else if m.contains("grok-4-1-fast") || m.contains("grok-4.1-fast") {
-            Some(Pricing { input_per_m_usd: 0.20, cached_input_per_m_usd: 0.05, output_per_m_usd: 0.50 })
+            Some(Pricing {
+                input_per_m_usd: 0.20,
+                cached_input_per_m_usd: 0.05,
+                output_per_m_usd: 0.50,
+            })
         } else if m.contains("grok-4") {
-            Some(Pricing { input_per_m_usd: 3.00, cached_input_per_m_usd: 0.0, output_per_m_usd: 15.00 })
+            Some(Pricing {
+                input_per_m_usd: 3.00,
+                cached_input_per_m_usd: 0.0,
+                output_per_m_usd: 15.00,
+            })
         // Legacy Grok 3
         } else if m.contains("grok-3-mini") {
-            Some(Pricing { input_per_m_usd: 0.30, cached_input_per_m_usd: 0.0, output_per_m_usd: 0.50 })
+            Some(Pricing {
+                input_per_m_usd: 0.30,
+                cached_input_per_m_usd: 0.0,
+                output_per_m_usd: 0.50,
+            })
         } else if m.contains("grok-3") {
-            Some(Pricing { input_per_m_usd: 2.00, cached_input_per_m_usd: 0.0, output_per_m_usd: 10.00 })
+            Some(Pricing {
+                input_per_m_usd: 2.00,
+                cached_input_per_m_usd: 0.0,
+                output_per_m_usd: 10.00,
+            })
         } else {
             None
         }
@@ -228,7 +248,9 @@ impl Provider for XaiProvider {
             max_tokens: self.config.max_tokens,
             temperature: self.config.temperature,
             stream: true,
-            stream_options: Some(StreamOptions { include_usage: true }),
+            stream_options: Some(StreamOptions {
+                include_usage: true,
+            }),
             tool_choice: if has_tools { Some("auto".into()) } else { None },
             response_format,
         };
@@ -255,10 +277,7 @@ impl Provider for XaiProvider {
 
             let status = resp.status();
 
-            let retryable = matches!(
-                status.as_u16(),
-                429 | 500 | 502 | 503 | 504
-            );
+            let retryable = matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504);
 
             if status.is_success() {
                 let byte_stream = resp.bytes_stream();
@@ -280,9 +299,7 @@ impl Provider for XaiProvider {
 
                 warn!(
                     status = status.as_u16(),
-                    attempt,
-                    delay_ms,
-                    "xAI API retryable error; waiting before retry"
+                    attempt, delay_ms, "xAI API retryable error; waiting before retry"
                 );
 
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
@@ -290,10 +307,7 @@ impl Provider for XaiProvider {
                 continue;
             }
 
-            let msg = resp
-                .text()
-                .await
-                .unwrap_or_else(|_| "<unreadable>".into());
+            let msg = resp.text().await.unwrap_or_else(|_| "<unreadable>".into());
             return Err(ProviderError::Api {
                 status: status.as_u16(),
                 message: msg,
@@ -306,7 +320,14 @@ impl XaiProvider {
     /// Embed a text string using the xAI embeddings endpoint (inherent method).
     /// Prefer using the `Provider::embed` trait method for generic code.
     pub async fn embed_direct(&self, model: &str, text: &str) -> anyhow::Result<Vec<f32>> {
-        crate::embed::embed_text(&self.client, &self.config.api_key, &self.config.base_url, model, text).await
+        crate::embed::embed_text(
+            &self.client,
+            &self.config.api_key,
+            &self.config.base_url,
+            model,
+            text,
+        )
+        .await
     }
 }
 

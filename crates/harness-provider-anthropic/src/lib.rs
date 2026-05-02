@@ -7,8 +7,8 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use harness_provider_core::{
-    ChatRequest, Delta, DeltaStream, Pricing, Provider, ProviderError,
-    Role, StopReason, ToolCall, ToolCallFunction,
+    ChatRequest, Delta, DeltaStream, Pricing, Provider, ProviderError, Role, StopReason, ToolCall,
+    ToolCallFunction,
 };
 use reqwest::Client;
 use serde::Serialize;
@@ -111,7 +111,7 @@ fn build_api_messages(req: &ChatRequest) -> Vec<ApiMessage> {
                 // Also cache @file-pinned content and the very last user message.
                 let should_cache = idx + 1 == total     // last message
                     || idx + 2 == total                  // second-to-last
-                    || text.contains("@file:");          // pinned file reference
+                    || text.contains("@file:"); // pinned file reference
                 if should_cache {
                     (
                         "user",
@@ -129,17 +129,21 @@ fn build_api_messages(req: &ChatRequest) -> Vec<ApiMessage> {
                 let s = msg.content.as_str();
                 if let Some(stripped) = s.strip_prefix("__tool_calls__:") {
                     if let Ok(calls) = serde_json::from_str::<Vec<Value>>(stripped) {
-                        let content_blocks: Vec<Value> = calls.iter().map(|c| {
-                            let name = c["function"]["name"].as_str().unwrap_or("");
-                            let args_str = c["function"]["arguments"].as_str().unwrap_or("{}");
-                            let input: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
-                            json!({
-                                "type": "tool_use",
-                                "id": c["id"].as_str().unwrap_or("tool_0"),
-                                "name": name,
-                                "input": input
+                        let content_blocks: Vec<Value> = calls
+                            .iter()
+                            .map(|c| {
+                                let name = c["function"]["name"].as_str().unwrap_or("");
+                                let args_str = c["function"]["arguments"].as_str().unwrap_or("{}");
+                                let input: Value =
+                                    serde_json::from_str(args_str).unwrap_or(json!({}));
+                                json!({
+                                    "type": "tool_use",
+                                    "id": c["id"].as_str().unwrap_or("tool_0"),
+                                    "name": name,
+                                    "input": input
+                                })
                             })
-                        }).collect();
+                            .collect();
                         ("assistant", json!(content_blocks))
                     } else {
                         ("assistant", json!(s))
@@ -161,7 +165,10 @@ fn build_api_messages(req: &ChatRequest) -> Vec<ApiMessage> {
             }
             Role::System => continue,
         };
-        msgs.push(ApiMessage { role: role.into(), content });
+        msgs.push(ApiMessage {
+            role: role.into(),
+            content,
+        });
     }
     msgs
 }
@@ -170,20 +177,23 @@ fn build_api_messages(req: &ChatRequest) -> Vec<ApiMessage> {
 /// tool list can be cached across turns).
 fn build_tool_schemas(tools: &[harness_provider_core::ToolDefinition]) -> Vec<Value> {
     let len = tools.len();
-    tools.iter().enumerate().map(|(i, t)| {
-        let mut def = json!({
-            "name": t.function.name,
-            "description": t.function.description,
-            "input_schema": t.function.parameters
-        });
-        // Cache the last tool entry so the whole tool list is cached.
-        if i + 1 == len {
-            def["cache_control"] = json!({ "type": "ephemeral" });
-        }
-        def
-    }).collect()
+    tools
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let mut def = json!({
+                "name": t.function.name,
+                "description": t.function.description,
+                "input_schema": t.function.parameters
+            });
+            // Cache the last tool entry so the whole tool list is cached.
+            if i + 1 == len {
+                def["cache_control"] = json!({ "type": "ephemeral" });
+            }
+            def
+        })
+        .collect()
 }
-
 
 fn make_tool_call(id: &str, name: &str, args: &str) -> ToolCall {
     ToolCall {
@@ -210,19 +220,39 @@ impl Provider for AnthropicProvider {
         let m = self.config.model.to_lowercase();
         // Opus 4.7 / 4.6 / 4.5: $5/$25, cached $0.50
         if m.contains("opus-4-7") || m.contains("opus-4-6") || m.contains("opus-4-5") {
-            Some(Pricing { input_per_m_usd: 5.00, cached_input_per_m_usd: 0.50, output_per_m_usd: 25.00 })
+            Some(Pricing {
+                input_per_m_usd: 5.00,
+                cached_input_per_m_usd: 0.50,
+                output_per_m_usd: 25.00,
+            })
         // Opus 4.1 / 4 (legacy): $15/$75, cached $1.50
         } else if m.contains("opus") {
-            Some(Pricing { input_per_m_usd: 15.00, cached_input_per_m_usd: 1.50, output_per_m_usd: 75.00 })
+            Some(Pricing {
+                input_per_m_usd: 15.00,
+                cached_input_per_m_usd: 1.50,
+                output_per_m_usd: 75.00,
+            })
         // Sonnet 4.x: $3/$15, cached $0.30
         } else if m.contains("sonnet") {
-            Some(Pricing { input_per_m_usd: 3.00, cached_input_per_m_usd: 0.30, output_per_m_usd: 15.00 })
+            Some(Pricing {
+                input_per_m_usd: 3.00,
+                cached_input_per_m_usd: 0.30,
+                output_per_m_usd: 15.00,
+            })
         // Haiku 4.5: $1/$5, cached $0.10
         } else if m.contains("haiku-4-5") {
-            Some(Pricing { input_per_m_usd: 1.00, cached_input_per_m_usd: 0.10, output_per_m_usd: 5.00 })
+            Some(Pricing {
+                input_per_m_usd: 1.00,
+                cached_input_per_m_usd: 0.10,
+                output_per_m_usd: 5.00,
+            })
         // Haiku legacy: $0.80/$4
         } else if m.contains("haiku") {
-            Some(Pricing { input_per_m_usd: 0.80, cached_input_per_m_usd: 0.08, output_per_m_usd: 4.00 })
+            Some(Pricing {
+                input_per_m_usd: 0.80,
+                cached_input_per_m_usd: 0.08,
+                output_per_m_usd: 4.00,
+            })
         } else {
             None
         }
@@ -231,7 +261,11 @@ impl Provider for AnthropicProvider {
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
         let messages = build_api_messages(&req);
         let mut tools = build_tool_schemas(&req.tools);
-        let system = req.system.as_deref().map(build_system_blocks).unwrap_or_default();
+        let system = req
+            .system
+            .as_deref()
+            .map(build_system_blocks)
+            .unwrap_or_default();
 
         // Anthropic structured output: inject a synthetic tool that forces
         // the model to return JSON matching the schema.
@@ -273,7 +307,11 @@ impl Provider for AnthropicProvider {
                     "type": "enabled",
                     "budget_tokens": budget
                 });
-                (Some(thinking), 1.0f32, Some(vec!["interleaved-thinking-2025-05-14".to_string()]))
+                (
+                    Some(thinking),
+                    1.0f32,
+                    Some(vec!["interleaved-thinking-2025-05-14".to_string()]),
+                )
             } else if model_lower.contains("opus-4-7") {
                 // Opus 4.7: adaptive thinking (model decides, no explicit config needed)
                 (None, self.config.temperature, None)
@@ -301,7 +339,8 @@ impl Provider for AnthropicProvider {
         let mut attempt = 0u32;
 
         loop {
-            let mut builder = self.client
+            let mut builder = self
+                .client
                 .post(&url)
                 .header("x-api-key", &self.config.api_key)
                 .header("anthropic-version", ANTHROPIC_VERSION)
@@ -330,14 +369,20 @@ impl Provider for AnthropicProvider {
 
             if retryable && attempt < MAX_RETRIES {
                 let delay_ms = 1000u64 << attempt;
-                warn!(status = status.as_u16(), attempt, delay_ms, "Anthropic retryable error");
+                warn!(
+                    status = status.as_u16(),
+                    attempt, delay_ms, "Anthropic retryable error"
+                );
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
                 attempt += 1;
                 continue;
             }
 
             let msg = resp.text().await.unwrap_or_else(|_| "<unreadable>".into());
-            return Err(ProviderError::Api { status: status.as_u16(), message: msg });
+            return Err(ProviderError::Api {
+                status: status.as_u16(),
+                message: msg,
+            });
         }
     }
 }
@@ -347,7 +392,8 @@ fn parse_anthropic_sse(
     byte_stream: impl futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 ) -> impl futures::Stream<Item = Result<Delta, ProviderError>> + Send {
     use std::pin::Pin;
-    type ByteStream = Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>;
+    type ByteStream =
+        Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>;
 
     struct State {
         stream: ByteStream,
@@ -380,7 +426,9 @@ fn parse_anthropic_sse(
     };
 
     futures::stream::unfold(state, |mut s| async move {
-        if s.done { return None; }
+        if s.done {
+            return None;
+        }
 
         // If we already have a pending stop reason (emitted Usage, now emit Done)
         if let Some(sr) = s.pending_stop_reason.take() {
@@ -399,8 +447,14 @@ fn parse_anthropic_sse(
                             Some("content_block_start") => {
                                 if event["content_block"]["type"] == "tool_use" {
                                     s.in_tool = true;
-                                    s.tool_id = event["content_block"]["id"].as_str().unwrap_or("").to_string();
-                                    s.tool_name = event["content_block"]["name"].as_str().unwrap_or("").to_string();
+                                    s.tool_id = event["content_block"]["id"]
+                                        .as_str()
+                                        .unwrap_or("")
+                                        .to_string();
+                                    s.tool_name = event["content_block"]["name"]
+                                        .as_str()
+                                        .unwrap_or("")
+                                        .to_string();
                                     s.tool_args.clear();
                                 }
                             }
@@ -419,7 +473,8 @@ fn parse_anthropic_sse(
                             Some("content_block_stop") => {
                                 if s.in_tool {
                                     s.in_tool = false;
-                                    let call = make_tool_call(&s.tool_id, &s.tool_name, &s.tool_args);
+                                    let call =
+                                        make_tool_call(&s.tool_id, &s.tool_name, &s.tool_args);
                                     return Some((Ok(Delta::ToolCall(call)), s));
                                 }
                             }
@@ -427,7 +482,8 @@ fn parse_anthropic_sse(
                                 if let Some(u) = event["usage"]["output_tokens"].as_u64() {
                                     s.output_tokens = u as u32;
                                 }
-                                let stop_reason = event["delta"]["stop_reason"].as_str().unwrap_or("");
+                                let stop_reason =
+                                    event["delta"]["stop_reason"].as_str().unwrap_or("");
                                 let sr = match stop_reason {
                                     "tool_use" => StopReason::ToolUse,
                                     "max_tokens" => StopReason::MaxTokens,
@@ -440,13 +496,22 @@ fn parse_anthropic_sse(
                                 if it > 0 || ot > 0 {
                                     // Emit Usage, then Done on the next poll
                                     s.pending_stop_reason = Some(sr);
-                                    return Some((Ok(Delta::Usage { input_tokens: it, output_tokens: ot }), s));
+                                    return Some((
+                                        Ok(Delta::Usage {
+                                            input_tokens: it,
+                                            output_tokens: ot,
+                                        }),
+                                        s,
+                                    ));
                                 } else if cc > 0 || cr > 0 {
                                     s.pending_stop_reason = Some(sr);
-                                    return Some((Ok(Delta::CacheUsage {
-                                        cache_creation_tokens: cc,
-                                        cache_read_tokens: cr,
-                                    }), s));
+                                    return Some((
+                                        Ok(Delta::CacheUsage {
+                                            cache_creation_tokens: cc,
+                                            cache_read_tokens: cr,
+                                        }),
+                                        s,
+                                    ));
                                 }
                                 s.done = true;
                                 return Some((Ok(Delta::Done { stop_reason: sr }), s));
@@ -478,7 +543,12 @@ fn parse_anthropic_sse(
                 }
                 None => {
                     s.done = true;
-                    return Some((Ok(Delta::Done { stop_reason: StopReason::EndTurn }), s));
+                    return Some((
+                        Ok(Delta::Done {
+                            stop_reason: StopReason::EndTurn,
+                        }),
+                        s,
+                    ));
                 }
             }
         }
