@@ -40,26 +40,34 @@ impl LspClient {
         std::mem::forget(child);
 
         let transport = LspTransport::new(stdin, stdout);
-        let mut client = Self { transport, root_uri, initialized: false };
+        let mut client = Self {
+            transport,
+            root_uri,
+            initialized: false,
+        };
         client.initialize().await?;
         Ok(client)
     }
 
     async fn initialize(&mut self) -> Result<()> {
         let id = next_id();
-        let req = Request::new(id, "initialize", json!({
-            "processId": std::process::id(),
-            "rootUri": self.root_uri,
-            "capabilities": {
-                "textDocument": {
-                    "definition": { "dynamicRegistration": false },
-                    "references": { "dynamicRegistration": false },
-                    "rename": { "dynamicRegistration": false },
-                    "publishDiagnostics": { "dynamicRegistration": false }
-                }
-            },
-            "initializationOptions": {}
-        }));
+        let req = Request::new(
+            id,
+            "initialize",
+            json!({
+                "processId": std::process::id(),
+                "rootUri": self.root_uri,
+                "capabilities": {
+                    "textDocument": {
+                        "definition": { "dynamicRegistration": false },
+                        "references": { "dynamicRegistration": false },
+                        "rename": { "dynamicRegistration": false },
+                        "publishDiagnostics": { "dynamicRegistration": false }
+                    }
+                },
+                "initializationOptions": {}
+            }),
+        );
 
         self.transport.send_request(&req).await?;
         self.transport.read_response_for(id).await?;
@@ -77,14 +85,17 @@ impl LspClient {
         let content = std::fs::read_to_string(path).unwrap_or_default();
         let language_id = guess_language_id(path);
 
-        let notif = Notification::new("textDocument/didOpen", json!({
-            "textDocument": {
-                "uri": uri,
-                "languageId": language_id,
-                "version": 1,
-                "text": content
-            }
-        }));
+        let notif = Notification::new(
+            "textDocument/didOpen",
+            json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language_id,
+                    "version": 1,
+                    "text": content
+                }
+            }),
+        );
         self.transport.send_notification(&notif).await?;
         Ok(())
     }
@@ -93,10 +104,14 @@ impl LspClient {
         self.open_file(file).await?;
         let id = next_id();
         let uri = path_to_uri(Path::new(file));
-        let req = Request::new(id, "textDocument/definition", json!({
-            "textDocument": { "uri": uri },
-            "position": { "line": line, "character": col }
-        }));
+        let req = Request::new(
+            id,
+            "textDocument/definition",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": line, "character": col }
+            }),
+        );
 
         self.transport.send_request(&req).await?;
         let resp = self.transport.read_response_for(id).await?;
@@ -112,11 +127,15 @@ impl LspClient {
         self.open_file(file).await?;
         let id = next_id();
         let uri = path_to_uri(Path::new(file));
-        let req = Request::new(id, "textDocument/references", json!({
-            "textDocument": { "uri": uri },
-            "position": { "line": line, "character": col },
-            "context": { "includeDeclaration": true }
-        }));
+        let req = Request::new(
+            id,
+            "textDocument/references",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": line, "character": col },
+                "context": { "includeDeclaration": true }
+            }),
+        );
 
         self.transport.send_request(&req).await?;
         let resp = self.transport.read_response_for(id).await?;
@@ -130,27 +149,40 @@ impl LspClient {
                 if locs.is_empty() {
                     return Ok("No references found.".into());
                 }
-                let lines: Vec<String> = locs.iter().filter_map(|loc| {
-                    let uri = loc["uri"].as_str()?;
-                    let line = loc["range"]["start"]["line"].as_u64()? + 1;
-                    let path = uri_to_path(uri);
-                    Some(format!("{path}:{line}"))
-                }).collect();
+                let lines: Vec<String> = locs
+                    .iter()
+                    .filter_map(|loc| {
+                        let uri = loc["uri"].as_str()?;
+                        let line = loc["range"]["start"]["line"].as_u64()? + 1;
+                        let path = uri_to_path(uri);
+                        Some(format!("{path}:{line}"))
+                    })
+                    .collect();
                 Ok(lines.join("\n"))
             }
             _ => Ok("No references found.".into()),
         }
     }
 
-    pub async fn rename(&mut self, file: &str, line: u32, col: u32, new_name: &str) -> Result<String> {
+    pub async fn rename(
+        &mut self,
+        file: &str,
+        line: u32,
+        col: u32,
+        new_name: &str,
+    ) -> Result<String> {
         self.open_file(file).await?;
         let id = next_id();
         let uri = path_to_uri(Path::new(file));
-        let req = Request::new(id, "textDocument/rename", json!({
-            "textDocument": { "uri": uri },
-            "position": { "line": line, "character": col },
-            "newName": new_name
-        }));
+        let req = Request::new(
+            id,
+            "textDocument/rename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": line, "character": col },
+                "newName": new_name
+            }),
+        );
 
         self.transport.send_request(&req).await?;
         let resp = self.transport.read_response_for(id).await?;
@@ -160,11 +192,12 @@ impl LspClient {
         }
 
         match resp.result {
-            Some(Value::Object(workspace_edit)) => {
-                format_workspace_edit(&workspace_edit)
-            }
+            Some(Value::Object(workspace_edit)) => format_workspace_edit(&workspace_edit),
             Some(Value::Null) | None => Ok("No changes needed for rename.".into()),
-            _ => Ok(format!("Rename result: {}", resp.result.unwrap_or_default())),
+            _ => Ok(format!(
+                "Rename result: {}",
+                resp.result.unwrap_or_default()
+            )),
         }
     }
 
@@ -190,7 +223,9 @@ impl LspClient {
         match tokio::time::timeout(
             std::time::Duration::from_secs(5),
             self.transport.read_response_for(id),
-        ).await {
+        )
+        .await
+        {
             Ok(Ok(resp)) => {
                 if let Some(err) = resp.error {
                     // Method not found is expected for servers that don't support pull diagnostics.

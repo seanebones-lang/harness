@@ -153,22 +153,23 @@ impl McpClient {
         // Collect workspace roots to advertise
         let roots = collect_roots();
 
-        let result = self.call(
-            "initialize",
-            json!({
-                "protocolVersion": "2025-03-26",
-                "capabilities": {
-                    "roots": { "listChanged": true },
-                    "sampling": {}
-                },
-                "clientInfo": {
-                    "name": "harness",
-                    "version": env!("CARGO_PKG_VERSION")
-                },
-                "roots": roots
-            }),
-        )
-        .await?;
+        let result = self
+            .call(
+                "initialize",
+                json!({
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {
+                        "roots": { "listChanged": true },
+                        "sampling": {}
+                    },
+                    "clientInfo": {
+                        "name": "harness",
+                        "version": env!("CARGO_PKG_VERSION")
+                    },
+                    "roots": roots
+                }),
+            )
+            .await?;
 
         // Parse server capabilities
         let proto = result["protocolVersion"]
@@ -240,7 +241,10 @@ impl McpClient {
             let mut line = String::new();
             let n = inner.stdout.read_line(&mut line).await?;
             if n == 0 {
-                anyhow::bail!("MCP server `{}` closed stdout unexpectedly", self.server_name);
+                anyhow::bail!(
+                    "MCP server `{}` closed stdout unexpectedly",
+                    self.server_name
+                );
             }
             let line = line.trim();
             if line.is_empty() {
@@ -283,10 +287,7 @@ impl McpClient {
         match method {
             "notifications/progress" => {
                 if let Some(tx) = &self.progress_tx {
-                    let token = params["progressToken"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_string();
+                    let token = params["progressToken"].as_str().unwrap_or("").to_string();
                     let progress = params["progress"].as_f64().unwrap_or(0.0);
                     let total = params["total"].as_f64();
                     let _ = tx.send(ProgressEvent {
@@ -351,12 +352,20 @@ impl McpClient {
                 if block["type"] == "text" {
                     block["text"].as_str().map(|s| s.to_string())
                 } else if block["type"] == "image" {
-                    Some(format!("[image: {}]", block["mimeType"].as_str().unwrap_or("unknown")))
+                    Some(format!(
+                        "[image: {}]",
+                        block["mimeType"].as_str().unwrap_or("unknown")
+                    ))
                 } else if block["type"] == "resource" {
                     block["resource"]["text"]
                         .as_str()
                         .map(|s| s.to_string())
-                        .or_else(|| Some(format!("[resource: {}]", block["resource"]["uri"].as_str().unwrap_or("?"))))
+                        .or_else(|| {
+                            Some(format!(
+                                "[resource: {}]",
+                                block["resource"]["uri"].as_str().unwrap_or("?")
+                            ))
+                        })
                 } else {
                     None
                 }
@@ -394,13 +403,14 @@ impl McpClient {
     pub async fn read_resource(&self, uri: &str) -> Result<String> {
         let caps = self.capabilities.lock().await;
         if !caps.has_resources {
-            anyhow::bail!("MCP server `{}` does not support resources", self.server_name);
+            anyhow::bail!(
+                "MCP server `{}` does not support resources",
+                self.server_name
+            );
         }
         drop(caps);
 
-        let result = self
-            .call("resources/read", json!({ "uri": uri }))
-            .await?;
+        let result = self.call("resources/read", json!({ "uri": uri })).await?;
 
         let contents = result["contents"].as_array().cloned().unwrap_or_default();
         let text: Vec<String> = contents
@@ -423,7 +433,10 @@ impl McpClient {
     ) -> Result<Value> {
         let caps = self.capabilities.lock().await;
         if !caps.has_sampling {
-            anyhow::bail!("MCP server `{}` does not support sampling", self.server_name);
+            anyhow::bail!(
+                "MCP server `{}` does not support sampling",
+                self.server_name
+            );
         }
         drop(caps);
 

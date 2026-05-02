@@ -4,7 +4,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::process::Command;
 use tracing::debug;
 
@@ -61,10 +61,27 @@ impl Tool for GhTool {
         debug!(action, "gh tool execute");
 
         match action {
-            "pr_list" => run_gh(&["pr", "list", "--json", "number,title,headRefName,state,updatedAt", "--limit", "20"]).await,
+            "pr_list" => {
+                run_gh(&[
+                    "pr",
+                    "list",
+                    "--json",
+                    "number,title,headRefName,state,updatedAt",
+                    "--limit",
+                    "20",
+                ])
+                .await
+            }
             "pr_view" => {
                 let n = require_number(num)?;
-                run_gh(&["pr", "view", &n, "--json", "number,title,body,state,reviews,assignees,labels"]).await
+                run_gh(&[
+                    "pr",
+                    "view",
+                    &n,
+                    "--json",
+                    "number,title,body,state,reviews,assignees,labels",
+                ])
+                .await
             }
             "pr_diff" => {
                 let n = require_number(num)?;
@@ -82,10 +99,27 @@ impl Tool for GhTool {
                 }
                 run_gh(&["pr", "comment", &n, "--body", &msg]).await
             }
-            "issue_list" => run_gh(&["issue", "list", "--json", "number,title,state,labels,updatedAt", "--limit", "20"]).await,
+            "issue_list" => {
+                run_gh(&[
+                    "issue",
+                    "list",
+                    "--json",
+                    "number,title,state,labels,updatedAt",
+                    "--limit",
+                    "20",
+                ])
+                .await
+            }
             "issue_view" => {
                 let n = require_number(num)?;
-                run_gh(&["issue", "view", &n, "--json", "number,title,body,state,comments"]).await
+                run_gh(&[
+                    "issue",
+                    "view",
+                    &n,
+                    "--json",
+                    "number,title,body,state,comments",
+                ])
+                .await
             }
             "run_view" => {
                 let n = require_number(num)?;
@@ -112,10 +146,7 @@ async fn run_gh(args: &[&str]) -> Result<String> {
         return Ok("gh CLI not found. Install from https://cli.github.com/".to_string());
     }
 
-    let out = Command::new("gh")
-        .args(args)
-        .output()
-        .await?;
+    let out = Command::new("gh").args(args).output().await?;
 
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
@@ -139,14 +170,30 @@ async fn run_gh(args: &[&str]) -> Result<String> {
 
 /// List open PRs. Convenience for TUI /pr command.
 pub async fn pr_list() -> Result<String> {
-    run_gh(&["pr", "list", "--json", "number,title,headRefName,state,updatedAt", "--limit", "20"]).await
+    run_gh(&[
+        "pr",
+        "list",
+        "--json",
+        "number,title,headRefName,state,updatedAt",
+        "--limit",
+        "20",
+    ])
+    .await
 }
 
 /// Fetch PR diff + comments and return as a context string.
 /// Used by `harness pr <num>` CLI to pre-load agent context.
 pub async fn pr_context(number: u64) -> Result<String> {
     let n = number.to_string();
-    let view = run_gh(&["pr", "view", &n, "--json", "number,title,body,state,reviews,comments"]).await.unwrap_or_default();
+    let view = run_gh(&[
+        "pr",
+        "view",
+        &n,
+        "--json",
+        "number,title,body,state,reviews,comments",
+    ])
+    .await
+    .unwrap_or_default();
     let diff = run_gh(&["pr", "diff", &n]).await.unwrap_or_default();
     let checks = run_gh(&["pr", "checks", &n]).await.unwrap_or_default();
 

@@ -203,7 +203,14 @@ pub async fn play_pcm16(pcm: &[u8]) -> Result<()> {
         let aiff_path = path.with_extension("aiff");
         tokio::process::Command::new("sox")
             .args([
-                "-r", "24000", "-e", "signed-integer", "-b", "16", "-c", "1",
+                "-r",
+                "24000",
+                "-e",
+                "signed-integer",
+                "-b",
+                "16",
+                "-c",
+                "1",
                 path.to_str().unwrap_or(""),
                 aiff_path.to_str().unwrap_or(""),
             ])
@@ -218,7 +225,15 @@ pub async fn play_pcm16(pcm: &[u8]) -> Result<()> {
     } else {
         // Linux: aplay
         tokio::process::Command::new("aplay")
-            .args(["-r", "24000", "-f", "S16_LE", "-c", "1", path.to_str().unwrap_or("")])
+            .args([
+                "-r",
+                "24000",
+                "-f",
+                "S16_LE",
+                "-c",
+                "1",
+                path.to_str().unwrap_or(""),
+            ])
             .status()
             .await
             .ok();

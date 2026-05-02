@@ -8,7 +8,7 @@
 //! - Budget thresholds with TUI warnings and desktop notifications
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -40,14 +40,17 @@ impl CostDb {
         let path = db_path();
         let conn = Connection::open(&path)
             .with_context(|| format!("opening cost.db at {}", path.display()))?;
-        let db = Self { conn: Arc::new(Mutex::new(conn)) };
+        let db = Self {
+            conn: Arc::new(Mutex::new(conn)),
+        };
         db.migrate()?;
         Ok(db)
     }
 
     fn migrate(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS usage (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id  TEXT NOT NULL,
@@ -63,7 +66,8 @@ impl CostDb {
             );
             CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts);
             CREATE INDEX IF NOT EXISTS idx_usage_session ON usage(session_id);
-        ")?;
+        ",
+        )?;
         Ok(())
     }
 
@@ -97,7 +101,7 @@ impl CostDb {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT model, SUM(usd) as total FROM usage WHERE ts >= ?1
-             GROUP BY model ORDER BY total DESC"
+             GROUP BY model ORDER BY total DESC",
         )?;
         let rows = stmt.query_map(params![since_ts], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
@@ -110,7 +114,7 @@ impl CostDb {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT project, SUM(usd) as total FROM usage WHERE ts >= ?1
-             GROUP BY project ORDER BY total DESC"
+             GROUP BY project ORDER BY total DESC",
         )?;
         let rows = stmt.query_map(params![since_ts], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
@@ -144,9 +148,7 @@ impl CostDb {
 }
 
 fn db_path() -> PathBuf {
-    let dir = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".harness");
+    let dir = dirs::home_dir().unwrap_or_default().join(".harness");
     let _ = std::fs::create_dir_all(&dir);
     dir.join("cost.db")
 }
@@ -173,12 +175,20 @@ pub fn format_usd(usd: f64) -> String {
 
 /// Check if daily/monthly budget thresholds are exceeded.
 /// Returns (daily_pct, monthly_pct) where 100 = 100%.
-pub fn check_budget(db: &CostDb, daily_usd: Option<f64>, monthly_usd: Option<f64>) -> (Option<f64>, Option<f64>) {
+pub fn check_budget(
+    db: &CostDb,
+    daily_usd: Option<f64>,
+    monthly_usd: Option<f64>,
+) -> (Option<f64>, Option<f64>) {
     let daily_pct = daily_usd.and_then(|limit| {
-        db.total_usd_since(days_ago(1)).ok().map(|spent| spent / limit * 100.0)
+        db.total_usd_since(days_ago(1))
+            .ok()
+            .map(|spent| spent / limit * 100.0)
     });
     let monthly_pct = monthly_usd.and_then(|limit| {
-        db.total_usd_since(days_ago(30)).ok().map(|spent| spent / limit * 100.0)
+        db.total_usd_since(days_ago(30))
+            .ok()
+            .map(|spent| spent / limit * 100.0)
     });
     (daily_pct, monthly_pct)
 }

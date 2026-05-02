@@ -7,207 +7,1360 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #1a1b26;
-    --surface: #24283b;
-    --border: #3b4261;
+    --bg: #11121b;
+    --panel: #1b1e2d;
+    --panel-soft: #232840;
+    --border: #323a5c;
     --accent: #7aa2f7;
-    --accent2: #9ece6a;
+    --good: #9ece6a;
     --warn: #e0af68;
-    --text: #cdd6f4;
-    --dim: #a9b1d6;
-    --radius: 8px;
-    --font-mono: 'JetBrains Mono', 'Fira Mono', 'Cascadia Code', monospace;
+    --bad: #f7768e;
+    --text: #dbe4ff;
+    --dim: #9ba7d1;
+    --muted: #7d88aa;
+    --radius: 10px;
+    --font: "JetBrains Mono", "Fira Mono", "Cascadia Code", monospace;
   }
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: var(--font-mono);
+    font-family: var(--font);
     font-size: 14px;
     height: 100dvh;
     display: flex;
     flex-direction: column;
   }
   header {
-    padding: 10px 20px;
     border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
   }
-  header h1 { font-size: 16px; color: var(--accent); letter-spacing: .05em; }
-  header .status {
-    font-size: 12px;
+  header h1 {
+    font-size: 16px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+  .header-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .toggle-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     color: var(--dim);
-    margin-left: auto;
-  }
-  header .status.connected { color: var(--accent2); }
-  #new-session {
-    background: transparent;
+    font-size: 12px;
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--dim);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 4px 10px;
-    cursor: pointer;
-    transition: border-color .15s, color .15s;
+    border-radius: 8px;
+    padding: 5px 8px;
   }
-  #new-session:hover { border-color: var(--accent); color: var(--accent); }
-  #chat {
-    flex: 1;
+  .toggle-label input { accent-color: var(--accent); }
+  .status {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .status.connected { color: var(--good); }
+  .status.offline { color: var(--bad); }
+  .offline-banner {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid #6a2a37;
+    background: rgba(247, 118, 142, 0.14);
+    color: #ffd6de;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .offline-banner.visible { display: flex; }
+  button, .btn {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--dim);
+    border-radius: 8px;
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  button:hover, .btn:hover { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .tour-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 10, 18, 0.68);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+  }
+  .tour-overlay.visible { display: flex; }
+  .tour-card {
+    width: min(560px, calc(100vw - 32px));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #151a2a;
+    padding: 16px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+  .tour-step {
+    color: var(--accent);
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .tour-title { font-size: 17px; margin-bottom: 8px; color: var(--text); }
+  .tour-body { color: var(--dim); line-height: 1.5; margin-bottom: 14px; }
+  .tour-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .tour-actions .tour-right { display: flex; gap: 8px; border: 0; }
+  .tour-primary {
+    background: var(--accent);
+    color: #10131f;
+    border: none;
+    font-weight: 700;
+  }
+  .tour-focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+  .palette-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 10, 18, 0.55);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 12vh;
+    z-index: 40;
+  }
+  .palette-overlay.visible { display: flex; }
+  .palette {
+    width: min(720px, calc(100vw - 32px));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #151a2a;
+    overflow: hidden;
+    box-shadow: 0 16px 42px rgba(0, 0, 0, 0.45);
+  }
+  #palette-input {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: #111628;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    padding: 12px;
+    outline: none;
+  }
+  #palette-list {
+    max-height: 340px;
     overflow-y: auto;
-    padding: 16px 20px;
+    padding: 8px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 6px;
+  }
+  .palette-section {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    margin: 6px 2px 0;
+  }
+  .palette-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 10px;
+    cursor: pointer;
+  }
+  .palette-item.active,
+  .palette-item:hover {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.1);
+  }
+  .palette-item .title { color: var(--text); font-size: 12px; }
+  .palette-item .title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .palette-item .meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .kind-badge {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 10px;
+    color: var(--dim);
+    background: rgba(255, 255, 255, 0.02);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+  .kind-badge.action { border-color: #5c6899; color: #b8c7ff; }
+  .kind-badge.session { border-color: #576f58; color: #b7d8b8; }
+  .kind-badge.project { border-color: #7a6252; color: #e6c9a8; }
+  .recent-badge {
+    border: 1px solid #6d5a33;
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 10px;
+    color: #f5d08a;
+    background: rgba(224, 175, 104, 0.12);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+  .file-picker-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 10, 18, 0.58);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 10vh;
+    z-index: 35;
+  }
+  .file-picker-overlay.visible { display: flex; }
+  .file-picker {
+    width: min(760px, calc(100vw - 32px));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #151a2a;
+    overflow: hidden;
+  }
+  .file-picker-head {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--dim);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+  }
+  #file-search {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: #111628;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    padding: 10px 12px;
+    outline: none;
+  }
+  #file-list {
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .file-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    color: var(--dim);
+    font-size: 12px;
+  }
+  .file-item:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: rgba(122, 162, 247, 0.1);
+  }
+  .toasts {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 50;
+    max-width: min(420px, calc(100vw - 28px));
+  }
+  .toast {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #171c2d;
+    color: var(--dim);
+    padding: 9px 10px;
+    font-size: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+  .toast.success { border-color: #476e47; }
+  .toast.error { border-color: #7f1d1d; }
+  .toast.info { border-color: #425689; }
+  .toast .title {
+    color: var(--text);
+    font-size: 12px;
+    margin-bottom: 2px;
+  }
+  .toast .close {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+  }
+  .help-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 10, 18, 0.62);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 45;
+  }
+  .help-overlay.visible { display: flex; }
+  .help-card {
+    width: min(760px, calc(100vw - 32px));
+    max-height: min(620px, calc(100vh - 32px));
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #151a2a;
+    padding: 14px;
+  }
+  .help-title {
+    color: var(--text);
+    font-size: 16px;
+    margin-bottom: 10px;
+  }
+  .help-grid {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 6px 10px;
+    font-size: 12px;
+    color: var(--dim);
+  }
+  .help-grid .k {
+    color: var(--text);
+    font-family: var(--font);
+  }
+  .help-footer {
+    margin-top: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .app {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 280px;
+    min-height: 0;
+  }
+  .left, .right {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .right {
+    border-right: none;
+    border-left: 1px solid var(--border);
+  }
+  .panel-title {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--dim);
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .panel-search {
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-search input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-soft);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 6px 8px;
+    outline: none;
+  }
+  .panel-search input:focus { border-color: var(--accent); }
+  .sessions-meta {
+    padding: 6px 10px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .sessions-meta .kbd {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1px 5px;
+    color: var(--dim);
+    font-size: 10px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .list {
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .group-label {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    margin: 6px 2px 2px;
+  }
+  .list-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .list-item:hover { border-color: var(--accent); }
+  .list-item.active {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.08);
+  }
+  .item-title {
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1.3;
+  }
+  .item-sub {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .workspaces-actions {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .workspaces-actions button { width: 100%; }
+  .project-actions {
+    margin-top: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .mini-btn {
+    font-size: 10px;
+    padding: 3px 7px;
+    border-radius: 999px;
+  }
+  .mini-btn.busy {
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+
+  .center {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #chat {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
   .msg {
-    max-width: 820px;
+    max-width: 900px;
     width: fit-content;
-    padding: 10px 14px;
+    border: 1px solid var(--border);
     border-radius: var(--radius);
-    line-height: 1.55;
+    padding: 10px 12px;
+    line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
   }
   .msg.user {
-    background: var(--surface);
-    border: 1px solid var(--border);
     align-self: flex-end;
-    color: var(--text);
+    background: var(--panel-soft);
   }
   .msg.assistant {
-    background: transparent;
-    border: 1px solid var(--border);
     align-self: flex-start;
-    color: var(--text);
+    background: rgba(255, 255, 255, 0.01);
   }
   .msg.tool {
-    background: transparent;
-    border: 1px solid #2d3148;
     align-self: flex-start;
+    border-color: #4d4360;
     color: var(--warn);
     font-size: 12px;
   }
   .msg.error {
-    background: #3d1515;
-    border: 1px solid #7f1d1d;
     align-self: flex-start;
-    color: #f87171;
+    border-color: #7f1d1d;
+    color: #fca5a5;
+    background: #361717;
   }
-  /* code blocks inside assistant messages */
+  .msg.system {
+    align-self: center;
+    color: var(--muted);
+    border-style: dashed;
+    font-size: 12px;
+  }
   .msg pre {
     background: #0d1117;
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 10px 12px;
-    overflow-x: auto;
+    padding: 10px;
     margin: 6px 0;
-    font-size: 13px;
+    overflow-x: auto;
   }
-  .msg code { font-family: var(--font-mono); }
+  .msg code { font-family: var(--font); }
   .msg p { margin: 4px 0; }
-  /* typing cursor */
   .cursor::after {
-    content: '▋';
+    content: "▋";
     animation: blink 0.8s step-end infinite;
     color: var(--accent);
   }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-  footer {
+  .composer {
     border-top: 1px solid var(--border);
-    padding: 12px 20px;
+    padding: 10px 12px 12px;
+    display: grid;
+    gap: 8px;
+    position: relative;
+  }
+  .templates {
     display: flex;
-    gap: 10px;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .template {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 999px;
+  }
+  .input-row {
+    display: flex;
+    gap: 8px;
     align-items: flex-end;
   }
   #prompt {
     flex: 1;
-    background: var(--surface);
+    min-height: 44px;
+    max-height: 220px;
+    resize: none;
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: 10px;
+    background: var(--panel-soft);
     color: var(--text);
-    font-family: var(--font-mono);
+    font-family: var(--font);
     font-size: 14px;
     padding: 10px 12px;
-    resize: none;
-    min-height: 44px;
-    max-height: 200px;
     outline: none;
-    transition: border-color .15s;
   }
   #prompt:focus { border-color: var(--accent); }
   #send {
-    background: var(--accent);
-    color: #1a1b26;
-    border: none;
-    border-radius: var(--radius);
-    padding: 10px 18px;
-    font-family: var(--font-mono);
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: opacity .15s;
-    white-space: nowrap;
     height: 44px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #10131f;
+    background: var(--accent);
+    border: none;
+    padding: 0 16px;
   }
-  #send:disabled { opacity: .45; cursor: default; }
-  #send:not(:disabled):hover { opacity: .85; }
+  #stop-generation {
+    height: 44px;
+    font-size: 12px;
+    font-weight: 700;
+    border-color: #874457;
+    color: #ffd3dd;
+    background: rgba(209, 93, 120, 0.14);
+    min-width: 64px;
+  }
+  .composer-meta {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  #slash-menu {
+    position: absolute;
+    left: 12px;
+    right: 120px;
+    bottom: 72px;
+    background: #181c2c;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: none;
+    max-height: 180px;
+    overflow-y: auto;
+    z-index: 5;
+  }
+  .slash-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid #262d49;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--dim);
+  }
+  .slash-item:last-child { border-bottom: none; }
+  .slash-item.active, .slash-item:hover {
+    background: rgba(122, 162, 247, 0.12);
+    color: var(--text);
+  }
+  .slash-item .hint {
+    color: var(--muted);
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+  }
+  #activity {
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .event {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 12px;
+    color: var(--dim);
+    background: rgba(255, 255, 255, 0.01);
+  }
+  .event strong { color: var(--text); }
+  .activity-status {
+    border-bottom: 1px solid var(--border);
+    padding: 6px 8px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .activity-status .running {
+    color: var(--warn);
+  }
+  .running-list {
+    border-bottom: 1px solid var(--border);
+    padding: 6px 8px;
+    font-size: 11px;
+    color: var(--muted);
+    display: none;
+  }
+  .running-list.visible { display: block; }
+  .test-panel {
+    border-top: 1px solid var(--border);
+    padding: 8px;
+    display: grid;
+    gap: 6px;
+  }
+  .test-controls {
+    display: flex;
+    gap: 6px;
+  }
+  #test-command {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-soft);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 6px 8px;
+    outline: none;
+  }
+  #test-output {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #121625;
+    color: var(--dim);
+    font-size: 11px;
+    padding: 8px;
+    max-height: 180px;
+    overflow: auto;
+    white-space: pre-wrap;
+  }
+  #run-test.busy {
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+  .history-panel {
+    border-top: 1px solid var(--border);
+    padding: 8px;
+    display: grid;
+    gap: 6px;
+  }
+  .history-controls {
+    display: flex;
+    gap: 6px;
+  }
+  #history-filter {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-soft);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 6px 8px;
+    outline: none;
+  }
+  #history-list {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #121625;
+    max-height: 160px;
+    overflow: auto;
+    padding: 6px;
+    display: grid;
+    gap: 6px;
+  }
+  .history-item {
+    border: 1px solid #2a3352;
+    border-radius: 8px;
+    padding: 6px 8px;
+    background: #171d33;
+    font-size: 11px;
+    color: var(--dim);
+  }
+  .history-item .top {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 2px;
+  }
+  .history-item .meta {
+    color: var(--muted);
+    word-break: break-word;
+  }
+  .history-badge {
+    font-size: 10px;
+    border: 1px solid #394369;
+    border-radius: 999px;
+    padding: 1px 6px;
+    color: var(--dim);
+  }
+  .history-badge.success { border-color: #2f7b5d; color: #98f3ca; }
+  .history-badge.error { border-color: #8a4358; color: #ffb8c8; }
+  .history-badge.cancelled { border-color: #7a6a3f; color: #ffe4a1; }
+
+  @media (max-width: 1180px) {
+    .app { grid-template-columns: 240px minmax(0, 1fr); }
+    .right { display: none; }
+  }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: minmax(0, 1fr); }
+    .left { display: none; }
+  }
+  body.left-collapsed .app { grid-template-columns: minmax(0, 1fr) 280px; }
+  body.left-collapsed .left { display: none; }
+  body.right-collapsed .app { grid-template-columns: 280px minmax(0, 1fr); }
+  body.right-collapsed .right { display: none; }
+  body.left-collapsed.right-collapsed .app { grid-template-columns: minmax(0, 1fr); }
 </style>
 </head>
 <body>
 <header>
   <h1>⬡ harness</h1>
-  <button id="new-session" title="Clear session and start fresh">+ New session</button>
+  <div class="header-group">
+    <button id="new-session" title="Start fresh chat session">+ New session</button>
+    <button id="refresh-sessions" title="Reload sessions list">Refresh sessions</button>
+    <button id="toggle-left" title="Show/hide left sidebar (Ctrl+B)">Toggle left</button>
+    <button id="toggle-right" title="Show/hide right sidebar (Ctrl+\)">Toggle right</button>
+    <button id="open-tour" title="Show onboarding tour">Tour</button>
+    <button id="open-help" title="Show keyboard shortcuts (?)">Help</button>
+  </div>
+  <label class="toggle-label" title="Automatically resume last active session">
+    <input id="resume-last" type="checkbox" checked>
+    Resume last
+  </label>
+  <label class="toggle-label" title="Auto-refresh sessions/projects every 30s">
+    <input id="auto-refresh" type="checkbox" checked>
+    Auto refresh
+  </label>
   <span id="status" class="status">connecting…</span>
 </header>
-<div id="chat"></div>
-<footer>
-  <textarea id="prompt" placeholder="Ask anything… (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
-  <button id="send" disabled>Send</button>
-</footer>
+
+<div id="offline-banner" class="offline-banner">
+  <span id="offline-text">Server unreachable. Retrying…</span>
+  <button id="offline-retry">Retry now</button>
+</div>
+
+<div class="app">
+  <aside class="left">
+    <div class="panel-title">Sessions</div>
+    <div class="sessions-meta">
+      <span>Jump between recent conversations</span>
+      <span><span class="kbd">Ctrl+B</span> left · <span class="kbd">Ctrl+\</span> right</span>
+    </div>
+    <div class="panel-search">
+      <input id="session-search" placeholder="Search sessions...">
+    </div>
+    <div id="sessions" class="list"></div>
+    <div class="panel-title">Workspaces</div>
+    <div id="workspaces" class="list"></div>
+    <div class="workspaces-actions">
+      <button id="refresh-projects" title="Reload linked projects">Refresh projects</button>
+    </div>
+  </aside>
+
+  <main class="center">
+    <div id="chat"></div>
+    <div class="composer">
+      <div class="templates">
+        <button class="template btn" data-template="Plan an implementation approach for: ">Plan feature</button>
+        <button class="template btn" data-template="Debug this issue step-by-step: ">Debug issue</button>
+        <button class="template btn" data-template="Design a clean UI architecture for: ">Design UI</button>
+      </div>
+      <div id="slash-menu"></div>
+      <div class="input-row">
+        <textarea id="prompt" rows="1" placeholder="Ask anything… (Enter sends, Shift+Enter newline)"></textarea>
+        <button id="send" disabled>Send</button>
+        <button id="stop-generation" disabled>Stop</button>
+      </div>
+      <div class="composer-meta">
+        <span id="composer-hint">Type `/` for command shortcuts, use templates for common flows</span>
+        <span id="char-count">0 chars</span>
+      </div>
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="panel-title">Activity</div>
+    <div class="activity-status">
+      <span id="activity-running">Running: 0</span>
+      <span id="activity-selected">Selected: none</span>
+    </div>
+    <div id="running-list" class="running-list"></div>
+    <div id="activity"></div>
+    <div class="history-panel">
+      <div class="panel-title" style="padding:0 0 6px;border:0;">Action history</div>
+      <div class="history-controls">
+        <select id="history-filter" title="Filter action history outcome">
+          <option value="all">All outcomes</option>
+          <option value="error">Errors only</option>
+          <option value="success">Success only</option>
+          <option value="cancelled">Cancelled only</option>
+        </select>
+        <button id="copy-history" title="Copy action history as JSON">Copy JSON</button>
+        <button id="download-history" title="Download action history as JSON">Download JSON</button>
+      </div>
+      <div id="history-list"></div>
+    </div>
+    <div class="test-panel">
+      <div class="panel-title" style="padding:0 0 6px;border:0;">Test runner</div>
+      <div class="test-controls">
+        <input id="test-command" placeholder="Auto test command (or override)">
+        <button id="run-test">Run</button>
+        <button id="copy-test-output" title="Copy latest test output">Copy</button>
+      </div>
+      <div id="test-output">Run tests for selected project from project card or command palette.</div>
+    </div>
+  </aside>
+</div>
+
+<div id="palette-overlay" class="palette-overlay" aria-hidden="true">
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <input id="palette-input" placeholder="Type an action, session, or project... (Esc to close)">
+    <div id="palette-list"></div>
+  </div>
+</div>
+
+<div id="file-picker-overlay" class="file-picker-overlay" aria-hidden="true">
+  <div class="file-picker" role="dialog" aria-modal="true" aria-label="File picker">
+    <div class="file-picker-head">
+      <span id="file-picker-title">Attach project files</span>
+      <button id="file-picker-close">Close</button>
+    </div>
+    <input id="file-search" placeholder="Search files...">
+    <div id="file-list"></div>
+  </div>
+</div>
+
+<div id="tour-overlay" class="tour-overlay" aria-hidden="true">
+  <div class="tour-card" role="dialog" aria-modal="true" aria-label="Onboarding tour">
+    <div id="tour-step" class="tour-step"></div>
+    <div id="tour-title" class="tour-title"></div>
+    <div id="tour-body" class="tour-body"></div>
+    <div class="tour-actions">
+      <button id="tour-skip">Skip tour</button>
+      <div class="tour-right">
+        <button id="tour-prev">Back</button>
+        <button id="tour-next" class="tour-primary">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<div id="help-overlay" class="help-overlay" aria-hidden="true">
+  <div class="help-card" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts and help">
+    <div class="help-title">Quick help & shortcuts</div>
+    <div class="help-grid">
+      <div class="k">Cmd/Ctrl+K</div><div>Open command palette</div>
+      <div class="k">Ctrl+B</div><div>Toggle left sidebar</div>
+      <div class="k">Ctrl+\</div><div>Toggle right sidebar</div>
+      <div class="k">Enter</div><div>Send message</div>
+      <div class="k">Shift+Enter</div><div>Insert newline in prompt</div>
+      <div class="k">Arrow Up/Down</div><div>Navigate slash suggestions and palette items</div>
+      <div class="k">Tab</div><div>Apply slash suggestion</div>
+      <div class="k">Esc</div><div>Close open overlays (palette, picker, tour, help)</div>
+      <div class="k">Cmd/Ctrl+.</div><div>Cancel streaming + all running project actions</div>
+      <div class="k">?</div><div>Open this help panel (outside input fields)</div>
+      <div class="k">Project actions</div><div>Status / Sync / Push / Test / Files per project card</div>
+      <div class="k">@file context</div><div>Use Files picker or click project to insert @path mention</div>
+    </div>
+    <div class="help-footer">
+      <span>Tip: right now, command palette also learns your recent actions.</span>
+      <button id="close-help">Close</button>
+    </div>
+  </div>
+</div>
 
 <script>
-  const chat       = document.getElementById('chat');
-  const prompt     = document.getElementById('prompt');
-  const send       = document.getElementById('send');
-  const status     = document.getElementById('status');
-  const newSession = document.getElementById('new-session');
+  const SESSION_KEY = "harness.session_id";
+  const RESUME_LAST_KEY = "harness.resume_last_session";
+  const AUTO_REFRESH_KEY = "harness.auto_refresh";
+  const LEFT_COLLAPSED_KEY = "harness.left_collapsed";
+  const RIGHT_COLLAPSED_KEY = "harness.right_collapsed";
+  const TOUR_SEEN_KEY = "harness.tour_seen";
+  const PALETTE_MRU_KEY = "harness.palette_mru_actions";
+  const SELECTED_PROJECT_KEY = "harness.selected_project";
+  const ACTION_HISTORY_KEY = "harness.project_action_history";
+  const ACTION_HISTORY_FILTER_KEY = "harness.project_action_history_filter";
+  const COMMANDS = [
+    { cmd: "/help", hint: "show command list" },
+    { cmd: "/clear", hint: "clear chat and event log" },
+    { cmd: "/plan", hint: "toggle plan mode" },
+    { cmd: "/test", hint: "run project tests" },
+    { cmd: "/model ", hint: "switch model for this session" },
+    { cmd: "/think 10000", hint: "enable thinking budget" },
+    { cmd: "/focus 25", hint: "silence notifications for 25 minutes" },
+    { cmd: "/schema clear", hint: "clear structured output schema" }
+  ];
 
-  const SESSION_KEY = 'harness.session_id';
-  let sessionId = localStorage.getItem(SESSION_KEY);
-  let streaming  = false;
+  const chat = document.getElementById("chat");
+  const prompt = document.getElementById("prompt");
+  const send = document.getElementById("send");
+  const stopGenerationBtn = document.getElementById("stop-generation");
+  const status = document.getElementById("status");
+  const offlineBanner = document.getElementById("offline-banner");
+  const offlineText = document.getElementById("offline-text");
+  const offlineRetryBtn = document.getElementById("offline-retry");
+  const newSession = document.getElementById("new-session");
+  const refreshSessionsBtn = document.getElementById("refresh-sessions");
+  const toggleLeftBtn = document.getElementById("toggle-left");
+  const toggleRightBtn = document.getElementById("toggle-right");
+  const openTourBtn = document.getElementById("open-tour");
+  const openHelpBtn = document.getElementById("open-help");
+  const resumeLastToggle = document.getElementById("resume-last");
+  const autoRefreshToggle = document.getElementById("auto-refresh");
+  const sessionSearch = document.getElementById("session-search");
+  const sessionsEl = document.getElementById("sessions");
+  const workspacesEl = document.getElementById("workspaces");
+  const refreshProjectsBtn = document.getElementById("refresh-projects");
+  const activityEl = document.getElementById("activity");
+  const activityRunningEl = document.getElementById("activity-running");
+  const activitySelectedEl = document.getElementById("activity-selected");
+  const runningListEl = document.getElementById("running-list");
+  const historyListEl = document.getElementById("history-list");
+  const historyFilterSelect = document.getElementById("history-filter");
+  const copyHistoryBtn = document.getElementById("copy-history");
+  const downloadHistoryBtn = document.getElementById("download-history");
+  const testCommandInput = document.getElementById("test-command");
+  const runTestBtn = document.getElementById("run-test");
+  const copyTestOutputBtn = document.getElementById("copy-test-output");
+  const testOutput = document.getElementById("test-output");
+  const slashMenu = document.getElementById("slash-menu");
+  const charCount = document.getElementById("char-count");
+  const paletteOverlay = document.getElementById("palette-overlay");
+  const paletteInput = document.getElementById("palette-input");
+  const paletteList = document.getElementById("palette-list");
+  const filePickerOverlay = document.getElementById("file-picker-overlay");
+  const filePickerTitle = document.getElementById("file-picker-title");
+  const filePickerClose = document.getElementById("file-picker-close");
+  const fileSearchInput = document.getElementById("file-search");
+  const fileList = document.getElementById("file-list");
+  const tourOverlay = document.getElementById("tour-overlay");
+  const tourStepEl = document.getElementById("tour-step");
+  const tourTitleEl = document.getElementById("tour-title");
+  const tourBodyEl = document.getElementById("tour-body");
+  const tourPrevBtn = document.getElementById("tour-prev");
+  const tourNextBtn = document.getElementById("tour-next");
+  const tourSkipBtn = document.getElementById("tour-skip");
+  const toastsEl = document.getElementById("toasts");
+  const helpOverlay = document.getElementById("help-overlay");
+  const closeHelpBtn = document.getElementById("close-help");
 
-  // ── helpers ──────────────────────────────────────────────────────────────
+  let resumeLastSession = localStorage.getItem(RESUME_LAST_KEY) !== "false";
+  let autoRefreshEnabled = localStorage.getItem(AUTO_REFRESH_KEY) !== "false";
+  let sessionId = resumeLastSession ? localStorage.getItem(SESSION_KEY) : null;
+  let sessions = [];
+  let projects = [];
+  let streaming = false;
+  let slashIndex = 0;
+  let leftCollapsed = localStorage.getItem(LEFT_COLLAPSED_KEY) === "true";
+  let rightCollapsed = localStorage.getItem(RIGHT_COLLAPSED_KEY) === "true";
+  let paletteIndex = 0;
+  let paletteOpen = false;
+  let paletteActionMru = loadPaletteActionMru();
+  let selectedProject = null;
+  let projectActionRunning = new Set();
+  let projectActionControllers = new Map();
+  let projectActionQueues = new Map();
+  let projectQueueRunning = new Set();
+  let actionHistory = loadActionHistory();
+  let actionHistoryFilter = localStorage.getItem(ACTION_HISTORY_FILTER_KEY) || "all";
+  let chatRequestController = null;
+  let testRunning = false;
+  let filePickerProject = null;
+  let filePickerItems = [];
+  let fileSearchController = null;
+  let fileSearchRequestSeq = 0;
+  let fileSearchDebounce = null;
+  let refreshInFlight = false;
+  let sessionsFetchSeq = 0;
+  let projectsFetchSeq = 0;
+  let healthBackoffMs = 2500;
+  let healthTimer = null;
+  let offlineMode = false;
+  let selectedProjectName = localStorage.getItem(SELECTED_PROJECT_KEY);
+  let helpOpen = false;
+  let autoRefreshTimer = null;
+  let tourIndex = 0;
+  let tourOpen = false;
+  const tourSteps = [
+    {
+      title: "Pick or resume a session",
+      body: "Use the Sessions panel to jump between previous conversations. Search quickly by name or ID.",
+      selector: "#sessions"
+    },
+    {
+      title: "Use templates to start stronger prompts",
+      body: "Pick Plan feature, Debug issue, or Design UI to prefill practical starter prompts.",
+      selector: ".templates"
+    },
+    {
+      title: "Send and observe activity",
+      body: "Press Enter to send. Track tools, recalls, and events in the Activity panel while responses stream.",
+      selector: ".input-row"
+    }
+  ];
 
-  function escapeHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  function persistSessionId() {
+    if (resumeLastSession && sessionId) {
+      localStorage.setItem(SESSION_KEY, sessionId);
+    } else {
+      localStorage.removeItem(SESSION_KEY);
+    }
   }
 
-  /** Very small markdown renderer: code fences + inline code + bold + italic */
+  function applySidebarState() {
+    document.body.classList.toggle("left-collapsed", leftCollapsed);
+    document.body.classList.toggle("right-collapsed", rightCollapsed);
+    toggleLeftBtn.textContent = leftCollapsed ? "Show left" : "Hide left";
+    toggleRightBtn.textContent = rightCollapsed ? "Show right" : "Hide right";
+  }
+
+  function clearTourFocus() {
+    document.querySelectorAll(".tour-focus").forEach((el) => el.classList.remove("tour-focus"));
+  }
+
+  function renderTourStep() {
+    const step = tourSteps[tourIndex];
+    if (!step) return;
+    tourStepEl.textContent = `Step ${tourIndex + 1} of ${tourSteps.length}`;
+    tourTitleEl.textContent = step.title;
+    tourBodyEl.textContent = step.body;
+    tourPrevBtn.disabled = tourIndex === 0;
+    tourNextBtn.textContent = tourIndex === tourSteps.length - 1 ? "Finish" : "Next";
+
+    clearTourFocus();
+    const target = document.querySelector(step.selector);
+    if (target) {
+      target.classList.add("tour-focus");
+      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+
+  function openTour(reset = false) {
+    if (reset) tourIndex = 0;
+    tourOpen = true;
+    tourOverlay.classList.add("visible");
+    tourOverlay.setAttribute("aria-hidden", "false");
+    renderTourStep();
+  }
+
+  function closeTour(markSeen = true) {
+    tourOpen = false;
+    tourOverlay.classList.remove("visible");
+    tourOverlay.setAttribute("aria-hidden", "true");
+    clearTourFocus();
+    if (markSeen) localStorage.setItem(TOUR_SEEN_KEY, "true");
+  }
+
+  function openHelp() {
+    helpOpen = true;
+    helpOverlay.classList.add("visible");
+    helpOverlay.setAttribute("aria-hidden", "false");
+  }
+
+  function closeHelp() {
+    helpOpen = false;
+    helpOverlay.classList.remove("visible");
+    helpOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function isTypingTarget(node) {
+    if (!node || !(node instanceof Element)) return false;
+    const tag = node.tagName.toLowerCase();
+    return tag === "input" || tag === "textarea" || node.isContentEditable;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
   function renderMarkdown(text) {
-    // code fences
-    text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
-      `<pre><code>${escapeHtml(code.trimEnd())}</code></pre>`
-    );
-    // inline code
-    text = text.replace(/`([^`]+)`/g, (_, c) => `<code>${escapeHtml(c)}</code>`);
-    // bold
-    text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    // italic
-    text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    // paragraphs (double newline)
-    const paras = text.split(/\n\n+/);
-    return paras.map(p => {
-      if (p.startsWith('<pre>')) return p;
-      return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
-    }).join('');
+    let out = String(text || "");
+    const codeBlocks = [];
+    out = out.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, __, code) => {
+      const token = `@@CODEBLOCK_${codeBlocks.length}@@`;
+      codeBlocks.push(`<pre><code>${escapeHtml(code.trimEnd())}</code></pre>`);
+      return token;
+    });
+    out = escapeHtml(out);
+    out = out.replace(/`([^`\n]+)`/g, (_, c) => `<code>${c}</code>`);
+    out = out.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+    out = out.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+    out = out.split(/\n\n+/).map((p) => {
+      if (/^@@CODEBLOCK_\d+@@$/.test(p.trim())) return p.trim();
+      return "<p>" + p.replace(/\n/g, "<br>") + "</p>";
+    }).join("");
+    out = out.replace(/@@CODEBLOCK_(\d+)@@/g, (_, idx) => codeBlocks[Number(idx)] || "");
+    return out;
+  }
+
+  function setStatus(text, connected) {
+    status.textContent = text;
+    status.className = "status" + (connected ? " connected" : "");
+  }
+
+  function setOfflineState(isOffline, message = "") {
+    offlineMode = isOffline;
+    offlineBanner.classList.toggle("visible", isOffline);
+    status.classList.toggle("offline", isOffline);
+    offlineRetryBtn.disabled = !isOffline;
+    if (isOffline) {
+      offlineText.textContent = message || "Server unreachable. Retrying…";
+    }
+  }
+
+  function updateSendControls() {
+    send.disabled = streaming || offlineMode || !prompt.value.trim();
+    stopGenerationBtn.disabled = !streaming;
+  }
+
+  function stopGenerating() {
+    if (!streaming || !chatRequestController) return;
+    try {
+      chatRequestController.abort();
+    } catch (_) {}
+  }
+
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+    const externalSignal = options.signal;
+    const controller = new AbortController();
+    let externalAbortHandler = null;
+
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalAbortHandler = () => controller.abort();
+        externalSignal.addEventListener("abort", externalAbortHandler, { once: true });
+      }
+    }
+
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      return response;
+    } catch (err) {
+      if (controller.signal.aborted && !(externalSignal && externalSignal.aborted)) {
+        throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+      if (externalSignal && externalAbortHandler) {
+        externalSignal.removeEventListener("abort", externalAbortHandler);
+      }
+    }
+  }
+
+  function addEvent(html) {
+    const div = document.createElement("div");
+    div.className = "event";
+    div.innerHTML = html;
+    activityEl.prepend(div);
+    while (activityEl.children.length > 200) {
+      activityEl.removeChild(activityEl.lastElementChild);
+    }
+  }
+
+  function loadActionHistory() {
+    try {
+      const raw = localStorage.getItem(ACTION_HISTORY_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((item) => item && typeof item === "object").slice(0, 40);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveActionHistory() {
+    localStorage.setItem(ACTION_HISTORY_KEY, JSON.stringify(actionHistory.slice(0, 40)));
+  }
+
+  function filteredActionHistoryItems() {
+    if (actionHistoryFilter === "all") return actionHistory;
+    return actionHistory.filter((item) => item.outcome === actionHistoryFilter);
+  }
+
+  function renderActionHistory() {
+    const items = filteredActionHistoryItems();
+    if (!items.length) {
+      historyListEl.innerHTML = actionHistory.length
+        ? '<div class="item-sub">No actions match this filter.</div>'
+        : '<div class="item-sub">No actions yet.</div>';
+      return;
+    }
+    historyListEl.innerHTML = items.slice(0, 12).map((item) => {
+      const when = new Date(item.ts || Date.now()).toLocaleTimeString();
+      const duration = Number.isFinite(item.durationMs) ? `${item.durationMs}ms` : "-";
+      const detail = item.detail ? ` · ${escapeHtml(item.detail)}` : "";
+      const cmd = item.command ? `<div class="meta">cmd: <code>${escapeHtml(item.command)}</code></div>` : "";
+      return `
+        <div class="history-item">
+          <div class="top">
+            <span>${escapeHtml(item.project || "project")} · ${escapeHtml(item.action || "action")}</span>
+            <span class="history-badge ${escapeHtml(item.outcome || "error")}">${escapeHtml(item.outcome || "error")}</span>
+          </div>
+          <div class="meta">${escapeHtml(when)} · ${escapeHtml(duration)}${detail}</div>
+          ${cmd}
+        </div>
+      `;
+    }).join("");
+  }
+
+  function recordActionHistory({ project, action, outcome, durationMs, detail, command }) {
+    actionHistory.unshift({
+      ts: Date.now(),
+      project,
+      action,
+      outcome,
+      durationMs: Math.max(0, Math.round(durationMs || 0)),
+      detail: detail || "",
+      command: command || ""
+    });
+    actionHistory = actionHistory.slice(0, 40);
+    saveActionHistory();
+    renderActionHistory();
+  }
+
+  async function copyActionHistoryJson() {
+    const text = buildActionHistoryJson();
+    try {
+      await navigator.clipboard.writeText(text);
+      const parsed = JSON.parse(text);
+      pushToast("success", "History copied", `Copied ${parsed.items.length} history item(s) as JSON.`);
+    } catch (_) {
+      downloadActionHistoryJson();
+      pushToast("info", "Clipboard blocked", "Downloaded JSON instead.");
+    }
+  }
+
+  function buildActionHistoryJson() {
+    const payload = {
+      exported_at: new Date().toISOString(),
+      filter: actionHistoryFilter,
+      items: filteredActionHistoryItems().slice(0, 40),
+    };
+    return JSON.stringify(payload, null, 2);
+  }
+
+  function downloadActionHistoryJson() {
+    const json = buildActionHistoryJson();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    a.href = url;
+    a.download = `harness-action-history-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function pushToast(kind, title, message, timeoutMs = 4200) {
+    const toast = document.createElement("div");
+    toast.className = `toast ${kind}`;
+    toast.innerHTML = `
+      <div>
+        <div class="title">${escapeHtml(title)}</div>
+        <div>${escapeHtml(message || "")}</div>
+      </div>
+      <button class="close" aria-label="Dismiss notification">×</button>
+    `;
+    const close = () => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    };
+    toast.querySelector(".close").addEventListener("click", close);
+    toastsEl.appendChild(toast);
+    while (toastsEl.children.length > 4) {
+      toastsEl.removeChild(toastsEl.firstElementChild);
+    }
+    setTimeout(close, timeoutMs);
   }
 
   function addMsg(cls, html, id) {
-    const div = document.createElement('div');
-    div.className = 'msg ' + cls;
+    const div = document.createElement("div");
+    div.className = "msg " + cls;
     if (id) div.id = id;
     div.innerHTML = html;
     chat.appendChild(div);
@@ -215,157 +1368,1109 @@
     return div;
   }
 
-  function setStatus(text, connected) {
-    status.textContent = text;
-    status.className = 'status' + (connected ? ' connected' : '');
+  function clearChatAndActivity() {
+    chat.innerHTML = "";
+    activityEl.innerHTML = "";
   }
 
-  if (sessionId) {
-    setStatus(`ready · session ${sessionId.slice(0, 8)}`, true);
-  }
-
-  newSession.addEventListener('click', () => {
-    if (streaming) return;
-    localStorage.removeItem(SESSION_KEY);
-    sessionId = null;
-    chat.innerHTML = '';
-    setStatus('new session — ready', true);
-    prompt.focus();
-  });
-
-  // ── auto-resize textarea ──────────────────────────────────────────────────
-
-  prompt.addEventListener('input', () => {
-    prompt.style.height = 'auto';
-    prompt.style.height = Math.min(prompt.scrollHeight, 200) + 'px';
-  });
-
-  prompt.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (!send.disabled) sendMessage();
+  function messageText(content) {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      const textPart = content.find((p) => p && typeof p.text === "string");
+      return textPart ? textPart.text : "";
     }
-  });
+    return "";
+  }
 
-  send.addEventListener('click', sendMessage);
+  function roleClass(role) {
+    const r = (role || "").toLowerCase();
+    if (r === "user") return "user";
+    if (r === "assistant") return "assistant";
+    if (r === "tool") return "tool";
+    return "system";
+  }
 
-  // ── health check ─────────────────────────────────────────────────────────
+  async function fetchSessions() {
+    try {
+      const seq = ++sessionsFetchSeq;
+      const r = await fetchWithTimeout("/api/sessions", {}, 12000);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (seq !== sessionsFetchSeq) return;
+      sessions = data;
+      renderSessions();
+    } catch (_) {}
+  }
+
+  function sessionGroupLabel(updatedAt) {
+    const date = new Date(updatedAt);
+    if (Number.isNaN(date.getTime())) return "Older";
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - 7);
+    if (date >= startOfToday) return "Today";
+    if (date >= startOfWeek) return "This week";
+    return "Older";
+  }
+
+  function renderSessions() {
+    sessionsEl.innerHTML = "";
+    const query = sessionSearch.value.trim().toLowerCase();
+    const visible = sessions.filter((s) => {
+      if (!query) return true;
+      const name = (s.name || "").toLowerCase();
+      const id = String(s.id || "").toLowerCase();
+      const updated = String(s.updated_at || "").toLowerCase();
+      return name.includes(query) || id.includes(query) || updated.includes(query);
+    });
+    if (!visible.length) {
+      sessionsEl.innerHTML = query
+        ? '<div class="item-sub">No sessions match your search</div>'
+        : '<div class="item-sub">No sessions yet</div>';
+      return;
+    }
+    let lastGroup = "";
+    for (const s of visible) {
+      const group = sessionGroupLabel(s.updated_at);
+      if (group !== lastGroup) {
+        const label = document.createElement("div");
+        label.className = "group-label";
+        label.textContent = group;
+        sessionsEl.appendChild(label);
+        lastGroup = group;
+      }
+
+      const item = document.createElement("div");
+      item.className = "list-item" + (s.id === sessionId ? " active" : "");
+      const title = s.name || `Session ${String(s.id).slice(0, 8)}`;
+      item.innerHTML = `<div class="item-title">${escapeHtml(title)}</div><div class="item-sub">${escapeHtml(s.updated_at)}</div>`;
+      item.onclick = () => loadSession(s.id);
+      sessionsEl.appendChild(item);
+    }
+  }
+
+  async function loadSession(id) {
+    try {
+      const r = await fetchWithTimeout(`/api/sessions/${encodeURIComponent(id)}`, {}, 12000);
+      if (!r.ok) {
+        addEvent(`<strong>load failed</strong><br>${escapeHtml(id)}`);
+        return;
+      }
+      const data = await r.json();
+      sessionId = data.id;
+      persistSessionId();
+      clearChatAndActivity();
+      const msgs = Array.isArray(data.messages) ? data.messages : [];
+      for (const m of msgs) {
+        const text = messageText(m.content);
+        if (!text) continue;
+        addMsg(roleClass(m.role), renderMarkdown(text));
+      }
+      chat.scrollTop = chat.scrollHeight;
+      setStatus(`ready · session ${sessionId.slice(0, 8)}`, true);
+      renderSessions();
+      addEvent(`<strong>session loaded</strong><br>${escapeHtml((data.name || data.id).toString())}`);
+    } catch (err) {
+      addEvent(`<strong>load error</strong><br>${escapeHtml(err.message || String(err))}`);
+    }
+  }
+
+  async function fetchProjects() {
+    try {
+      const seq = ++projectsFetchSeq;
+      const r = await fetchWithTimeout("/api/projects", {}, 12000);
+      if (!r.ok) return;
+      const data = await r.json();
+      if (seq !== projectsFetchSeq) return;
+      projects = data;
+      if (selectedProjectName) {
+        selectedProject = projects.find((p) => p.name === selectedProjectName) || null;
+      } else if (selectedProject) {
+        selectedProject = projects.find((p) => p.name === selectedProject.name) || null;
+      }
+      if (!selectedProject && projects.length) {
+        selectedProject = projects[0];
+      }
+      if (selectedProject) {
+        selectedProjectName = selectedProject.name;
+        localStorage.setItem(SELECTED_PROJECT_KEY, selectedProjectName);
+      }
+      renderWorkspaces();
+    } catch (_) {}
+  }
+
+  function renderWorkspaces() {
+    workspacesEl.innerHTML = "";
+    if (!projects.length) {
+      workspacesEl.innerHTML = '<div class="item-sub">No linked projects yet. Use <code>harness project add</code>.</div>';
+      return;
+    }
+    projects.forEach((w) => {
+      const item = document.createElement("div");
+      item.className = "list-item" + (selectedProject && selectedProject.name === w.name ? " active" : "");
+      const branch = w.default_branch ? ` · ${escapeHtml(w.default_branch)}` : "";
+      const statusBusy = isProjectActionRunning(w, "status");
+      const syncBusy = isProjectActionRunning(w, "sync");
+      const pushBusy = isProjectActionRunning(w, "push");
+      const testBusy = isProjectActionRunning(w, "test");
+      item.innerHTML = `
+        <div class="item-title">${escapeHtml(w.name)}${branch}</div>
+        <div class="item-sub">${escapeHtml(w.path)}</div>
+        <div class="project-actions">
+          <button class="mini-btn ${statusBusy ? "busy" : ""}" data-action="status" ${statusBusy ? "disabled" : ""}>${statusBusy ? "Status..." : "Status"}</button>
+          <button class="mini-btn ${syncBusy ? "busy" : ""}" data-action="sync" ${syncBusy ? "disabled" : ""}>${syncBusy ? "Sync..." : "Sync"}</button>
+          <button class="mini-btn ${pushBusy ? "busy" : ""}" data-action="push" ${pushBusy ? "disabled" : ""}>${pushBusy ? "Push..." : "Push"}</button>
+          <button class="mini-btn ${testBusy ? "busy" : ""}" data-action="test" ${testBusy ? "disabled" : ""}>${testBusy ? "Test..." : "Test"}</button>
+          <button class="mini-btn" data-action="files">Files</button>
+        </div>`;
+      item.onclick = () => {
+        setSelectedProject(w);
+        const mention = `@${w.path} `;
+        prompt.value = mention + prompt.value;
+        prompt.dispatchEvent(new Event("input"));
+        prompt.focus();
+      };
+      item.querySelectorAll("button[data-action]").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const action = btn.dataset.action;
+          setSelectedProject(w);
+          if (action === "files") {
+            openFilePicker(w);
+            return;
+          }
+          if (action === "test") {
+            await runProjectAction(w, "test", { command: testCommandInput.value.trim() || undefined });
+            return;
+          }
+          await runProjectAction(w, action);
+        });
+      });
+      workspacesEl.appendChild(item);
+    });
+  }
+
+  function setSelectedProject(project) {
+    selectedProject = project;
+    selectedProjectName = project.name;
+    localStorage.setItem(SELECTED_PROJECT_KEY, selectedProjectName);
+    renderWorkspaces();
+    testOutput.textContent = `Selected project: ${project.name}\nPath: ${project.path}`;
+    updateTestControls();
+    updateActivityStatus();
+  }
+
+  function actionKey(project, action) {
+    return `${project.name}:${action}`;
+  }
+
+  function isProjectActionRunning(project, action) {
+    return projectActionRunning.has(actionKey(project, action));
+  }
+
+  function setProjectActionRunning(project, action, running) {
+    const key = actionKey(project, action);
+    if (running) {
+      projectActionRunning.add(key);
+    } else {
+      projectActionRunning.delete(key);
+      const ctrl = projectActionControllers.get(key);
+      if (ctrl) {
+        projectActionControllers.delete(key);
+      }
+    }
+    renderWorkspaces();
+    updateActivityStatus();
+  }
+
+  function hasQueuedProjectAction(project, action) {
+    const queue = projectActionQueues.get(project.name) || [];
+    return queue.some((item) => item.action === action);
+  }
+
+  async function executeProjectAction(project, action, extra = {}) {
+    const key = actionKey(project, action);
+    const controller = new AbortController();
+    const startedAt = performance.now();
+    projectActionControllers.set(key, controller);
+    setProjectActionRunning(project, action, true);
+    if (action === "test") {
+      testRunning = true;
+      updateTestControls();
+    }
+    try {
+      const actionTimeoutMs = (() => {
+        if (action === "test") return 300000;
+        if (action === "sync" || action === "push" || action === "status") return 60000;
+        return 45000;
+      })();
+      const r = await fetchWithTimeout(`/api/projects/${encodeURIComponent(project.name)}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+        signal: controller.signal
+      }, actionTimeoutMs);
+      if (!r.ok) {
+        addEvent(`<strong>${escapeHtml(action)} failed</strong><br>${escapeHtml(project.name)}`);
+        pushToast("error", `${project.name} · ${action}`, "Request failed");
+        if (action === "test") {
+          testOutput.textContent = "Test request failed.";
+        }
+        recordActionHistory({
+          project: project.name,
+          action,
+          outcome: "error",
+          durationMs: performance.now() - startedAt,
+          detail: `http ${r.status}`,
+          command: extra.command
+        });
+        return;
+      }
+      const data = await r.json();
+      const msg = data.message || `${action} complete`;
+      addEvent(`<strong>${escapeHtml(action)}</strong><br>${escapeHtml(project.name)} · ${escapeHtml(msg)}`);
+      pushToast("success", `${project.name} · ${action}`, msg);
+      if (action === "test") {
+        testOutput.textContent = (data.output || msg || "").slice(0, 6000);
+      } else if (action === "status") {
+        testOutput.textContent = msg;
+      }
+      recordActionHistory({
+        project: project.name,
+        action,
+        outcome: data.ok === false ? "error" : "success",
+        durationMs: performance.now() - startedAt,
+        detail: msg,
+        command: extra.command
+      });
+      await fetchProjects();
+    } catch (err) {
+      if (err.name === "AbortError") {
+        addEvent(`<strong>${escapeHtml(action)} cancelled</strong><br>${escapeHtml(project.name)}`);
+        pushToast("info", `${project.name} · ${action}`, "Cancelled");
+        recordActionHistory({
+          project: project.name,
+          action,
+          outcome: "cancelled",
+          durationMs: performance.now() - startedAt,
+          detail: "cancelled",
+          command: extra.command
+        });
+        return;
+      }
+      const errorMessage = err.message || String(err);
+      addEvent(`<strong>${escapeHtml(action)} error</strong><br>${escapeHtml(errorMessage)}`);
+      pushToast("error", `${project.name} · ${action}`, errorMessage);
+      if (action === "test") {
+        testOutput.textContent = `Test error: ${errorMessage}`;
+      }
+      recordActionHistory({
+        project: project.name,
+        action,
+        outcome: "error",
+        durationMs: performance.now() - startedAt,
+        detail: errorMessage,
+        command: extra.command
+      });
+    } finally {
+      setProjectActionRunning(project, action, false);
+      if (action === "test") {
+        testRunning = false;
+        updateTestControls();
+      }
+    }
+  }
+
+  async function drainProjectQueue(projectName) {
+    if (projectQueueRunning.has(projectName)) return;
+    projectQueueRunning.add(projectName);
+    try {
+      while (true) {
+        const queue = projectActionQueues.get(projectName) || [];
+        if (!queue.length) break;
+        const next = queue.shift();
+        if (!next) continue;
+        projectActionQueues.set(projectName, queue);
+        await executeProjectAction(next.project, next.action, next.extra);
+        next.resolve();
+      }
+    } finally {
+      projectQueueRunning.delete(projectName);
+    }
+  }
+
+  function updateTestControls() {
+    runTestBtn.disabled = testRunning || !selectedProject;
+    runTestBtn.classList.toggle("busy", testRunning);
+    runTestBtn.textContent = testRunning ? "Running..." : "Run";
+    testCommandInput.disabled = testRunning;
+    updateActivityStatus();
+  }
+
+  function updateActivityStatus() {
+    const runningCount = projectActionRunning.size;
+    activityRunningEl.textContent = `Running: ${runningCount}`;
+    activityRunningEl.className = runningCount > 0 ? "running" : "";
+    activitySelectedEl.textContent = `Selected: ${selectedProject ? selectedProject.name : "none"}`;
+    if (runningCount === 0) {
+      runningListEl.textContent = "";
+      runningListEl.classList.remove("visible");
+      return;
+    }
+    const labels = [...projectActionRunning].map((entry) => entry.replace(":", " · "));
+    runningListEl.textContent = `In progress: ${labels.join(" | ")}`;
+    runningListEl.classList.add("visible");
+  }
+
+  function startAutoRefresh() {
+    if (autoRefreshTimer) {
+      clearInterval(autoRefreshTimer);
+      autoRefreshTimer = null;
+    }
+    if (!autoRefreshEnabled) return;
+    autoRefreshTimer = setInterval(async () => {
+      if (streaming || refreshInFlight) return;
+      refreshInFlight = true;
+      try {
+        await Promise.all([fetchSessions(), fetchProjects()]);
+      } finally {
+        refreshInFlight = false;
+      }
+    }, 30000);
+  }
+
+  async function runProjectAction(project, action, extra = {}) {
+    if (offlineMode) {
+      pushToast("error", "Offline", `Cannot run ${action} while server is unreachable.`);
+      return;
+    }
+    if (isProjectActionRunning(project, action) || hasQueuedProjectAction(project, action)) {
+      pushToast("info", `${project.name} · ${action}`, "Already running or queued.");
+      return;
+    }
+    return new Promise((resolve) => {
+      const queue = projectActionQueues.get(project.name) || [];
+      const queuedBefore = queue.length;
+      queue.push({ project, action, extra, resolve });
+      projectActionQueues.set(project.name, queue);
+      if (queuedBefore > 0 || projectQueueRunning.has(project.name)) {
+        addEvent(`<strong>queued</strong><br>${escapeHtml(project.name)} · ${escapeHtml(action)}`);
+      }
+      void drainProjectQueue(project.name);
+    });
+  }
+
+  async function runSelectedProjectTest() {
+    if (!selectedProject) {
+      testOutput.textContent = "Select a project from the left sidebar first.";
+      pushToast("info", "No selected project", "Pick a project in the sidebar first.");
+      return;
+    }
+    if (testRunning) return;
+    await runProjectAction(selectedProject, "test", { command: testCommandInput.value.trim() || undefined });
+  }
+
+  async function openFilePicker(project) {
+    filePickerProject = project;
+    filePickerTitle.textContent = `Attach files · ${project.name}`;
+    filePickerOverlay.classList.add("visible");
+    filePickerOverlay.setAttribute("aria-hidden", "false");
+    fileSearchInput.value = "";
+    await fetchProjectFiles(project.name, "");
+    fileSearchInput.focus();
+  }
+
+  function closeFilePicker() {
+    if (fileSearchController) {
+      fileSearchController.abort();
+      fileSearchController = null;
+    }
+    filePickerOverlay.classList.remove("visible");
+    filePickerOverlay.setAttribute("aria-hidden", "true");
+    filePickerProject = null;
+    filePickerItems = [];
+    if (fileSearchDebounce) {
+      clearTimeout(fileSearchDebounce);
+      fileSearchDebounce = null;
+    }
+  }
+
+  async function fetchProjectFiles(projectName, query) {
+    try {
+      if (fileSearchController) {
+        fileSearchController.abort();
+      }
+      const controller = new AbortController();
+      fileSearchController = controller;
+      const seq = ++fileSearchRequestSeq;
+      const url = `/api/projects/${encodeURIComponent(projectName)}/files?q=${encodeURIComponent(query || "")}&limit=180`;
+      const r = await fetchWithTimeout(url, { signal: controller.signal }, 15000);
+      if (!r.ok) return;
+      const files = await r.json();
+      if (seq !== fileSearchRequestSeq) return;
+      filePickerItems = files;
+      renderFilePickerList();
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        pushToast("error", "File search failed", err.message || String(err));
+      }
+    }
+  }
+
+  function renderFilePickerList() {
+    fileList.innerHTML = "";
+    if (!filePickerItems.length) {
+      fileList.innerHTML = '<div class="item-sub">No matching files.</div>';
+      return;
+    }
+    filePickerItems.forEach((rel) => {
+      const item = document.createElement("div");
+      item.className = "file-item";
+      item.textContent = rel;
+      item.onclick = () => {
+        if (!filePickerProject) return;
+        const mention = `@${filePickerProject.path}/${rel} `;
+        prompt.value = mention + prompt.value;
+        prompt.dispatchEvent(new Event("input"));
+        closeFilePicker();
+        prompt.focus();
+      };
+      fileList.appendChild(item);
+    });
+  }
+
+  function openPalette() {
+    paletteOpen = true;
+    paletteOverlay.classList.add("visible");
+    paletteOverlay.setAttribute("aria-hidden", "false");
+    paletteInput.value = "";
+    paletteIndex = 0;
+    renderPalette();
+    paletteInput.focus();
+  }
+
+  function closePalette() {
+    paletteOpen = false;
+    paletteOverlay.classList.remove("visible");
+    paletteOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function cancelAllRunningActions() {
+    for (const [key, controller] of projectActionControllers.entries()) {
+      try {
+        controller.abort();
+      } catch (_) {}
+      projectActionControllers.delete(key);
+    }
+    for (const [projectName, queue] of projectActionQueues.entries()) {
+      for (const item of queue) {
+        try { item.resolve(); } catch (_) {}
+      }
+      projectActionQueues.set(projectName, []);
+    }
+  }
+
+  function loadPaletteActionMru() {
+    try {
+      const raw = localStorage.getItem(PALETTE_MRU_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function savePaletteActionMru() {
+    localStorage.setItem(PALETTE_MRU_KEY, JSON.stringify(paletteActionMru.slice(0, 20)));
+  }
+
+  function rememberPaletteAction(actionId) {
+    if (!actionId) return;
+    paletteActionMru = [actionId, ...paletteActionMru.filter((x) => x !== actionId)].slice(0, 20);
+    savePaletteActionMru();
+  }
+
+  function paletteItems() {
+    const query = paletteInput.value.trim().toLowerCase();
+    const actions = [
+      { id: "new_session", kind: "action", title: "Start new session", meta: "Clear chat and create fresh context", run: () => newSession.click() },
+      { id: "refresh_sessions", kind: "action", title: "Refresh sessions", meta: "Reload recent sessions list", run: () => refreshSessionsBtn.click() },
+      { id: "refresh_projects", kind: "action", title: "Refresh projects", meta: "Reload linked projects from backend", run: () => fetchProjects() },
+      { id: "run_selected_tests", kind: "action", title: "Run tests for selected project", meta: "Uses sidebar selected project + test command", run: () => runSelectedProjectTest() },
+      { id: "toggle_left", kind: "action", title: "Toggle left sidebar", meta: "Show/hide sessions/projects pane", run: () => toggleLeftBtn.click() },
+      { id: "toggle_right", kind: "action", title: "Show/hide right sidebar", meta: "Show/hide activity pane", run: () => toggleRightBtn.click() },
+      { id: "open_tour", kind: "action", title: "Open onboarding tour", meta: "Restart first-run guided tour", run: () => openTour(true) }
+    ];
+    const sessionItems = sessions.map((s) => ({
+      kind: "session",
+      title: s.name || `Session ${String(s.id).slice(0, 8)}`,
+      meta: `${s.updated_at} · ${s.id.slice(0, 8)}`,
+      run: () => loadSession(s.id)
+    }));
+    const projectItems = projects.map((p) => ({
+      kind: "project",
+      title: p.name,
+      meta: `${p.path}${p.default_branch ? ` · ${p.default_branch}` : ""}`,
+      run: () => {
+        const mention = `@${p.path} `;
+        prompt.value = mention + prompt.value;
+        prompt.dispatchEvent(new Event("input"));
+        prompt.focus();
+      }
+    }));
+
+    const all = [...actions, ...sessionItems, ...projectItems];
+    if (!query) {
+      const sortedActions = [...actions].sort((a, b) => {
+        const aIdx = paletteActionMru.indexOf(a.id || "");
+        const bIdx = paletteActionMru.indexOf(b.id || "");
+        if (aIdx === -1 && bIdx === -1) return 0;
+        if (aIdx === -1) return 1;
+        if (bIdx === -1) return -1;
+        return aIdx - bIdx;
+      });
+      return [...sortedActions, ...sessionItems, ...projectItems];
+    }
+
+    const scored = all
+      .map((item) => {
+        const title = item.title.toLowerCase();
+        const meta = item.meta.toLowerCase();
+        const kind = item.kind.toLowerCase();
+        const hay = `${title} ${meta} ${kind}`;
+        if (!hay.includes(query)) return null;
+
+        let score = 0;
+        if (title.startsWith(query)) score += 80;
+        if (title.includes(query)) score += 40;
+        if (meta.includes(query)) score += 20;
+        if (kind.includes(query)) score += 10;
+        if (item.kind === "action") score += 4;
+        if (item.kind === "action") {
+          const mruIdx = paletteActionMru.indexOf(item.id || "");
+          if (mruIdx >= 0) {
+            score += 100 - Math.min(90, mruIdx * 10);
+          }
+        }
+        return { item, score };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score)
+      .map((x) => x.item);
+
+    return scored;
+  }
+
+  function groupLabel(kind) {
+    if (kind === "action") return "Actions";
+    if (kind === "session") return "Sessions";
+    if (kind === "project") return "Projects";
+    return "Other";
+  }
+
+  function renderPalette() {
+    const items = paletteItems();
+    if (!items.length) {
+      paletteList.innerHTML = '<div class="item-sub">No actions match your search.</div>';
+      return items;
+    }
+    paletteIndex = Math.min(paletteIndex, items.length - 1);
+    let lastKind = "";
+    const parts = [];
+    for (let idx = 0; idx < items.length; idx += 1) {
+      const item = items[idx];
+      if (item.kind !== lastKind) {
+        parts.push(`<div class="palette-section">${escapeHtml(groupLabel(item.kind))}</div>`);
+        lastKind = item.kind;
+      }
+      parts.push(
+        `<div class="palette-item ${idx === paletteIndex ? "active" : ""}" data-idx="${idx}">
+          <div class="title-row">
+            <div class="title">${escapeHtml(item.title)}</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              ${
+                item.kind === "action" && paletteActionMru.indexOf(item.id || "") >= 0
+                  ? '<span class="recent-badge">Recent</span>'
+                  : ""
+              }
+              <span class="kind-badge ${escapeHtml(item.kind)}">${escapeHtml(item.kind)}</span>
+            </div>
+          </div>
+          <div class="meta">${escapeHtml(item.meta)}</div>
+        </div>`
+      );
+    }
+    paletteList.innerHTML = parts.join("");
+    paletteList.querySelectorAll(".palette-item").forEach((el) => {
+      el.onclick = () => {
+        const idx = Number(el.dataset.idx || "0");
+        const selected = items[idx];
+        if (selected) {
+          if (selected.kind === "action") rememberPaletteAction(selected.id || "");
+          selected.run();
+          closePalette();
+        }
+      };
+    });
+    return items;
+  }
+
+  function slashSuggestions(input) {
+    const trimmed = input.trimStart();
+    if (!trimmed.startsWith("/")) return [];
+    return COMMANDS.filter((c) => c.cmd.startsWith(trimmed));
+  }
+
+  function renderSlashMenu() {
+    const suggestions = slashSuggestions(prompt.value);
+    if (!suggestions.length) {
+      slashMenu.style.display = "none";
+      slashMenu.innerHTML = "";
+      return suggestions;
+    }
+    slashIndex = Math.min(slashIndex, suggestions.length - 1);
+    slashMenu.style.display = "block";
+    slashMenu.innerHTML = suggestions.map((s, i) => (
+      `<div class="slash-item ${i === slashIndex ? "active" : ""}" data-cmd="${escapeHtml(s.cmd)}">
+        ${escapeHtml(s.cmd)}<span class="hint">${escapeHtml(s.hint)}</span>
+      </div>`
+    )).join("");
+    slashMenu.querySelectorAll(".slash-item").forEach((el) => {
+      el.onclick = () => applySlash(el.dataset.cmd || "");
+    });
+    return suggestions;
+  }
+
+  function applySlash(cmd) {
+    prompt.value = cmd;
+    prompt.focus();
+    prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+    prompt.dispatchEvent(new Event("input"));
+    slashMenu.style.display = "none";
+  }
 
   async function checkHealth() {
     try {
-      const r = await fetch('/api/health');
+      const r = await fetchWithTimeout("/api/health", {}, 8000);
       if (r.ok) {
-        setStatus('ready', true);
-        send.disabled = false;
+        const health = await r.json();
+        setOfflineState(false);
+        healthBackoffMs = 2500;
+        setStatus(`ready · ${health.model || "model"}`, true);
+        updateSendControls();
         return;
       }
-    } catch {}
-    setStatus('server unreachable', false);
-    setTimeout(checkHealth, 3000);
+      throw new Error(`health status ${r.status}`);
+    } catch (_) {
+      stopGenerating();
+      updateSendControls();
+      setOfflineState(true, `Server unreachable. Retrying in ${Math.round(healthBackoffMs / 1000)}s…`);
+      setStatus("server unreachable", false);
+      if (healthTimer) {
+        clearTimeout(healthTimer);
+      }
+      healthTimer = setTimeout(checkHealth, healthBackoffMs);
+      healthBackoffMs = Math.min(30000, Math.round(healthBackoffMs * 1.8));
+    }
   }
-
-  checkHealth();
-
-  // ── send message ──────────────────────────────────────────────────────────
 
   async function sendMessage() {
     const text = prompt.value.trim();
     if (!text || streaming) return;
-
-    prompt.value = '';
-    prompt.style.height = 'auto';
-    send.disabled = true;
+    if (offlineMode) {
+      pushToast("error", "Offline", "Cannot send while server is unreachable.");
+      return;
+    }
+    prompt.value = "";
+    prompt.style.height = "auto";
+    prompt.dispatchEvent(new Event("input"));
     streaming = true;
-    setStatus('thinking…', true);
+    updateSendControls();
+    setStatus("thinking…", true);
+    slashMenu.style.display = "none";
 
-    addMsg('user', escapeHtml(text));
-
-    const assistantId = 'msg-' + Date.now();
-    const assistantDiv = addMsg('assistant cursor', '', assistantId);
-    let assistantText = '';
+    addMsg("user", renderMarkdown(text));
+    const assistantId = `msg-${Date.now()}`;
+    const assistantDiv = addMsg("assistant cursor", "", assistantId);
+    let assistantText = "";
 
     const body = { prompt: text };
     if (sessionId) body.session_id = sessionId;
 
     try {
-      const resp = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      chatRequestController = new AbortController();
+      const resp = await fetchWithTimeout("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      });
-
+        signal: chatRequestController.signal
+      }, 600000);
       if (!resp.ok) {
         const msg = await resp.text();
-        assistantDiv.className = 'msg error';
-        assistantDiv.textContent = 'Server error: ' + msg;
+        assistantDiv.className = "msg error";
+        assistantDiv.textContent = `Server error: ${msg}`;
         return;
       }
-
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
-      let buf = '';
+      let buf = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
 
-        let nl;
-        while ((nl = buf.indexOf('\n')) !== -1) {
-          const line = buf.slice(0, nl).replace(/\r$/, '');
+        let nl = -1;
+        while ((nl = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, nl).replace(/\r$/, "");
           buf = buf.slice(nl + 1);
+          if (!line.startsWith("data: ")) continue;
 
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
           let evt;
-          try { evt = JSON.parse(data); } catch { continue; }
+          try {
+            evt = JSON.parse(line.slice(6));
+          } catch (_) {
+            continue;
+          }
 
           switch (evt.type) {
-            case 'text_chunk':
-              assistantText += evt.content || '';
+            case "text_chunk":
+              assistantText += evt.content || "";
               assistantDiv.innerHTML = renderMarkdown(assistantText);
-              assistantDiv.className = 'msg assistant cursor';
+              assistantDiv.className = "msg assistant cursor";
               chat.scrollTop = chat.scrollHeight;
               break;
-            case 'tool_start': {
-              const name = evt.name || '?';
-              addMsg('tool', `→ <strong>${escapeHtml(name)}</strong>`);
+            case "tool_start":
+              addEvent(`<strong>tool start</strong><br>${escapeHtml(evt.name || "?")}`);
               break;
-            }
-            case 'tool_result': {
-              const name = evt.name || '?';
-              const last = chat.querySelector('.msg.tool:last-child');
-              if (last) last.innerHTML = `← <strong>${escapeHtml(name)}</strong>`;
+            case "tool_result":
+              addEvent(`<strong>tool done</strong><br>${escapeHtml(evt.name || "?")}`);
               break;
-            }
-            case 'session_id':
+            case "memory_recall":
+              addEvent(`<strong>memory recall</strong><br>${escapeHtml(String(evt.count || 0))} item(s)`);
+              break;
+            case "session_id":
               sessionId = evt.id;
-              if (sessionId) {
-                localStorage.setItem(SESSION_KEY, sessionId);
-              }
+              persistSessionId();
               break;
-            case 'done':
-              assistantDiv.className = 'msg assistant';
+            case "done":
+              assistantDiv.className = "msg assistant";
               break;
-            case 'error':
-              addMsg('error', escapeHtml(evt.message || 'unknown error'));
+            case "error":
+              addMsg("error", escapeHtml(evt.message || "unknown error"));
+              addEvent(`<strong>error</strong><br>${escapeHtml(evt.message || "unknown error")}`);
+              break;
+            default:
               break;
           }
         }
       }
     } catch (err) {
-      assistantDiv.className = 'msg error';
-      assistantDiv.textContent = 'Request failed: ' + err.message;
+      if (err.name === "AbortError") {
+        assistantDiv.className = "msg assistant";
+        if (!assistantText.trim()) {
+          assistantDiv.textContent = "[generation stopped]";
+        }
+        addEvent("<strong>generation stopped</strong><br>Cancelled by user");
+      } else {
+        assistantDiv.className = "msg error";
+        assistantDiv.textContent = `Request failed: ${err.message || String(err)}`;
+      }
     } finally {
+      chatRequestController = null;
       streaming = false;
-      send.disabled = false;
-      setStatus('ready', true);
-      // remove cursor class in case done event was missing
+      updateSendControls();
       const el = document.getElementById(assistantId);
-      if (el) el.classList.remove('cursor');
+      if (el) el.classList.remove("cursor");
+      setStatus(sessionId ? `ready · session ${sessionId.slice(0, 8)}` : "ready", true);
+      await fetchSessions();
       prompt.focus();
     }
   }
+
+  document.querySelectorAll(".template").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const value = btn.dataset.template || "";
+      prompt.value = value;
+      prompt.dispatchEvent(new Event("input"));
+      prompt.focus();
+      prompt.setSelectionRange(value.length, value.length);
+    });
+  });
+
+  prompt.addEventListener("input", () => {
+    prompt.style.height = "auto";
+    prompt.style.height = Math.min(prompt.scrollHeight, 220) + "px";
+    charCount.textContent = `${prompt.value.length} chars`;
+    renderSlashMenu();
+    updateSendControls();
+  });
+
+  prompt.addEventListener("keydown", (e) => {
+    const suggestions = slashSuggestions(prompt.value);
+    if (suggestions.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      if (e.key === "ArrowDown") {
+        slashIndex = (slashIndex + 1) % suggestions.length;
+      } else {
+        slashIndex = (slashIndex - 1 + suggestions.length) % suggestions.length;
+      }
+      renderSlashMenu();
+      return;
+    }
+    if (suggestions.length && (e.key === "Tab" || e.key === "Enter") && !e.shiftKey) {
+      if (e.key === "Tab") e.preventDefault();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applySlash(suggestions[slashIndex].cmd);
+      } else {
+        applySlash(suggestions[slashIndex].cmd);
+      }
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+    if (e.key === "Escape") {
+      slashMenu.style.display = "none";
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === ".") {
+      e.preventDefault();
+      stopGenerating();
+      cancelAllRunningActions();
+      pushToast("info", "Cancelled actions", "Requested cancellation for streaming and running project actions.");
+      return;
+    }
+    if (!isTypingTarget(e.target) && e.key === "?") {
+      e.preventDefault();
+      if (helpOpen) {
+        closeHelp();
+      } else {
+        openHelp();
+      }
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (paletteOpen) {
+        closePalette();
+      } else {
+        openPalette();
+      }
+      return;
+    }
+    if (helpOpen && e.key === "Escape") {
+      closeHelp();
+      return;
+    }
+    if (filePickerProject && e.key === "Escape") {
+      closeFilePicker();
+      return;
+    }
+    if (tourOpen && e.key === "Escape") {
+      closeTour(true);
+      return;
+    }
+    if (paletteOpen && e.key === "Escape") {
+      closePalette();
+      return;
+    }
+    const key = e.key.toLowerCase();
+    if (e.ctrlKey && key === "b") {
+      e.preventDefault();
+      leftCollapsed = !leftCollapsed;
+      localStorage.setItem(LEFT_COLLAPSED_KEY, String(leftCollapsed));
+      applySidebarState();
+    }
+    if (e.ctrlKey && key === "\\") {
+      e.preventDefault();
+      rightCollapsed = !rightCollapsed;
+      localStorage.setItem(RIGHT_COLLAPSED_KEY, String(rightCollapsed));
+      applySidebarState();
+    }
+  });
+
+  send.addEventListener("click", sendMessage);
+  stopGenerationBtn.addEventListener("click", stopGenerating);
+  historyFilterSelect.addEventListener("change", () => {
+    actionHistoryFilter = historyFilterSelect.value || "all";
+    localStorage.setItem(ACTION_HISTORY_FILTER_KEY, actionHistoryFilter);
+    renderActionHistory();
+  });
+  copyHistoryBtn.addEventListener("click", copyActionHistoryJson);
+  downloadHistoryBtn.addEventListener("click", () => {
+    downloadActionHistoryJson();
+    const parsed = JSON.parse(buildActionHistoryJson());
+    pushToast("success", "History downloaded", `Saved ${parsed.items.length} history item(s) as JSON.`);
+  });
+  refreshSessionsBtn.addEventListener("click", fetchSessions);
+  refreshProjectsBtn.addEventListener("click", fetchProjects);
+  offlineRetryBtn.addEventListener("click", async () => {
+    offlineRetryBtn.disabled = true;
+    try {
+      await checkHealth();
+      if (!offlineMode) {
+        await Promise.all([fetchSessions(), fetchProjects()]);
+        pushToast("success", "Reconnected", "Server is reachable again.");
+      }
+    } finally {
+      offlineRetryBtn.disabled = false;
+    }
+  });
+  runTestBtn.addEventListener("click", runSelectedProjectTest);
+  copyTestOutputBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(testOutput.textContent || "");
+      pushToast("success", "Test output copied", "Copied latest test output to clipboard.");
+    } catch (_) {
+      pushToast("error", "Copy failed", "Could not access clipboard.");
+    }
+  });
+  sessionSearch.addEventListener("input", renderSessions);
+  paletteInput.addEventListener("input", () => {
+    paletteIndex = 0;
+    renderPalette();
+  });
+  paletteInput.addEventListener("keydown", (e) => {
+    const items = renderPalette();
+    if (!items.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      paletteIndex = (paletteIndex + 1) % items.length;
+      renderPalette();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      paletteIndex = (paletteIndex - 1 + items.length) % items.length;
+      renderPalette();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const selected = items[paletteIndex];
+      if (selected) {
+        if (selected.kind === "action") rememberPaletteAction(selected.id || "");
+        selected.run();
+        closePalette();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closePalette();
+    }
+  });
+  paletteOverlay.addEventListener("click", (e) => {
+    if (e.target === paletteOverlay) closePalette();
+  });
+  filePickerClose.addEventListener("click", closeFilePicker);
+  filePickerOverlay.addEventListener("click", (e) => {
+    if (e.target === filePickerOverlay) closeFilePicker();
+  });
+  fileSearchInput.addEventListener("input", () => {
+    if (!filePickerProject) return;
+    if (fileSearchDebounce) {
+      clearTimeout(fileSearchDebounce);
+    }
+    const query = fileSearchInput.value.trim();
+    fileSearchDebounce = setTimeout(() => {
+      fetchProjectFiles(filePickerProject.name, query);
+    }, 180);
+  });
+
+  toggleLeftBtn.addEventListener("click", () => {
+    leftCollapsed = !leftCollapsed;
+    localStorage.setItem(LEFT_COLLAPSED_KEY, String(leftCollapsed));
+    applySidebarState();
+  });
+
+  toggleRightBtn.addEventListener("click", () => {
+    rightCollapsed = !rightCollapsed;
+    localStorage.setItem(RIGHT_COLLAPSED_KEY, String(rightCollapsed));
+    applySidebarState();
+  });
+
+  openHelpBtn.addEventListener("click", openHelp);
+  closeHelpBtn.addEventListener("click", closeHelp);
+  helpOverlay.addEventListener("click", (e) => {
+    if (e.target === helpOverlay) closeHelp();
+  });
+  openTourBtn.addEventListener("click", () => openTour(true));
+  tourSkipBtn.addEventListener("click", () => closeTour(true));
+  tourPrevBtn.addEventListener("click", () => {
+    if (tourIndex > 0) {
+      tourIndex -= 1;
+      renderTourStep();
+    }
+  });
+  tourNextBtn.addEventListener("click", () => {
+    if (tourIndex >= tourSteps.length - 1) {
+      closeTour(true);
+      return;
+    }
+    tourIndex += 1;
+    renderTourStep();
+  });
+  tourOverlay.addEventListener("click", (e) => {
+    if (e.target === tourOverlay) closeTour(true);
+  });
+
+  resumeLastToggle.addEventListener("change", () => {
+    resumeLastSession = resumeLastToggle.checked;
+    localStorage.setItem(RESUME_LAST_KEY, String(resumeLastSession));
+    if (!resumeLastSession) {
+      sessionId = null;
+    }
+    persistSessionId();
+    renderSessions();
+  });
+
+  autoRefreshToggle.addEventListener("change", () => {
+    autoRefreshEnabled = autoRefreshToggle.checked;
+    localStorage.setItem(AUTO_REFRESH_KEY, String(autoRefreshEnabled));
+    startAutoRefresh();
+  });
+
+  newSession.addEventListener("click", () => {
+    if (streaming) return;
+    sessionId = null;
+    persistSessionId();
+    clearChatAndActivity();
+    renderSessions();
+    setStatus("new session — ready", true);
+    addMsg("system", "New session started.");
+    prompt.focus();
+  });
+
+  async function boot() {
+    resumeLastToggle.checked = resumeLastSession;
+    autoRefreshToggle.checked = autoRefreshEnabled;
+    historyFilterSelect.value = ["all", "error", "success", "cancelled"].includes(actionHistoryFilter)
+      ? actionHistoryFilter
+      : "all";
+    actionHistoryFilter = historyFilterSelect.value;
+    applySidebarState();
+    renderActionHistory();
+    await fetchProjects();
+    await checkHealth();
+    await fetchSessions();
+    if (resumeLastSession && sessionId) {
+      await loadSession(sessionId);
+    } else {
+      addMsg("system", "Ready. Select a session or start a new one.");
+    }
+    updateTestControls();
+    updateActivityStatus();
+    updateSendControls();
+    startAutoRefresh();
+    if (localStorage.getItem(TOUR_SEEN_KEY) !== "true") {
+      openTour(true);
+    }
+    prompt.focus();
+  }
+
+  boot();
 </script>
 </body>
 </html>

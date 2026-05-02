@@ -75,12 +75,7 @@ pub fn notify(cfg: &NotificationsConfig, summary: &str, body: &str) {
 }
 
 /// Rich notification with kind, grouping, and macOS action buttons.
-pub fn notify_rich(
-    cfg: &NotificationsConfig,
-    kind: NotificationKind,
-    summary: &str,
-    body: &str,
-) {
+pub fn notify_rich(cfg: &NotificationsConfig, kind: NotificationKind, summary: &str, body: &str) {
     if !cfg.enabled {
         return;
     }
@@ -92,7 +87,9 @@ fn send_notification(summary: &str, body: &str, subtitle: Option<&str>, _group_i
     {
         use notify_rust::Notification;
         let mut n = Notification::new();
-        n.appname(APP_NAME).summary(summary).body(body)
+        n.appname(APP_NAME)
+            .summary(summary)
+            .body(body)
             .timeout(notify_rust::Timeout::Milliseconds(6000));
 
         // On macOS we set subtitle via the subtitle() method if available
@@ -121,13 +118,19 @@ pub fn background_done(cfg: &NotificationsConfig, label: &str, success: bool) {
         return;
     }
     if success {
-        notify_rich(cfg, NotificationKind::BackgroundDone,
+        notify_rich(
+            cfg,
+            NotificationKind::BackgroundDone,
             &format!("{APP_NAME} — Done"),
-            &format!("Background run '{label}' completed."));
+            &format!("Background run '{label}' completed."),
+        );
     } else {
-        notify_rich(cfg, NotificationKind::BackgroundDone,
+        notify_rich(
+            cfg,
+            NotificationKind::BackgroundDone,
             &format!("{APP_NAME} — Failed"),
-            &format!("Background run '{label}' failed."));
+            &format!("Background run '{label}' failed."),
+        );
     }
 }
 
@@ -136,8 +139,12 @@ pub fn autotest_failed(cfg: &NotificationsConfig, details: &str) {
     if !cfg.on_autotest_fail {
         return;
     }
-    notify_rich(cfg, NotificationKind::AutotestFailed,
-        &format!("{APP_NAME} — Test Failure"), details);
+    notify_rich(
+        cfg,
+        NotificationKind::AutotestFailed,
+        &format!("{APP_NAME} — Test Failure"),
+        details,
+    );
 }
 
 /// Notify that a budget threshold has been crossed.
@@ -145,8 +152,12 @@ pub fn budget_alert(cfg: &NotificationsConfig, message: &str) {
     if !cfg.on_budget {
         return;
     }
-    notify_rich(cfg, NotificationKind::BudgetAlert,
-        &format!("{APP_NAME} — Budget Alert"), message);
+    notify_rich(
+        cfg,
+        NotificationKind::BudgetAlert,
+        &format!("{APP_NAME} — Budget Alert"),
+        message,
+    );
 }
 
 /// Notify about a PR opened event.
@@ -154,9 +165,12 @@ pub fn pr_opened(cfg: &NotificationsConfig, title: &str, url: &str) {
     if !cfg.enabled {
         return;
     }
-    notify_rich(cfg, NotificationKind::PrOpened,
+    notify_rich(
+        cfg,
+        NotificationKind::PrOpened,
         &format!("{APP_NAME} — PR Opened"),
-        &format!("{title}\n{url}"));
+        &format!("{title}\n{url}"),
+    );
 }
 
 /// Notify that a CI run failed.
@@ -164,9 +178,12 @@ pub fn ci_failed(cfg: &NotificationsConfig, job: &str, url: &str) {
     if !cfg.enabled {
         return;
     }
-    notify_rich(cfg, NotificationKind::CiFailed,
+    notify_rich(
+        cfg,
+        NotificationKind::CiFailed,
         &format!("{APP_NAME} — CI Failed"),
-        &format!("Job '{job}' failed\n{url}"));
+        &format!("Job '{job}' failed\n{url}"),
+    );
 }
 
 /// Notify that a long-running sub-agent finished.
@@ -174,9 +191,12 @@ pub fn subagent_done(cfg: &NotificationsConfig, task_id: &str, result: &str) {
     if !cfg.enabled {
         return;
     }
-    notify_rich(cfg, NotificationKind::LongSubagentDone,
+    notify_rich(
+        cfg,
+        NotificationKind::LongSubagentDone,
         &format!("{APP_NAME} — Sub-agent Done"),
-        &format!("Task {task_id}: {result}"));
+        &format!("Task {task_id}: {result}"),
+    );
 }
 
 /// Notify that a voice response finished.
@@ -184,8 +204,12 @@ pub fn voice_response_done(cfg: &NotificationsConfig) {
     if !cfg.enabled {
         return;
     }
-    notify_rich(cfg, NotificationKind::VoiceResponseDone,
-        &format!("{APP_NAME} — Voice Ready"), "Your voice response is ready.");
+    notify_rich(
+        cfg,
+        NotificationKind::VoiceResponseDone,
+        &format!("{APP_NAME} — Voice Ready"),
+        "Your voice response is ready.",
+    );
 }
 
 /// Notify that the swarm completed all tasks.
@@ -198,8 +222,12 @@ pub fn swarm_complete(cfg: &NotificationsConfig, total: usize, failed: usize) {
     } else {
         format!("{total} tasks done, {failed} failed.")
     };
-    notify_rich(cfg, NotificationKind::SwarmComplete,
-        &format!("{APP_NAME} — Swarm Complete"), &body);
+    notify_rich(
+        cfg,
+        NotificationKind::SwarmComplete,
+        &format!("{APP_NAME} — Swarm Complete"),
+        &body,
+    );
 }
 
 /// Notify that the harness daemon crashed/restarted.
@@ -207,9 +235,12 @@ pub fn daemon_died(cfg: &NotificationsConfig) {
     if !cfg.enabled {
         return;
     }
-    notify_rich(cfg, NotificationKind::DaemonDied,
+    notify_rich(
+        cfg,
+        NotificationKind::DaemonDied,
         &format!("{APP_NAME} — Daemon Restarted"),
-        "The Harness daemon restarted. Sessions may have been reset.");
+        "The Harness daemon restarted. Sessions may have been reset.",
+    );
 }
 
 /// Notify that a new version is available.
@@ -217,12 +248,19 @@ pub fn update_available(cfg: &NotificationsConfig, version: &str) {
     if !cfg.enabled {
         return;
     }
-    notify_rich(cfg, NotificationKind::UpdateAvailable,
+    notify_rich(
+        cfg,
+        NotificationKind::UpdateAvailable,
         &format!("{APP_NAME} — Update Available"),
-        &format!("Version {version} is available. Run `harness update` to upgrade."));
+        &format!("Version {version} is available. Run `harness update` to upgrade."),
+    );
 }
 
 /// Notify with a custom summary and body (used by `/notify test`).
 pub fn test_notification(cfg: &NotificationsConfig) {
-    notify(cfg, &format!("{APP_NAME} — Test"), "Notifications are working! 🎉");
+    notify(
+        cfg,
+        &format!("{APP_NAME} — Test"),
+        "Notifications are working! 🎉",
+    );
 }

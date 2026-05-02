@@ -72,8 +72,12 @@ impl Tool for ApplyPatchTool {
             // Rollback.
             for (path, original) in &originals {
                 match original {
-                    Some(content) => { let _ = tokio::fs::write(path, content).await; }
-                    None => { let _ = tokio::fs::remove_file(path).await; }
+                    Some(content) => {
+                        let _ = tokio::fs::write(path, content).await;
+                    }
+                    None => {
+                        let _ = tokio::fs::remove_file(path).await;
+                    }
                 }
             }
             return Err(anyhow::anyhow!(
@@ -84,7 +88,9 @@ impl Tool for ApplyPatchTool {
 
         let file_count = changes.len();
         let hunk_summary: String = results.join("\n");
-        Ok(format!("Applied patch to {file_count} file(s):\n{hunk_summary}"))
+        Ok(format!(
+            "Applied patch to {file_count} file(s):\n{hunk_summary}"
+        ))
     }
 }
 
@@ -105,7 +111,9 @@ fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String)>> {
     while let Some(line) = lines.peek() {
         if line.starts_with("--- ") {
             let _ = lines.next();
-            let plus_line = lines.next().ok_or_else(|| anyhow::anyhow!("expected +++ line after ---"))?;
+            let plus_line = lines
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("expected +++ line after ---"))?;
             if !plus_line.starts_with("+++ ") {
                 anyhow::bail!("expected +++ line, got: {plus_line}");
             }
@@ -150,7 +158,12 @@ fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String)>> {
                     match ch {
                         ' ' => {
                             // Context line — advance orig pointer.
-                            new_lines.push(file_lines.get(orig_ptr).cloned().unwrap_or_else(|| content.clone()));
+                            new_lines.push(
+                                file_lines
+                                    .get(orig_ptr)
+                                    .cloned()
+                                    .unwrap_or_else(|| content.clone()),
+                            );
                             orig_ptr += 1;
                         }
                         '-' => {
@@ -189,7 +202,9 @@ fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String)>> {
 
 fn strip_diff_prefix(path: &str) -> &str {
     // Strip "a/", "b/", or "/dev/null" indicators.
-    if path == "/dev/null" { return path; }
+    if path == "/dev/null" {
+        return path;
+    }
     path.strip_prefix("a/")
         .or_else(|| path.strip_prefix("b/"))
         .unwrap_or(path)

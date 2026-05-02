@@ -7,10 +7,7 @@ use ratatui::{
     text::{Line, Span},
 };
 use syntect::{
-    easy::HighlightLines,
-    highlighting::ThemeSet,
-    parsing::SyntaxSet,
-    util::LinesWithEndings,
+    easy::HighlightLines, highlighting::ThemeSet, parsing::SyntaxSet, util::LinesWithEndings,
 };
 
 // ── Content block ─────────────────────────────────────────────────────────────
@@ -32,7 +29,10 @@ pub fn parse_blocks(text: &str) -> Vec<Block> {
         if let Some(rest) = line.strip_prefix("```") {
             if in_code {
                 if !code_buf.is_empty() {
-                    blocks.push(Block::Code { lang: lang.clone(), code: code_buf.clone() });
+                    blocks.push(Block::Code {
+                        lang: lang.clone(),
+                        code: code_buf.clone(),
+                    });
                 }
                 code_buf.clear();
                 in_code = false;
@@ -58,7 +58,10 @@ pub fn parse_blocks(text: &str) -> Vec<Block> {
     }
     if in_code && !code_buf.is_empty() {
         // Unclosed fence — treat as code anyway
-        blocks.push(Block::Code { lang, code: code_buf });
+        blocks.push(Block::Code {
+            lang,
+            code: code_buf,
+        });
     }
 
     blocks
@@ -96,14 +99,14 @@ impl Highlighter {
         if !lang.is_empty() {
             lines.push(Line::from(Span::styled(
                 format!("  {lang}"),
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
             )));
         }
 
         for line_str in LinesWithEndings::from(code) {
-            let ranges = hl
-                .highlight_line(line_str, &self.ss)
-                .unwrap_or_default();
+            let ranges = hl.highlight_line(line_str, &self.ss).unwrap_or_default();
 
             let spans: Vec<Span<'static>> = ranges
                 .iter()
@@ -128,10 +131,7 @@ impl Highlighter {
             match block {
                 Block::Text(t) => {
                     for raw in t.lines() {
-                        lines.push(Line::from(Span::styled(
-                            raw.to_string(),
-                            text_style,
-                        )));
+                        lines.push(Line::from(Span::styled(raw.to_string(), text_style)));
                     }
                 }
                 Block::Code { lang, code } => {

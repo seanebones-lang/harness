@@ -126,6 +126,62 @@ harness memories                 # list all topics
 harness forget architecture      # delete a topic
 ```
 
+### Project lifecycle commands
+
+Manage linked repos from one command surface:
+
+```bash
+harness proj ls                              # alias: harness project list
+harness project dashboard                    # all projects: branch, ahead/behind, dirty state
+harness project status my-project            # one project health view
+harness project sync my-project              # fetch + ff-only pull
+harness project sync --all                   # bulk sync every linked project
+harness project push my-project              # push current branch (safe defaults)
+harness project exec my-project -- cargo test
+```
+
+Create/publish flows:
+
+```bash
+harness project init my-new-app              # mkdir + git init + auto-link
+harness project publish my-new-app --private # gh repo create + remote wiring
+harness project clone git@github.com:you/repo.git
+harness project import --root ~/code --recursive
+harness project prune                         # drop missing paths from registry
+```
+
+Helpful aliases:
+- `harness proj ...` = `harness project ...`
+- `ls`, `dash`, `st`, `up`, `pub`, `run`, `ship`, `rm`, `scan`, `clean`, `new`, `link`, `cl`
+
+### Quickstart recipes
+
+1) **Start a brand-new app**
+
+```bash
+harness project init my-new-app
+harness project exec my-new-app -- git add .
+harness project exec my-new-app -- git commit -m "chore: initial scaffold"
+harness project publish my-new-app --private --push
+```
+
+2) **Onboard existing local repos**
+
+```bash
+harness project import --root ~/code --recursive
+harness project dashboard
+harness project status some-repo
+```
+
+3) **Daily update + push loop**
+
+```bash
+harness proj up --all              # pull latest safely for every linked repo
+harness project dashboard          # check what needs attention
+harness project exec my-app -- npm test
+harness project pub my-app         # alias for `project push`
+```
+
 ---
 
 ## Session management

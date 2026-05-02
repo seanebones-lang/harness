@@ -1,7 +1,7 @@
 use crate::confirm::ConfirmGate;
+use crate::registry::Tool as _;
 use crate::registry::ToolRegistry;
 use crate::tools::TestRunnerTool;
-use crate::registry::Tool as _;
 use harness_provider_core::ToolCall;
 use tracing::{debug, warn};
 
@@ -89,7 +89,8 @@ impl ToolExecutor {
         // Trusted tool/pattern pairs bypass the confirm gate.
         if let Some(gate) = &self.confirm_gate {
             if DESTRUCTIVE_TOOLS.contains(&call.function.name.as_str()) {
-                let first_arg = args.get("command")
+                let first_arg = args
+                    .get("command")
                     .or_else(|| args.get("path"))
                     .or_else(|| args.get("action"))
                     .and_then(|v| v.as_str())
@@ -99,7 +100,10 @@ impl ToolExecutor {
                     let preview = build_preview(&call.function.name, &args);
                     let approved = gate.request(&call.function.name, preview).await;
                     if !approved {
-                        return format!("[plan mode] '{}' was skipped by user.", call.function.name);
+                        return format!(
+                            "[plan mode] '{}' was skipped by user.",
+                            call.function.name
+                        );
                     }
                 }
             }
@@ -180,14 +184,21 @@ fn build_preview(tool_name: &str, args: &serde_json::Value) -> String {
     match tool_name {
         "shell" => {
             let cmd = args["command"].as_str().unwrap_or("(unknown)");
-            let cwd = args["cwd"].as_str().map(|c| format!(" (in {c})")).unwrap_or_default();
+            let cwd = args["cwd"]
+                .as_str()
+                .map(|c| format!(" (in {c})"))
+                .unwrap_or_default();
             format!("$ {cmd}{cwd}")
         }
         "write_file" => {
             let path = args["path"].as_str().unwrap_or("(unknown)");
             let content = args["content"].as_str().unwrap_or("");
             let lines: Vec<&str> = content.lines().take(20).collect();
-            let truncated = if content.lines().count() > 20 { "\n…(truncated)" } else { "" };
+            let truncated = if content.lines().count() > 20 {
+                "\n…(truncated)"
+            } else {
+                ""
+            };
             format!("write {path}\n{}{}", lines.join("\n"), truncated)
         }
         "patch_file" => {

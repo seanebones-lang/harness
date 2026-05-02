@@ -55,7 +55,9 @@ pub struct TaskEntry {
 // ── Database ──────────────────────────────────────────────────────────────────
 
 fn swarm_db_path() -> std::path::PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".harness/swarm.db")
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness/swarm.db")
 }
 
 fn open_db() -> Result<Connection> {
@@ -70,13 +72,16 @@ fn open_db() -> Result<Connection> {
             result TEXT,
             created_ts INTEGER NOT NULL,
             completed_ts INTEGER
-        );"
+        );",
     )?;
     Ok(conn)
 }
 
 fn now_ts() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
 fn new_task_id() -> TaskId {
@@ -138,7 +143,7 @@ pub fn list_tasks(limit: usize) -> Result<Vec<TaskEntry>> {
     let conn = open_db()?;
     let mut stmt = conn.prepare(
         "SELECT id, prompt, status, result, created_ts, completed_ts
-         FROM tasks ORDER BY created_ts DESC LIMIT ?1"
+         FROM tasks ORDER BY created_ts DESC LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit as i64], |row| {
         let status_str: String = row.get(2)?;
@@ -146,7 +151,9 @@ pub fn list_tasks(limit: usize) -> Result<Vec<TaskEntry>> {
             "running" => TaskStatus::Running,
             "done" => TaskStatus::Done,
             "cancelled" => TaskStatus::Cancelled,
-            _ if status_str.starts_with("failed:") => TaskStatus::Failed(status_str[7..].to_string()),
+            _ if status_str.starts_with("failed:") => {
+                TaskStatus::Failed(status_str[7..].to_string())
+            }
             _ => TaskStatus::Pending,
         };
         Ok(TaskEntry {
@@ -183,7 +190,11 @@ where
                 let _ = update_status(&id2, &TaskStatus::Done, Some(&result));
             }
             Err(e) => {
-                let _ = update_status(&id2, &TaskStatus::Failed(e.to_string()), Some(&e.to_string()));
+                let _ = update_status(
+                    &id2,
+                    &TaskStatus::Failed(e.to_string()),
+                    Some(&e.to_string()),
+                );
             }
         }
     });
@@ -199,7 +210,11 @@ pub fn print_status() -> Result<()> {
     println!("{:<12} {:<10} {}", "ID", "Status", "Prompt");
     println!("{}", "-".repeat(70));
     for t in &tasks {
-        let p = if t.prompt.len() > 50 { format!("{}…", &t.prompt[..50]) } else { t.prompt.clone() };
+        let p = if t.prompt.len() > 50 {
+            format!("{}…", &t.prompt[..50])
+        } else {
+            t.prompt.clone()
+        };
         println!("{:<12} {:<10} {}", t.id, t.status.as_str(), p);
     }
     Ok(())

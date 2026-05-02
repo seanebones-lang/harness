@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use harness_provider_core::{
-    ChatRequest, Delta, DeltaStream, Pricing, Provider, ProviderError,
-    Role, StopReason, ToolCall, ToolCallFunction,
+    ChatRequest, Delta, DeltaStream, Pricing, Provider, ProviderError, Role, StopReason, ToolCall,
+    ToolCallFunction,
 };
 use reqwest::Client;
 use serde::Serialize;
@@ -127,16 +127,19 @@ fn build_api_messages(req: &ChatRequest) -> Vec<Value> {
 }
 
 fn build_tool_schemas(tools: &[harness_provider_core::ToolDefinition]) -> Vec<Value> {
-    tools.iter().map(|t| {
-        json!({
-            "type": "function",
-            "function": {
-                "name": t.function.name,
-                "description": t.function.description,
-                "parameters": t.function.parameters
-            }
+    tools
+        .iter()
+        .map(|t| {
+            json!({
+                "type": "function",
+                "function": {
+                    "name": t.function.name,
+                    "description": t.function.description,
+                    "parameters": t.function.parameters
+                }
+            })
         })
-    }).collect()
+        .collect()
 }
 
 #[async_trait]
@@ -153,28 +156,72 @@ impl Provider for OpenAIProvider {
         let m = self.config.model.to_lowercase();
         // April 2026 GPT-5.x family
         if m.contains("gpt-5.5") {
-            Some(Pricing { input_per_m_usd: 5.00, cached_input_per_m_usd: 0.50, output_per_m_usd: 30.00 })
+            Some(Pricing {
+                input_per_m_usd: 5.00,
+                cached_input_per_m_usd: 0.50,
+                output_per_m_usd: 30.00,
+            })
         } else if m.contains("gpt-5.4-nano") {
-            Some(Pricing { input_per_m_usd: 0.20, cached_input_per_m_usd: 0.02, output_per_m_usd: 1.25 })
+            Some(Pricing {
+                input_per_m_usd: 0.20,
+                cached_input_per_m_usd: 0.02,
+                output_per_m_usd: 1.25,
+            })
         } else if m.contains("gpt-5.4-mini") {
-            Some(Pricing { input_per_m_usd: 0.75, cached_input_per_m_usd: 0.075, output_per_m_usd: 4.50 })
+            Some(Pricing {
+                input_per_m_usd: 0.75,
+                cached_input_per_m_usd: 0.075,
+                output_per_m_usd: 4.50,
+            })
         } else if m.contains("gpt-5.4") {
-            Some(Pricing { input_per_m_usd: 2.50, cached_input_per_m_usd: 0.25, output_per_m_usd: 15.00 })
+            Some(Pricing {
+                input_per_m_usd: 2.50,
+                cached_input_per_m_usd: 0.25,
+                output_per_m_usd: 15.00,
+            })
         } else if m.contains("gpt-5") {
-            Some(Pricing { input_per_m_usd: 1.25, cached_input_per_m_usd: 0.125, output_per_m_usd: 10.00 })
+            Some(Pricing {
+                input_per_m_usd: 1.25,
+                cached_input_per_m_usd: 0.125,
+                output_per_m_usd: 10.00,
+            })
         } else if m.contains("o4-mini") {
-            Some(Pricing { input_per_m_usd: 1.10, cached_input_per_m_usd: 0.275, output_per_m_usd: 4.40 })
+            Some(Pricing {
+                input_per_m_usd: 1.10,
+                cached_input_per_m_usd: 0.275,
+                output_per_m_usd: 4.40,
+            })
         } else if m.contains("o4") {
-            Some(Pricing { input_per_m_usd: 2.00, cached_input_per_m_usd: 0.50, output_per_m_usd: 8.00 })
+            Some(Pricing {
+                input_per_m_usd: 2.00,
+                cached_input_per_m_usd: 0.50,
+                output_per_m_usd: 8.00,
+            })
         } else if m.contains("o3") {
-            Some(Pricing { input_per_m_usd: 1.00, cached_input_per_m_usd: 0.25, output_per_m_usd: 4.00 })
+            Some(Pricing {
+                input_per_m_usd: 1.00,
+                cached_input_per_m_usd: 0.25,
+                output_per_m_usd: 4.00,
+            })
         // Legacy GPT-4o
         } else if m.contains("gpt-4o") && m.contains("mini") {
-            Some(Pricing { input_per_m_usd: 0.15, cached_input_per_m_usd: 0.075, output_per_m_usd: 0.60 })
+            Some(Pricing {
+                input_per_m_usd: 0.15,
+                cached_input_per_m_usd: 0.075,
+                output_per_m_usd: 0.60,
+            })
         } else if m.contains("gpt-4o") || m.contains("gpt-4") {
-            Some(Pricing { input_per_m_usd: 2.50, cached_input_per_m_usd: 1.25, output_per_m_usd: 10.00 })
+            Some(Pricing {
+                input_per_m_usd: 2.50,
+                cached_input_per_m_usd: 1.25,
+                output_per_m_usd: 10.00,
+            })
         } else if m.contains("gpt-3.5") {
-            Some(Pricing { input_per_m_usd: 0.50, cached_input_per_m_usd: 0.0, output_per_m_usd: 1.50 })
+            Some(Pricing {
+                input_per_m_usd: 0.50,
+                cached_input_per_m_usd: 0.0,
+                output_per_m_usd: 1.50,
+            })
         } else {
             None
         }
@@ -182,7 +229,8 @@ impl Provider for OpenAIProvider {
 
     async fn embed(&self, _model: &str, text: &str) -> Result<Vec<f32>, ProviderError> {
         let url = format!("{}/embeddings", self.config.base_url);
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .bearer_auth(&self.config.api_key)
             .json(&json!({
@@ -195,10 +243,16 @@ impl Provider for OpenAIProvider {
 
         if !resp.status().is_success() {
             let msg = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Api { status: 0, message: msg });
+            return Err(ProviderError::Api {
+                status: 0,
+                message: msg,
+            });
         }
 
-        let body: Value = resp.json().await.map_err(|e| ProviderError::Other(e.to_string()))?;
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::Other(e.to_string()))?;
         let emb: Vec<f32> = body["data"][0]["embedding"]
             .as_array()
             .ok_or_else(|| ProviderError::Other("missing embedding".into()))?
@@ -232,7 +286,9 @@ impl Provider for OpenAIProvider {
             max_tokens: self.config.max_tokens,
             temperature: self.config.temperature,
             stream: true,
-            stream_options: StreamOptions { include_usage: true },
+            stream_options: StreamOptions {
+                include_usage: true,
+            },
             response_format,
         };
 
@@ -242,7 +298,8 @@ impl Provider for OpenAIProvider {
         let mut attempt = 0u32;
 
         loop {
-            let resp = self.client
+            let resp = self
+                .client
                 .post(&url)
                 .bearer_auth(&self.config.api_key)
                 .json(&body)
@@ -266,7 +323,10 @@ impl Provider for OpenAIProvider {
             }
 
             let msg = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Api { status: status.as_u16(), message: msg });
+            return Err(ProviderError::Api {
+                status: status.as_u16(),
+                message: msg,
+            });
         }
     }
 }
@@ -275,7 +335,8 @@ fn parse_openai_sse(
     byte_stream: impl futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 ) -> impl futures::Stream<Item = Result<Delta, ProviderError>> + Send {
     use std::pin::Pin;
-    type ByteStream = Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>;
+    type ByteStream =
+        Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>;
 
     struct State {
         stream: ByteStream,
@@ -293,7 +354,9 @@ fn parse_openai_sse(
     };
 
     futures::stream::unfold(state, |mut s| async move {
-        if s.done { return None; }
+        if s.done {
+            return None;
+        }
 
         loop {
             while let Some(nl) = s.buf.find('\n') {
@@ -303,7 +366,12 @@ fn parse_openai_sse(
                 if let Some(data) = line.strip_prefix("data: ") {
                     if data == "[DONE]" {
                         s.done = true;
-                        return Some((Ok(Delta::Done { stop_reason: StopReason::EndTurn }), s));
+                        return Some((
+                            Ok(Delta::Done {
+                                stop_reason: StopReason::EndTurn,
+                            }),
+                            s,
+                        ));
                     }
 
                     if let Ok(v) = serde_json::from_str::<Value>(data) {
@@ -312,7 +380,13 @@ fn parse_openai_sse(
                             let in_tok = usage["prompt_tokens"].as_u64().unwrap_or(0) as u32;
                             let out_tok = usage["completion_tokens"].as_u64().unwrap_or(0) as u32;
                             if in_tok > 0 || out_tok > 0 {
-                                return Some((Ok(Delta::Usage { input_tokens: in_tok, output_tokens: out_tok }), s));
+                                return Some((
+                                    Ok(Delta::Usage {
+                                        input_tokens: in_tok,
+                                        output_tokens: out_tok,
+                                    }),
+                                    s,
+                                ));
                             }
                         }
 
@@ -331,9 +405,15 @@ fn parse_openai_sse(
                                     for tc in tc_arr {
                                         let idx = tc["index"].as_u64().unwrap_or(0) as u32;
                                         let entry = s.tool_calls.entry(idx).or_default();
-                                        if let Some(id) = tc["id"].as_str() { entry.0 = id.to_string(); }
-                                        if let Some(name) = tc["function"]["name"].as_str() { entry.1 = name.to_string(); }
-                                        if let Some(args) = tc["function"]["arguments"].as_str() { entry.2.push_str(args); }
+                                        if let Some(id) = tc["id"].as_str() {
+                                            entry.0 = id.to_string();
+                                        }
+                                        if let Some(name) = tc["function"]["name"].as_str() {
+                                            entry.1 = name.to_string();
+                                        }
+                                        if let Some(args) = tc["function"]["arguments"].as_str() {
+                                            entry.2.push_str(args);
+                                        }
                                     }
                                 }
 
@@ -343,8 +423,17 @@ fn parse_openai_sse(
                                         let mut sorted: Vec<_> = s.tool_calls.drain().collect();
                                         sorted.sort_by_key(|(k, _)| *k);
                                         // Return the first one; downstream agent will call again.
-                                        if let Some((_, (id, name, args))) = sorted.into_iter().next() {
-                                            let call = ToolCall { id, kind: "function".into(), function: ToolCallFunction { name, arguments: args } };
+                                        if let Some((_, (id, name, args))) =
+                                            sorted.into_iter().next()
+                                        {
+                                            let call = ToolCall {
+                                                id,
+                                                kind: "function".into(),
+                                                function: ToolCallFunction {
+                                                    name,
+                                                    arguments: args,
+                                                },
+                                            };
                                             return Some((Ok(Delta::ToolCall(call)), s));
                                         }
                                     }
@@ -365,8 +454,19 @@ fn parse_openai_sse(
 
             match s.stream.next().await {
                 Some(Ok(chunk)) => s.buf.push_str(&String::from_utf8_lossy(&chunk)),
-                Some(Err(e)) => { s.done = true; return Some((Err(ProviderError::Other(e.to_string())), s)); }
-                None => { s.done = true; return Some((Ok(Delta::Done { stop_reason: StopReason::EndTurn }), s)); }
+                Some(Err(e)) => {
+                    s.done = true;
+                    return Some((Err(ProviderError::Other(e.to_string())), s));
+                }
+                None => {
+                    s.done = true;
+                    return Some((
+                        Ok(Delta::Done {
+                            stop_reason: StopReason::EndTurn,
+                        }),
+                        s,
+                    ));
+                }
             }
         }
     })

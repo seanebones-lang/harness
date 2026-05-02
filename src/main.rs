@@ -1,21 +1,22 @@
 mod agent;
 mod ambient;
-mod bridges;
-mod collab;
-mod diff_review;
-mod observability;
-mod swarm;
 mod background;
+mod bridges;
 mod checkpoint;
+mod collab;
 mod config;
 mod cost;
+mod cost_db;
 mod daemon;
+mod diff_review;
 mod events;
 mod highlight;
-mod cost_db;
 mod memory_project;
 mod notifications;
+mod observability;
+mod projects;
 mod server;
+mod swarm;
 mod sync;
 mod trust;
 mod tui;
@@ -27,26 +28,30 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::generate;
 use harness_browser::BrowserTool;
-use harness_voice;
 use harness_lsp::{
-    DiagnosticsTool, FindDefinitionTool, FindReferencesTool, RenameSymbolTool,
-    detect_and_spawn,
+    detect_and_spawn, DiagnosticsTool, FindDefinitionTool, FindReferencesTool, RenameSymbolTool,
 };
 use harness_provider_core::ArcProvider;
 use harness_provider_router::ProviderRouter;
 use harness_provider_xai::{XaiConfig, XaiProvider};
-use harness_tools::{ToolExecutor, ToolRegistry};
 use harness_tools::tools::{
-    ApplyPatchTool, ComputerUseTool, GhTool, GitTool, ListDirTool, PatchFileTool, ReadFileTool, RebuildSelfTool,
-    ReloadSelfTool, SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool,
-    TestRunnerTool, WriteFileTool,
+    ApplyPatchTool, ComputerUseTool, GhTool, GitTool, ListDirTool, PatchFileTool, ReadFileTool,
+    RebuildSelfTool, ReloadSelfTool, SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool,
+    SpawnAgentTool, TestRunnerTool, WriteFileTool,
 };
+use harness_tools::{ToolExecutor, ToolRegistry};
+use harness_voice;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Parser)]
-#[command(name = "harness", about = "Harness — multi-provider AI coding agent (Claude · GPT · Grok · Qwen)", long_about = "Harness is a Rust-native AI coding agent supporting Anthropic Claude 4.x, OpenAI GPT-5.x, xAI Grok 4.x, and Ollama Qwen3-Coder. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or XAI_API_KEY and run `harness` to start.", version)]
+#[command(
+    name = "harness",
+    about = "Harness — multi-provider AI coding agent (Claude · GPT · Grok · Qwen)",
+    long_about = "Harness is a Rust-native AI coding agent supporting Anthropic Claude 4.x, OpenAI GPT-5.x, xAI Grok 4.x, and Ollama Qwen3-Coder. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or XAI_API_KEY and run `harness` to start.",
+    version
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -101,6 +106,12 @@ struct Cli {
 enum Commands {
     /// List recent sessions.
     Sessions,
+    /// Manage linked projects in a local registry.
+    #[command(visible_alias = "proj")]
+    Project {
+        #[command(subcommand)]
+        action: ProjectAction,
+    },
     /// Run a single prompt non-interactively.
     Run { prompt: String },
     /// Start the harness HTTP server.
@@ -166,10 +177,7 @@ enum Commands {
         pattern: String,
     },
     /// Remove a previously added trust rule.
-    Untrust {
-        tool: String,
-        pattern: String,
-    },
+    Untrust { tool: String, pattern: String },
     /// List all trust rules.
     TrustList,
     /// Set up harness for the first time (writes ~/.harness/config.toml).
@@ -318,6 +326,146 @@ enum CostAction {
     Watch,
 }
 
+#[derive(Subcommand)]
+enum ProjectAction {
+    /// Create a new local git project and link it.
+    #[command(visible_alias = "new")]
+    Init {
+        /// Project name.
+        name: String,
+        /// Parent folder to create the project in (defaults to current directory).
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Initial branch name (default: main).
+        #[arg(long = "default-branch", default_value = "main")]
+        default_branch: String,
+    },
+    /// Add a project to ~/.harness/projects.json.
+    #[command(visible_alias = "link")]
+    Add {
+        /// Optional project nickname (defaults to folder name).
+        #[arg(long)]
+        name: Option<String>,
+        /// Project path (defaults to current directory).
+        #[arg(long)]
+        path: Option<PathBuf>,
+        /// Optional git remote URL override.
+        #[arg(long)]
+        remote: Option<String>,
+        /// Optional default branch override.
+        #[arg(long = "default-branch")]
+        default_branch: Option<String>,
+    },
+    /// Clone a repo and link it in the project registry.
+    #[command(visible_alias = "cl")]
+    Clone {
+        /// Repository URL/path to clone.
+        repo: String,
+        /// Optional project nickname (defaults to cloned folder name).
+        #[arg(long)]
+        name: Option<String>,
+        /// Optional clone directory (defaults to repo-derived folder name).
+        #[arg(long)]
+        directory: Option<PathBuf>,
+        /// Optional default branch to store in registry.
+        #[arg(long = "default-branch")]
+        default_branch: Option<String>,
+    },
+    /// List all linked projects.
+    #[command(visible_alias = "ls")]
+    List,
+    /// Show a one-screen health summary for all linked projects.
+    #[command(visible_alias = "dash")]
+    Dashboard,
+    /// Remove a linked project by name or path.
+    #[command(visible_alias = "rm")]
+    Remove {
+        /// Project name (from `project list`) or absolute path.
+        target: String,
+    },
+    /// Fetch + fast-forward pull for a linked project.
+    #[command(visible_alias = "up")]
+    Sync {
+        /// Project name (from `project list`) or absolute path.
+        target: Option<String>,
+        /// Sync every linked project.
+        #[arg(long, conflicts_with = "target")]
+        all: bool,
+    },
+    /// Push the current branch for a linked project.
+    #[command(visible_alias = "pub")]
+    Push {
+        /// Project name (from `project list`) or absolute path.
+        target: String,
+        /// Optional remote name (default: origin).
+        #[arg(long, default_value = "origin")]
+        remote: String,
+        /// Optional branch override (defaults to current branch).
+        #[arg(long)]
+        branch: Option<String>,
+        /// Force push with lease (blocked for main/master).
+        #[arg(long)]
+        force: bool,
+    },
+    /// Show git health for a linked project.
+    #[command(visible_alias = "st")]
+    Status {
+        /// Project name (from `project list`) or absolute path.
+        target: String,
+    },
+    /// Import local git repos into the linked project registry.
+    #[command(visible_alias = "scan")]
+    Import {
+        /// Root folder to scan (defaults to current directory).
+        #[arg(long)]
+        root: Option<PathBuf>,
+        /// Recursively scan nested folders.
+        #[arg(long)]
+        recursive: bool,
+    },
+    /// Remove linked projects whose paths no longer exist.
+    #[command(visible_alias = "clean")]
+    Prune,
+    /// Run a command inside a linked project directory.
+    #[command(visible_alias = "run")]
+    Exec {
+        /// Project name (from `project list`) or absolute path.
+        target: String,
+        /// Command to run (use `--` before command).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true, num_args = 1..)]
+        command: Vec<String>,
+    },
+    /// Publish a linked project to GitHub using gh CLI.
+    #[command(visible_alias = "ship")]
+    Publish {
+        /// Project name (from `project list`) or absolute path.
+        target: String,
+        /// GitHub repo name (owner/name or name). Defaults to project name.
+        #[arg(long)]
+        repo: Option<String>,
+        /// Remote name to configure (default: origin).
+        #[arg(long, default_value = "origin")]
+        remote: String,
+        /// Create as public repository.
+        #[arg(long, conflicts_with = "private")]
+        public: bool,
+        /// Create as private repository (default).
+        #[arg(long, default_value_t = true)]
+        private: bool,
+        /// Push current branch after creating the remote.
+        #[arg(long, default_value_t = true)]
+        push: bool,
+    },
+    /// Resolve and print a linked project path.
+    Open {
+        /// Project name (from `project list`) or absolute path.
+        target: String,
+        /// Launch harness in the project directory after resolving it.
+        #[arg(long)]
+        run: bool,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Auto-load .env from CWD or any parent directory (no-op if not found).
@@ -334,11 +482,22 @@ async fn main() -> Result<()> {
 
     let cfg = config::load(cli.config.as_deref())?;
 
+    if let Some(Commands::Project { action }) = &cli.command {
+        handle_project_command(action)?;
+        return Ok(());
+    }
+
     // Detect available API keys (in priority order: Anthropic > xAI > OpenAI > legacy config)
-    let has_anthropic = std::env::var("ANTHROPIC_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+    let has_anthropic = std::env::var("ANTHROPIC_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false);
     let has_xai = cfg.provider.api_key.is_some()
-        || std::env::var("XAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
-    let has_openai = std::env::var("OPENAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false);
+        || std::env::var("XAI_API_KEY")
+            .map(|k| !k.is_empty())
+            .unwrap_or(false);
+    let has_openai = std::env::var("OPENAI_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false);
     let has_ollama = cfg.providers.contains_key("ollama");
 
     if !has_anthropic && !has_xai && !has_openai && !has_ollama && cfg.providers.is_empty() {
@@ -350,10 +509,15 @@ async fn main() -> Result<()> {
         .model
         .or_else(|| cfg.provider.model.clone())
         .unwrap_or_else(|| {
-            if has_anthropic { "claude-sonnet-4-6".to_string() }
-            else if has_xai { "grok-4.20-0309-reasoning".to_string() }
-            else if has_openai { "gpt-5.5".to_string() }
-            else { "qwen3-coder:30b".to_string() }
+            if has_anthropic {
+                "claude-sonnet-4-6".to_string()
+            } else if has_xai {
+                "grok-4.20-0309-reasoning".to_string()
+            } else if has_openai {
+                "gpt-5.5".to_string()
+            } else {
+                "qwen3-coder:30b".to_string()
+            }
         });
 
     let provider: ArcProvider = if !cfg.providers.is_empty() || has_anthropic || has_openai {
@@ -362,7 +526,10 @@ async fn main() -> Result<()> {
             .context("failed to build provider router")?;
         router.into_arc()
     } else if has_xai {
-        let api_key = cfg.provider.api_key.clone()
+        let api_key = cfg
+            .provider
+            .api_key
+            .clone()
             .or_else(|| std::env::var("XAI_API_KEY").ok())
             .unwrap();
         let xai_cfg = XaiConfig::new(&api_key)
@@ -378,11 +545,16 @@ async fn main() -> Result<()> {
     };
 
     let session_store = harness_memory::SessionStore::open(
-        cfg.session.db_path.clone()
+        cfg.session
+            .db_path
+            .clone()
             .unwrap_or_else(harness_memory::SessionStore::default_path),
     )?;
 
-    let memory_db = cfg.memory.db_path.clone()
+    let memory_db = cfg
+        .memory
+        .db_path
+        .clone()
         .or_else(|| cfg.session.db_path.clone())
         .unwrap_or_else(harness_memory::SessionStore::default_path);
 
@@ -393,7 +565,12 @@ async fn main() -> Result<()> {
     };
 
     let embed_model = if memory_store.is_some() {
-        Some(cfg.memory.embed_model.clone().unwrap_or_else(|| "grok-3-embed-english".into()))
+        Some(
+            cfg.memory
+                .embed_model
+                .clone()
+                .unwrap_or_else(|| "grok-3-embed-english".into()),
+        )
     } else {
         None
     };
@@ -413,40 +590,64 @@ async fn main() -> Result<()> {
     let browser_url = cfg.browser.url.clone().unwrap_or(cli.browser_url);
 
     // Build tools (including MCP servers if config exists).
-    let tools = build_tools(provider.clone(), model.clone(), &cfg, browser_enabled, &browser_url).await;
+    let tools = build_tools(
+        provider.clone(),
+        model.clone(),
+        &cfg,
+        browser_enabled,
+        &browser_url,
+    )
+    .await;
 
     match cli.command {
         Some(Commands::Sessions) => {
             list_sessions(&session_store)?;
         }
 
+        Some(Commands::Project { action }) => {
+            handle_project_command(&action)?;
+            return Ok(());
+        }
+
         Some(Commands::Run { prompt }) => {
             let effective_prompt = build_prompt_with_image(&prompt, cli.image.as_deref())?;
             agent::run_once(
-                &provider, &session_store,
-                memory_store.as_ref(), embed_model.as_deref(),
-                &tools, &model,
+                &provider,
+                &session_store,
+                memory_store.as_ref(),
+                embed_model.as_deref(),
+                &tools,
+                &model,
                 cfg.agent.system_prompt.as_deref(),
-                &effective_prompt, cli.resume.as_deref(),
-            ).await?;
+                &effective_prompt,
+                cli.resume.as_deref(),
+            )
+            .await?;
         }
 
         Some(Commands::Pr { number }) => {
             use harness_tools::tools::gh::pr_context;
             eprintln!("Fetching PR #{number} context…");
-            let context = pr_context(number).await.unwrap_or_else(|e| format!("Error fetching PR: {e}"));
+            let context = pr_context(number)
+                .await
+                .unwrap_or_else(|e| format!("Error fetching PR: {e}"));
             let system_pr = format!(
                 "{}\n\n# Reviewing PR #{number}\nYou are helping review and babysit this pull request. \
                  Check the CI status, review the diff, and help address any review comments or failures.",
                 cfg.agent.system_prompt.as_deref().unwrap_or(agent::DEFAULT_SYSTEM)
             );
             agent::run_once(
-                &provider, &session_store,
-                memory_store.as_ref(), embed_model.as_deref(),
-                &tools, &model,
+                &provider,
+                &session_store,
+                memory_store.as_ref(),
+                embed_model.as_deref(),
+                &tools,
+                &model,
                 Some(&system_pr),
-                &context, None,
-            ).await?;
+                &context,
+                None,
+            )
+            .await?;
         }
 
         Some(Commands::Serve { addr }) => {
@@ -458,13 +659,19 @@ async fn main() -> Result<()> {
                 embed_model,
                 tools,
                 model,
-                system_prompt: cfg.agent.system_prompt
+                system_prompt: cfg
+                    .agent
+                    .system_prompt
                     .unwrap_or_else(|| agent::DEFAULT_SYSTEM.to_string()),
             };
             server::serve(state, addr).await?;
         }
 
-        Some(Commands::Connect { url, prompt, session }) => {
+        Some(Commands::Connect {
+            url,
+            prompt,
+            session,
+        }) => {
             connect_to_server(&url, &prompt, session.as_deref()).await?;
         }
 
@@ -531,7 +738,10 @@ async fn main() -> Result<()> {
             println!("Socket: {}", daemon::socket_path().display());
             println!("Press Ctrl+C to stop.");
             let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());
-            let system = cfg.agent.system_prompt.clone()
+            let system = cfg
+                .agent
+                .system_prompt
+                .clone()
                 .unwrap_or_else(|| agent::DEFAULT_SYSTEM.to_string());
             tokio::select! {
                 res = daemon::run_daemon(
@@ -554,7 +764,9 @@ async fn main() -> Result<()> {
                     id: 1,
                     method: "status".into(),
                     params: serde_json::json!({}),
-                }).await {
+                })
+                .await
+                {
                     Ok(resp) => {
                         if let Some(result) = resp.result {
                             println!("Daemon running: {}", serde_json::to_string_pretty(&result)?);
@@ -593,7 +805,10 @@ async fn main() -> Result<()> {
                     } else {
                         run.prompt.clone()
                     };
-                    println!("{:<10} {:<8} {:<25} {}", run.id, run.status, run.started_at, prompt_preview);
+                    println!(
+                        "{:<10} {:<8} {:<25} {}",
+                        run.id, run.status, run.started_at, prompt_preview
+                    );
                 }
             }
             return Ok(());
@@ -607,7 +822,9 @@ async fn main() -> Result<()> {
             return Ok(());
         }
 
-        Some(Commands::Checkpoint { action: CheckpointAction::List }) => {
+        Some(Commands::Checkpoint {
+            action: CheckpointAction::List,
+        }) => {
             let entries = checkpoint::list()?;
             if entries.is_empty() {
                 println!("No harness checkpoint stashes found.");
@@ -620,20 +837,27 @@ async fn main() -> Result<()> {
             return Ok(());
         }
 
-        Some(Commands::Voice { duration, send, realtime }) => {
-            use harness_voice::{WhisperBackend, record_and_transcribe};
+        Some(Commands::Voice {
+            duration,
+            send,
+            realtime,
+        }) => {
+            use harness_voice::{record_and_transcribe, WhisperBackend};
             use std::time::Duration;
 
             let openai_key = std::env::var("OPENAI_API_KEY").ok();
 
             if realtime {
-                let key = openai_key.clone().context("OPENAI_API_KEY required for realtime voice")?;
+                let key = openai_key
+                    .clone()
+                    .context("OPENAI_API_KEY required for realtime voice")?;
                 eprintln!("Starting realtime voice session (Ctrl+C to stop)…");
                 eprintln!("Connect to the OpenAI Realtime API — speak naturally.");
                 let mut session = harness_voice::RealtimeVoiceSession::connect(
                     &key,
                     "You are a helpful coding assistant. Be concise and technical.",
-                ).await?;
+                )
+                .await?;
                 // Simple: capture 5s chunks, send to API, print transcripts
                 let dur = Duration::from_secs(duration);
                 loop {
@@ -645,7 +869,9 @@ async fn main() -> Result<()> {
                     match wav {
                         Ok(t) if !t.is_empty() => {
                             eprintln!("You: {t}");
-                            if t.to_lowercase().contains("goodbye") || t.to_lowercase().contains("quit") {
+                            if t.to_lowercase().contains("goodbye")
+                                || t.to_lowercase().contains("quit")
+                            {
                                 break;
                             }
                         }
@@ -653,8 +879,13 @@ async fn main() -> Result<()> {
                     }
                     if let Ok(ev) = session.event_rx.try_recv() {
                         match ev {
-                            harness_voice::RealtimeEvent::TurnComplete(text) => eprintln!("AI: {text}"),
-                            harness_voice::RealtimeEvent::Error(e) => { eprintln!("Error: {e}"); break; }
+                            harness_voice::RealtimeEvent::TurnComplete(text) => {
+                                eprintln!("AI: {text}")
+                            }
+                            harness_voice::RealtimeEvent::Error(e) => {
+                                eprintln!("Error: {e}");
+                                break;
+                            }
                             _ => {}
                         }
                     }
@@ -663,7 +894,8 @@ async fn main() -> Result<()> {
             }
 
             let backend = WhisperBackend::detect(openai_key.as_deref());
-            if !harness_voice::voice_available() && matches!(backend, WhisperBackend::Local { .. }) {
+            if !harness_voice::voice_available() && matches!(backend, WhisperBackend::Local { .. })
+            {
                 eprintln!("Warning: no local audio recorder found. Install sox: brew install sox");
             }
 
@@ -673,12 +905,17 @@ async fn main() -> Result<()> {
 
             if send && !transcript.is_empty() {
                 agent::run_once(
-                    &provider, &session_store,
-                    memory_store.as_ref(), embed_model.as_deref(),
-                    &tools, &model,
+                    &provider,
+                    &session_store,
+                    memory_store.as_ref(),
+                    embed_model.as_deref(),
+                    &tools,
+                    &model,
                     cfg.agent.system_prompt.as_deref(),
-                    &transcript, cli.resume.as_deref(),
-                ).await?;
+                    &transcript,
+                    cli.resume.as_deref(),
+                )
+                .await?;
             }
             return Ok(());
         }
@@ -686,18 +923,14 @@ async fn main() -> Result<()> {
         Some(Commands::Swarm { action }) => {
             match action {
                 SwarmAction::List => swarm::print_status()?,
-                SwarmAction::Status { id } => {
-                    match swarm::get_task(&id)? {
-                        Some(t) => println!("{} [{}] {}", t.id, t.status.as_str(), t.prompt),
-                        None => println!("Task {id} not found."),
-                    }
-                }
-                SwarmAction::Result { id } => {
-                    match swarm::get_task(&id)? {
-                        Some(t) => println!("{}", t.result.as_deref().unwrap_or("(no result)")),
-                        None => println!("Task {id} not found."),
-                    }
-                }
+                SwarmAction::Status { id } => match swarm::get_task(&id)? {
+                    Some(t) => println!("{} [{}] {}", t.id, t.status.as_str(), t.prompt),
+                    None => println!("Task {id} not found."),
+                },
+                SwarmAction::Result { id } => match swarm::get_task(&id)? {
+                    Some(t) => println!("{}", t.result.as_deref().unwrap_or("(no result)")),
+                    None => println!("Task {id} not found."),
+                },
             }
             return Ok(());
         }
@@ -744,7 +977,9 @@ async fn main() -> Result<()> {
                 SyncAction::Pull => sync::pull().await?,
                 SyncAction::Status => sync::status().await?,
                 SyncAction::Auth => {
-                    println!("Sync passphrase is stored in the system keychain under 'harness-sync'.");
+                    println!(
+                        "Sync passphrase is stored in the system keychain under 'harness-sync'."
+                    );
                     println!("To transfer to another machine, run: harness sync init <git-url>");
                     println!("Then on the new machine, run: harness sync pull");
                     println!("The passphrase will be regenerated and stored on the new machine.");
@@ -754,7 +989,7 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::Cost { action }) => {
-            use cost_db::{CostDb, days_ago, format_usd};
+            use cost_db::{days_ago, format_usd, CostDb};
             let db = CostDb::open().context("opening cost.db")?;
             match action {
                 CostAction::Today => {
@@ -793,7 +1028,11 @@ async fn main() -> Result<()> {
                         println!("{:<35} {}", "Project", "Cost");
                         println!("{}", "-".repeat(45));
                         for (project, usd) in rows {
-                            let display = if project.is_empty() { "(unnamed)".to_string() } else { project };
+                            let display = if project.is_empty() {
+                                "(unnamed)".to_string()
+                            } else {
+                                project
+                            };
                             println!("{:<35} {}", display, format_usd(usd));
                         }
                     }
@@ -805,13 +1044,20 @@ async fn main() -> Result<()> {
                         let today = db.total_usd_since(days_ago(1))?;
                         let month = db.total_usd_since(days_ago(30))?;
                         print!("\x1B[2J\x1B[H"); // clear screen
-                        println!("  Today: {}  |  30 days: {}", format_usd(today), format_usd(month));
+                        println!(
+                            "  Today: {}  |  30 days: {}",
+                            format_usd(today),
+                            format_usd(month)
+                        );
                         println!("\nRecent turns:");
                         for r in &rows {
                             println!(
                                 "  {} │ {} │ ↑{} ↓{} │ {}",
-                                r.model, &r.session_id[..8.min(r.session_id.len())],
-                                r.in_tok, r.out_tok, format_usd(r.usd)
+                                r.model,
+                                &r.session_id[..8.min(r.session_id.len())],
+                                r.in_tok,
+                                r.out_tok,
+                                format_usd(r.usd)
                             );
                         }
                         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
@@ -851,25 +1097,42 @@ async fn main() -> Result<()> {
             return Ok(());
         }
 
-        Some(Commands::SelfDev { src, model: sd_model }) => {
+        Some(Commands::SelfDev {
+            src,
+            model: sd_model,
+        }) => {
             let src_dir = match src {
                 Some(path) => path,
                 None => std::env::current_dir().context("failed to get current directory")?,
             };
             let sd_model = sd_model.unwrap_or_else(|| model.clone());
-            run_self_dev(provider, session_store, memory_store, embed_model, src_dir, sd_model, &cfg).await?;
+            run_self_dev(
+                provider,
+                session_store,
+                memory_store,
+                embed_model,
+                src_dir,
+                sd_model,
+                &cfg,
+            )
+            .await?;
         }
 
         None => {
             if let Some(prompt) = cli.prompt {
                 let effective_prompt = build_prompt_with_image(&prompt, cli.image.as_deref())?;
                 agent::run_once(
-                    &provider, &session_store,
-                    memory_store.as_ref(), embed_model.as_deref(),
-                    &tools, &model,
+                    &provider,
+                    &session_store,
+                    memory_store.as_ref(),
+                    embed_model.as_deref(),
+                    &tools,
+                    &model,
                     cfg.agent.system_prompt.as_deref(),
-                    &effective_prompt, cli.resume.as_deref(),
-                ).await?;
+                    &effective_prompt,
+                    cli.resume.as_deref(),
+                )
+                .await?;
             } else {
                 let ambient_tx = ambient_shutdown.as_ref().map(|(tx, _)| tx.clone());
                 // In plan mode, create a confirm gate channel and pass it to both the
@@ -915,13 +1178,21 @@ async fn graceful_ambient_shutdown(
 }
 
 /// Build the full tool executor: base tools + SpawnAgentTool + MCP tools.
-async fn build_tools(provider: ArcProvider, model: String, cfg: &config::Config, browser_enabled: bool, browser_url: &str) -> ToolExecutor {
+async fn build_tools(
+    provider: ArcProvider,
+    model: String,
+    cfg: &config::Config,
+    browser_enabled: bool,
+    browser_url: &str,
+) -> ToolExecutor {
     let shell_cfg = ToolShellConfig {
         denylist: cfg.shell.effective_denylist(),
         confirm_required: cfg.shell.effective_confirm_required(),
-        log_path: cfg.shell.log_path.clone().or_else(|| {
-            dirs::home_dir().map(|h| h.join(".harness").join("shell.log"))
-        }),
+        log_path: cfg
+            .shell
+            .log_path
+            .clone()
+            .or_else(|| dirs::home_dir().map(|h| h.join(".harness").join("shell.log"))),
     };
 
     // Sub-agent runner: runs a prompt through a fresh session with base tools only.
@@ -947,8 +1218,20 @@ async fn build_tools(provider: ArcProvider, model: String, cfg: &config::Config,
             use harness_provider_core::Message;
             let mut session = Session::new(&m);
             session.push(Message::user(&task));
-            agent::drive_agent(&p, &sub_tools, None, None, &mut session, agent::DEFAULT_SYSTEM, None).await?;
-            let reply = session.messages.iter().rev()
+            agent::drive_agent(
+                &p,
+                &sub_tools,
+                None,
+                None,
+                &mut session,
+                agent::DEFAULT_SYSTEM,
+                None,
+            )
+            .await?;
+            let reply = session
+                .messages
+                .iter()
+                .rev()
                 .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
                 .map(|m| m.content.as_str().to_string())
                 .unwrap_or_else(|| "(no response)".into());
@@ -977,7 +1260,10 @@ async fn build_tools(provider: ArcProvider, model: String, cfg: &config::Config,
     // Computer use: gated, only enable if explicitly configured
     if cfg.computer_use.is_enabled() {
         let model_lower = model.to_lowercase();
-        if model_lower.contains("claude-opus-4-7") || model_lower.contains("claude-opus-4") || model_lower.contains("claude-sonnet-4") {
+        if model_lower.contains("claude-opus-4-7")
+            || model_lower.contains("claude-opus-4")
+            || model_lower.contains("claude-sonnet-4")
+        {
             registry.register(ComputerUseTool);
             tracing::warn!("⚠️  COMPUTER USE ENABLED — agent can control mouse/keyboard");
         } else {
@@ -996,9 +1282,15 @@ async fn build_tools(provider: ArcProvider, model: String, cfg: &config::Config,
 
     if has_supported_project {
         if let Some(lsp) = detect_and_spawn(&cwd).await {
-            registry.register(FindDefinitionTool { client: lsp.clone() });
-            registry.register(FindReferencesTool { client: lsp.clone() });
-            registry.register(RenameSymbolTool { client: lsp.clone() });
+            registry.register(FindDefinitionTool {
+                client: lsp.clone(),
+            });
+            registry.register(FindReferencesTool {
+                client: lsp.clone(),
+            });
+            registry.register(RenameSymbolTool {
+                client: lsp.clone(),
+            });
             registry.register(DiagnosticsTool { client: lsp });
         }
     }
@@ -1028,7 +1320,9 @@ async fn build_tools(provider: ArcProvider, model: String, cfg: &config::Config,
 
     // Load trust rules.
     let trust_store = trust::TrustStore::load();
-    let trusted_rules: Vec<(String, String)> = trust_store.list().iter()
+    let trusted_rules: Vec<(String, String)> = trust_store
+        .list()
+        .iter()
         .map(|r| (r.tool.clone(), r.pattern.clone()))
         .collect();
 
@@ -1080,9 +1374,16 @@ async fn connect_to_server(base_url: &str, prompt: &str, session_id: Option<&str
                             use std::io::Write;
                             std::io::stdout().flush().ok();
                         }
-                        Some("tool_start") => eprintln!("\n[→ {}]", event["name"].as_str().unwrap_or("")),
-                        Some("tool_result") => eprintln!("[← {}]", event["name"].as_str().unwrap_or("")),
-                        Some("done") => { println!(); break; }
+                        Some("tool_start") => {
+                            eprintln!("\n[→ {}]", event["name"].as_str().unwrap_or(""))
+                        }
+                        Some("tool_result") => {
+                            eprintln!("[← {}]", event["name"].as_str().unwrap_or(""))
+                        }
+                        Some("done") => {
+                            println!();
+                            break;
+                        }
                         Some("error") => {
                             eprintln!("error: {}", event["message"].as_str().unwrap_or("unknown"));
                         }
@@ -1189,9 +1490,12 @@ fn export_session(
     use harness_provider_core::Role;
     use std::fmt::Write as FmtWrite;
 
-    let session = store
-        .find(id)?
-        .ok_or_else(|| anyhow::anyhow!("session not found: '{}'. Use 'harness sessions' to list available sessions.", id))?;
+    let session = store.find(id)?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "session not found: '{}'. Use 'harness sessions' to list available sessions.",
+            id
+        )
+    })?;
 
     let mut md = String::new();
 
@@ -1229,17 +1533,12 @@ fn export_session(
                 if content.starts_with("__tool_calls__:") {
                     // Decode tool calls for readability
                     if let Some(json) = content.strip_prefix("__tool_calls__:") {
-                        if let Ok(calls) =
-                            serde_json::from_str::<serde_json::Value>(json)
-                        {
+                        if let Ok(calls) = serde_json::from_str::<serde_json::Value>(json) {
                             if let Some(arr) = calls.as_array() {
                                 for call in arr {
-                                    let name = call["function"]["name"]
-                                        .as_str()
-                                        .unwrap_or("?");
-                                    let args = call["function"]["arguments"]
-                                        .as_str()
-                                        .unwrap_or("{}");
+                                    let name = call["function"]["name"].as_str().unwrap_or("?");
+                                    let args =
+                                        call["function"]["arguments"].as_str().unwrap_or("{}");
                                     let pretty = serde_json::from_str::<serde_json::Value>(args)
                                         .map(|v| {
                                             serde_json::to_string_pretty(&v)
@@ -1266,7 +1565,11 @@ fn export_session(
                 let result = msg.content.as_str();
                 // Truncate very long tool outputs
                 let display = if result.len() > 2000 {
-                    format!("{}\n\n_… ({} bytes truncated)_", &result[..2000], result.len() - 2000)
+                    format!(
+                        "{}\n\n_… ({} bytes truncated)_",
+                        &result[..2000],
+                        result.len() - 2000
+                    )
                 } else {
                     result.to_string()
                 };
@@ -1435,7 +1738,9 @@ fn run_status(
     // Config file in use
     let cfg_path = {
         let local = std::path::PathBuf::from(".harness/config.toml");
-        let global = dirs::home_dir().unwrap_or_default().join(".harness/config.toml");
+        let global = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".harness/config.toml");
         if local.exists() {
             format!("{} (project)", local.display())
         } else if global.exists() {
@@ -1463,7 +1768,12 @@ fn run_status(
         Ok(sessions) if !sessions.is_empty() => {
             for (id, name, updated) in sessions {
                 let short = id.chars().take(8).collect::<String>();
-                println!("  {} · {} · {}", short, name.unwrap_or_else(|| "(unnamed)".to_string()), updated);
+                println!(
+                    "  {} · {} · {}",
+                    short,
+                    name.unwrap_or_else(|| "(unnamed)".to_string()),
+                    updated
+                );
             }
         }
         Ok(_) => println!("  (none yet)"),
@@ -1482,7 +1792,8 @@ fn build_prompt_with_image(prompt: &str, image: Option<&std::path::Path>) -> Res
         None => Ok(prompt.to_string()),
         Some(path) => {
             // Embed image as a base64 data URI annotation that vision-capable providers understand.
-            let _content = harness_provider_core::MessageContent::with_image(prompt, &path.to_string_lossy())?;
+            let _content =
+                harness_provider_core::MessageContent::with_image(prompt, &path.to_string_lossy())?;
             // For now, return the prompt with a note about the image.
             // Providers that support vision (Anthropic, OpenAI, xAI) will be updated to use
             // the Parts variant directly when MessageContent wiring is complete.
@@ -1498,27 +1809,39 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
 
     // Model catalogue: provider → [(model, description)]
     let catalogue: &[(&str, &[(&str, &str)])] = &[
-        ("anthropic", &[
-            ("claude-opus-4-7",           "$5/$25 · 1M ctx · adaptive thinking"),
-            ("claude-sonnet-4-6",         "$3/$15 · 1M ctx · default ★"),
-            ("claude-haiku-4-5",          "$1/$5  · fast / cheap"),
-        ]),
-        ("openai", &[
-            ("gpt-5.5",                   "$5/$30  · 1M ctx"),
-            ("gpt-5.4",                   "$2.50/$15"),
-            ("gpt-5.4-mini",              "$0.75/$4.50 · fast"),
-            ("gpt-5.4-nano",              "$0.20/$1.25 · ultra-cheap"),
-            ("o4-mini",                   "$1.10/$4.40 · reasoning"),
-        ]),
-        ("xai", &[
-            ("grok-4.20-0309-reasoning",  "$2/$6   · 2M ctx · reasoning ★"),
-            ("grok-4-1-fast-reasoning",   "$0.20/$0.50 · fast"),
-        ]),
-        ("ollama", &[
-            ("qwen3-coder:30b",           "local · 256K ctx · agentic ★"),
-            ("qwen2.5-coder:32b",         "local · 92.7% HumanEval"),
-            ("nomic-embed-text",          "local · embed"),
-        ]),
+        (
+            "anthropic",
+            &[
+                ("claude-opus-4-7", "$5/$25 · 1M ctx · adaptive thinking"),
+                ("claude-sonnet-4-6", "$3/$15 · 1M ctx · default ★"),
+                ("claude-haiku-4-5", "$1/$5  · fast / cheap"),
+            ],
+        ),
+        (
+            "openai",
+            &[
+                ("gpt-5.5", "$5/$30  · 1M ctx"),
+                ("gpt-5.4", "$2.50/$15"),
+                ("gpt-5.4-mini", "$0.75/$4.50 · fast"),
+                ("gpt-5.4-nano", "$0.20/$1.25 · ultra-cheap"),
+                ("o4-mini", "$1.10/$4.40 · reasoning"),
+            ],
+        ),
+        (
+            "xai",
+            &[
+                ("grok-4.20-0309-reasoning", "$2/$6   · 2M ctx · reasoning ★"),
+                ("grok-4-1-fast-reasoning", "$0.20/$0.50 · fast"),
+            ],
+        ),
+        (
+            "ollama",
+            &[
+                ("qwen3-coder:30b", "local · 256K ctx · agentic ★"),
+                ("qwen2.5-coder:32b", "local · 92.7% HumanEval"),
+                ("nomic-embed-text", "local · embed"),
+            ],
+        ),
     ];
 
     if let Some(ref model_spec) = set {
@@ -1533,7 +1856,10 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
 
         let (provider_part, model_part) = if model_spec.contains(':') {
             let mut parts = model_spec.splitn(2, ':');
-            (parts.next().unwrap_or("").to_string(), parts.next().unwrap_or("").to_string())
+            (
+                parts.next().unwrap_or("").to_string(),
+                parts.next().unwrap_or("").to_string(),
+            )
         } else {
             (String::new(), model_spec.clone())
         };
@@ -1555,7 +1881,10 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
         }
 
         std::fs::write(&local_cfg, doc.to_string())?;
-        println!("✓ Default model set to '{model_spec}' in {}", local_cfg.display());
+        println!(
+            "✓ Default model set to '{model_spec}' in {}",
+            local_cfg.display()
+        );
         return Ok(());
     }
 
@@ -1565,13 +1894,16 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
     for (provider, models) in catalogue {
         let env_key = match *provider {
             "anthropic" => "ANTHROPIC_API_KEY",
-            "openai"    => "OPENAI_API_KEY",
-            "xai"       => "XAI_API_KEY",
-            _           => "",
+            "openai" => "OPENAI_API_KEY",
+            "xai" => "XAI_API_KEY",
+            _ => "",
         };
         let available = if env_key.is_empty() {
             "local".to_string()
-        } else if std::env::var(env_key).map(|k| !k.is_empty()).unwrap_or(false) {
+        } else if std::env::var(env_key)
+            .map(|k| !k.is_empty())
+            .unwrap_or(false)
+        {
             "✓ key set".to_string()
         } else {
             format!("✗ {} not set", env_key)
@@ -1601,16 +1933,31 @@ async fn handle_doctor_command(cfg: &config::Config) {
 
     // API keys
     let checks: &[(&str, &str, &str)] = &[
-        ("ANTHROPIC_API_KEY", "Anthropic Claude 4.x", "claude-sonnet-4-6"),
-        ("XAI_API_KEY",       "xAI Grok 4.x",         "grok-4.20-0309-reasoning"),
-        ("OPENAI_API_KEY",    "OpenAI GPT-5.x",        "gpt-5.5"),
+        (
+            "ANTHROPIC_API_KEY",
+            "Anthropic Claude 4.x",
+            "claude-sonnet-4-6",
+        ),
+        ("XAI_API_KEY", "xAI Grok 4.x", "grok-4.20-0309-reasoning"),
+        ("OPENAI_API_KEY", "OpenAI GPT-5.x", "gpt-5.5"),
     ];
     println!("  API Keys:");
     let mut any_key = false;
     for (env, name, model) in checks {
         let set = std::env::var(env).map(|k| !k.is_empty()).unwrap_or(false);
-        if set { any_key = true; }
-        println!("  {} {} → {}", if set { "✓" } else { "✗" }, name, if set { format!("key set, will use {model}") } else { format!("set {env} to enable") });
+        if set {
+            any_key = true;
+        }
+        println!(
+            "  {} {} → {}",
+            if set { "✓" } else { "✗" },
+            name,
+            if set {
+                format!("key set, will use {model}")
+            } else {
+                format!("set {env} to enable")
+            }
+        );
     }
     if !any_key {
         println!("\n  ⚠ No API key found! Set ANTHROPIC_API_KEY to get started.");
@@ -1618,46 +1965,775 @@ async fn handle_doctor_command(cfg: &config::Config) {
     }
 
     // Ollama
-    let ollama_running = tokio::process::Command::new("ollama").arg("list").output().await.map(|o| o.status.success()).unwrap_or(false);
-    println!("  {} Ollama local models: {}", if ollama_running { "✓" } else { "○" }, if ollama_running { "running" } else { "not running (optional)" });
+    let ollama_running = tokio::process::Command::new("ollama")
+        .arg("list")
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    println!(
+        "  {} Ollama local models: {}",
+        if ollama_running { "✓" } else { "○" },
+        if ollama_running {
+            "running"
+        } else {
+            "not running (optional)"
+        }
+    );
 
     // Tools
     println!("\n  External tools:");
     let tools: &[(&str, &str)] = &[
-        ("git",   "version control"),
-        ("gh",    "GitHub CLI (PR/issues)"),
-        ("rg",    "ripgrep code search"),
+        ("git", "version control"),
+        ("gh", "GitHub CLI (PR/issues)"),
+        ("rg", "ripgrep code search"),
         ("cargo", "Rust builds"),
-        ("node",  "Node.js (TypeScript LSP)"),
-        ("sox",   "audio recording (voice)"),
+        ("node", "Node.js (TypeScript LSP)"),
+        ("sox", "audio recording (voice)"),
     ];
     for (tool, desc) in tools {
-        let found = tokio::process::Command::new(tool).arg("--version").output().await.map(|o| o.status.success()).unwrap_or(false);
+        let found = tokio::process::Command::new(tool)
+            .arg("--version")
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false);
         println!("  {} {} — {}", if found { "✓" } else { "○" }, tool, desc);
     }
 
     // Config files
     println!("\n  Config:");
-    let user_cfg = dirs::home_dir().unwrap_or_default().join(".harness/config.toml");
+    let user_cfg = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness/config.toml");
     let local_cfg = std::path::PathBuf::from(".harness/config.toml");
-    println!("  {} ~/.harness/config.toml", if user_cfg.exists() { "✓" } else { "○ (optional)" });
-    println!("  {} .harness/config.toml", if local_cfg.exists() { "✓" } else { "○ (optional — run harness init --project to create)" });
-    println!("  Current model: {}", cfg.provider.model.as_deref().unwrap_or("(auto)"));
+    println!(
+        "  {} ~/.harness/config.toml",
+        if user_cfg.exists() {
+            "✓"
+        } else {
+            "○ (optional)"
+        }
+    );
+    println!(
+        "  {} .harness/config.toml",
+        if local_cfg.exists() {
+            "✓"
+        } else {
+            "○ (optional — run harness init --project to create)"
+        }
+    );
+    println!(
+        "  Current model: {}",
+        cfg.provider.model.as_deref().unwrap_or("(auto)")
+    );
 
     // Memory + cost DB
-    let mem_path = dirs::home_dir().unwrap_or_default().join(".harness/sessions.db");
-    let cost_path = dirs::home_dir().unwrap_or_default().join(".harness/cost.db");
+    let mem_path = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness/sessions.db");
+    let cost_path = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness/cost.db");
     println!("\n  Data:");
-    println!("  {} sessions DB: {}", if mem_path.exists() { "✓" } else { "○" }, mem_path.display());
-    println!("  {} cost DB: {}", if cost_path.exists() { "✓" } else { "○" }, cost_path.display());
+    println!(
+        "  {} sessions DB: {}",
+        if mem_path.exists() { "✓" } else { "○" },
+        mem_path.display()
+    );
+    println!(
+        "  {} cost DB: {}",
+        if cost_path.exists() { "✓" } else { "○" },
+        cost_path.display()
+    );
 
     // Daemon
-    let sock = dirs::home_dir().unwrap_or_default().join(".harness/daemon.sock");
+    let sock = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness/daemon.sock");
     println!("\n  Daemon:");
-    println!("  {} daemon socket: {}", if sock.exists() { "✓ running" } else { "○ not running (optional — run harness daemon)" }, sock.display());
+    println!(
+        "  {} daemon socket: {}",
+        if sock.exists() {
+            "✓ running"
+        } else {
+            "○ not running (optional — run harness daemon)"
+        },
+        sock.display()
+    );
 
     println!("\nRun `harness init` to create a default config.");
     println!("Run `harness completions zsh > ~/.zfunc/_harness` to add shell completions.");
+}
+
+fn handle_project_command(action: &ProjectAction) -> Result<()> {
+    let mut store = projects::ProjectStore::load();
+
+    match action {
+        ProjectAction::Init {
+            name,
+            path,
+            default_branch,
+        } => {
+            let parent = path
+                .clone()
+                .unwrap_or(std::env::current_dir().context("reading current directory")?);
+            if !parent.exists() {
+                anyhow::bail!("path does not exist: {}", parent.display());
+            }
+            let project_dir = parent.join(name);
+            if project_dir.exists() {
+                anyhow::bail!(
+                    "project directory already exists: {}",
+                    project_dir.display()
+                );
+            }
+            std::fs::create_dir_all(&project_dir)
+                .with_context(|| format!("creating {}", project_dir.display()))?;
+
+            init_git_repo(&project_dir, default_branch)?;
+            let readme_path = project_dir.join("README.md");
+            if !readme_path.exists() {
+                std::fs::write(&readme_path, format!("# {name}\n"))
+                    .with_context(|| format!("writing {}", readme_path.display()))?;
+            }
+
+            let outcome = store.add(
+                Some(name.clone()),
+                Some(project_dir.clone()),
+                None,
+                Some(default_branch.clone()),
+            )?;
+            store.save()?;
+            let entry = match outcome {
+                projects::AddOutcome::Added(entry) | projects::AddOutcome::Updated(entry) => entry,
+            };
+            println!("Initialized and linked project '{}'", entry.name);
+            println!("  path: {}", entry.path.display());
+            println!("  branch: {default_branch}");
+            println!(
+                "Next: harness project publish {} --public|--private",
+                entry.name
+            );
+        }
+        ProjectAction::Add {
+            name,
+            path,
+            remote,
+            default_branch,
+        } => {
+            let outcome = store.add(
+                name.clone(),
+                path.clone(),
+                remote.clone(),
+                default_branch.clone(),
+            )?;
+            store.save()?;
+            match outcome {
+                projects::AddOutcome::Added(entry) => {
+                    println!("Added project '{}'", entry.name);
+                    println!("  path: {}", entry.path.display());
+                    if let Some(remote) = entry.remote {
+                        println!("  remote: {remote}");
+                    }
+                }
+                projects::AddOutcome::Updated(entry) => {
+                    println!("Updated project '{}'", entry.name);
+                    println!("  path: {}", entry.path.display());
+                    if let Some(remote) = entry.remote {
+                        println!("  remote: {remote}");
+                    }
+                }
+            }
+        }
+        ProjectAction::Clone {
+            repo,
+            name,
+            directory,
+            default_branch,
+        } => {
+            let clone_dir = directory
+                .clone()
+                .unwrap_or_else(|| PathBuf::from(infer_clone_directory(repo)));
+
+            let status = std::process::Command::new("git")
+                .arg("clone")
+                .arg(repo)
+                .arg(&clone_dir)
+                .status()
+                .context("running git clone")?;
+            if !status.success() {
+                anyhow::bail!("git clone failed with status {status}");
+            }
+
+            let outcome = store.add(
+                name.clone(),
+                Some(clone_dir),
+                Some(repo.clone()),
+                default_branch.clone(),
+            )?;
+            store.save()?;
+            let entry = match outcome {
+                projects::AddOutcome::Added(entry) | projects::AddOutcome::Updated(entry) => entry,
+            };
+            println!("Cloned and linked project '{}'", entry.name);
+            println!("  path: {}", entry.path.display());
+            if let Some(remote) = entry.remote {
+                println!("  remote: {remote}");
+            }
+        }
+        ProjectAction::List => {
+            let projects = store.list_sorted();
+            if projects.is_empty() {
+                println!("No linked projects yet. Use `harness project add`.");
+                return Ok(());
+            }
+
+            println!("Linked projects: {}\n", projects.len());
+            println!("{:<22} {:<52} {:<22} BRANCH", "NAME", "PATH", "REMOTE");
+            for p in projects {
+                let remote = p.remote.unwrap_or_else(|| "-".to_string());
+                let branch = p.default_branch.unwrap_or_else(|| "-".to_string());
+                println!(
+                    "{:<22} {:<52} {:<22} {}",
+                    p.name,
+                    p.path.display(),
+                    remote,
+                    branch
+                );
+            }
+        }
+        ProjectAction::Dashboard => {
+            let projects = store.list_sorted();
+            if projects.is_empty() {
+                println!("No linked projects yet. Use `harness project add`.");
+                return Ok(());
+            }
+
+            println!("Project dashboard: {}\n", projects.len());
+            println!(
+                "{:<20} {:<18} {:<17} {:<16} STATUS",
+                "PROJECT", "BRANCH", "AHEAD/BEHIND", "CHANGES"
+            );
+            println!("{}", "-".repeat(88));
+            for p in projects {
+                match project_health_row(&p.path) {
+                    Ok(row) => {
+                        println!(
+                            "{:<20} {:<18} {:<17} {:<16} {}",
+                            p.name,
+                            row.branch,
+                            format!("+{} / -{}", row.ahead, row.behind),
+                            format!(
+                                "S:{} U:{} ?:{}",
+                                row.changes.staged, row.changes.unstaged, row.changes.untracked
+                            ),
+                            status_badge(&row.status)
+                        );
+                    }
+                    Err(err) => {
+                        println!(
+                            "{:<20} {:<18} {:<17} {:<16} {}",
+                            p.name,
+                            "-",
+                            "-",
+                            "-",
+                            format!("error: {err}")
+                        );
+                    }
+                }
+            }
+        }
+        ProjectAction::Remove { target } => {
+            if let Some(removed) = store.remove(target) {
+                store.save()?;
+                println!("Removed project '{}'", removed.name);
+                println!("  path: {}", removed.path.display());
+            } else {
+                anyhow::bail!("project '{target}' not found. Run `harness project list`.");
+            }
+        }
+        ProjectAction::Sync { target, all } => {
+            let targets = if *all {
+                let projects = store.list_sorted();
+                if projects.is_empty() {
+                    println!("No linked projects yet. Use `harness project add`.");
+                    return Ok(());
+                }
+                projects
+            } else if let Some(name_or_path) = target {
+                vec![store.find(name_or_path).with_context(|| {
+                    format!("project '{name_or_path}' not found. Run `harness project list`.")
+                })?]
+            } else {
+                anyhow::bail!("provide <target> or use --all");
+            };
+
+            let mut synced = 0usize;
+            for entry in targets {
+                sync_project(&entry)?;
+                let _ = store.add(
+                    Some(entry.name.clone()),
+                    Some(entry.path.clone()),
+                    entry.remote.clone(),
+                    entry.default_branch.clone(),
+                )?;
+                println!("Synced project '{}'", entry.name);
+                println!("  path: {}", entry.path.display());
+                synced += 1;
+            }
+            store.save()?;
+            println!("Synced {synced} project(s).");
+        }
+        ProjectAction::Push {
+            target,
+            remote,
+            branch,
+            force,
+        } => {
+            let entry = store.find(target).with_context(|| {
+                format!("project '{target}' not found. Run `harness project list`.")
+            })?;
+
+            let resolved_branch = if let Some(override_branch) = branch.clone() {
+                override_branch
+            } else {
+                current_git_branch(&entry.path)
+                    .or(entry.default_branch.clone())
+                    .with_context(|| {
+                        format!(
+                            "could not determine branch for '{}'; pass --branch explicitly",
+                            entry.name
+                        )
+                    })?
+            };
+
+            if *force && matches!(resolved_branch.as_str(), "main" | "master") {
+                anyhow::bail!(
+                    "force push to '{}' is blocked for safety. Push without --force.",
+                    resolved_branch
+                );
+            }
+
+            let mut cmd = std::process::Command::new("git");
+            cmd.current_dir(&entry.path).arg("push");
+            if *force {
+                cmd.arg("--force-with-lease");
+            }
+            cmd.arg(remote).arg(&resolved_branch);
+
+            let status = cmd.status().context("running git push")?;
+            if !status.success() {
+                anyhow::bail!("git push failed with status {status}");
+            }
+
+            let _ = store.add(
+                Some(entry.name.clone()),
+                Some(entry.path.clone()),
+                entry.remote.clone(),
+                Some(resolved_branch.clone()),
+            )?;
+            store.save()?;
+            println!("Pushed '{}' to {remote}/{resolved_branch}", entry.name);
+            println!("  path: {}", entry.path.display());
+        }
+        ProjectAction::Status { target } => {
+            let entry = store.find(target).with_context(|| {
+                format!("project '{target}' not found. Run `harness project list`.")
+            })?;
+
+            let branch =
+                current_git_branch(&entry.path).unwrap_or_else(|| "(detached HEAD)".to_string());
+            let upstream = git_output(
+                &entry.path,
+                &[
+                    "rev-parse",
+                    "--abbrev-ref",
+                    "--symbolic-full-name",
+                    "@{upstream}",
+                ],
+            )
+            .ok();
+            let remote_url = git_output(&entry.path, &["remote", "get-url", "origin"]).ok();
+            let changes = collect_change_counts(&entry.path)?;
+            let (ahead, behind) = if upstream.is_some() {
+                git_ahead_behind(&entry.path)?
+            } else {
+                (0, 0)
+            };
+
+            println!("Project: {}", entry.name);
+            println!("Path: {}", entry.path.display());
+            println!("Branch: {branch}");
+            println!(
+                "Upstream: {}",
+                upstream.unwrap_or_else(|| "(not configured)".to_string())
+            );
+            println!(
+                "Remote: {}",
+                remote_url.unwrap_or_else(|| "(origin not configured)".to_string())
+            );
+            println!("Ahead/Behind: +{ahead} / -{behind}");
+            println!(
+                "Changes: {} staged, {} unstaged, {} untracked",
+                changes.staged, changes.unstaged, changes.untracked
+            );
+        }
+        ProjectAction::Import { root, recursive } => {
+            let scan_root = root
+                .clone()
+                .unwrap_or(std::env::current_dir().context("reading current directory")?);
+            let repos = find_git_repos(&scan_root, *recursive)?;
+            if repos.is_empty() {
+                println!("No git repositories found under {}", scan_root.display());
+                return Ok(());
+            }
+
+            let mut added = 0usize;
+            let mut updated = 0usize;
+            for repo_path in repos {
+                let outcome = store.add(None, Some(repo_path), None, None)?;
+                match outcome {
+                    projects::AddOutcome::Added(entry) => {
+                        println!("Added '{}': {}", entry.name, entry.path.display());
+                        added += 1;
+                    }
+                    projects::AddOutcome::Updated(entry) => {
+                        println!("Updated '{}': {}", entry.name, entry.path.display());
+                        updated += 1;
+                    }
+                }
+            }
+            store.save()?;
+            println!("Import complete: {added} added, {updated} updated.");
+        }
+        ProjectAction::Prune => {
+            let before = store.projects.len();
+            store.projects.retain(|p| p.path.exists());
+            let removed = before.saturating_sub(store.projects.len());
+            if removed > 0 {
+                store.save()?;
+            }
+            println!("Pruned {removed} missing project link(s).");
+        }
+        ProjectAction::Exec { target, command } => {
+            let entry = store.find(target).with_context(|| {
+                format!("project '{target}' not found. Run `harness project list`.")
+            })?;
+            let program = &command[0];
+            let args = &command[1..];
+            let status = std::process::Command::new(program)
+                .args(args)
+                .current_dir(&entry.path)
+                .status()
+                .with_context(|| format!("running command in {}", entry.path.display()))?;
+            if !status.success() {
+                anyhow::bail!("command failed with status {status}");
+            }
+        }
+        ProjectAction::Publish {
+            target,
+            repo,
+            remote,
+            public,
+            private,
+            push,
+        } => {
+            let entry = store.find(target).with_context(|| {
+                format!("project '{target}' not found. Run `harness project list`.")
+            })?;
+            let repo_name = repo.clone().unwrap_or_else(|| entry.name.clone());
+
+            let mut cmd = std::process::Command::new("gh");
+            cmd.current_dir(&entry.path)
+                .args(["repo", "create"])
+                .arg(&repo_name)
+                .args(["--source", ".", "--remote"])
+                .arg(remote);
+            if *public {
+                cmd.arg("--public");
+            } else if *private {
+                cmd.arg("--private");
+            } else {
+                cmd.arg("--private");
+            }
+            if *push {
+                cmd.arg("--push");
+            }
+            let status = cmd.status().context("running gh repo create")?;
+            if !status.success() {
+                anyhow::bail!("gh repo create failed with status {status}");
+            }
+
+            let _ = store.add(
+                Some(entry.name.clone()),
+                Some(entry.path.clone()),
+                Some(repo_name.clone()),
+                current_git_branch(&entry.path).or(entry.default_branch.clone()),
+            )?;
+            store.save()?;
+            println!("Published '{}' to GitHub repo '{}'", entry.name, repo_name);
+            println!("  path: {}", entry.path.display());
+            println!("  remote: {remote}");
+        }
+        ProjectAction::Open { target, run } => {
+            let entry = store.find(target).with_context(|| {
+                format!("project '{target}' not found. Run `harness project list`.")
+            })?;
+
+            if *run {
+                let exe = std::env::current_exe().context("resolving harness executable path")?;
+                let status = std::process::Command::new(exe)
+                    .current_dir(&entry.path)
+                    .status()
+                    .context("starting harness in project directory")?;
+                if !status.success() {
+                    anyhow::bail!("harness exited with status {status}");
+                }
+            } else {
+                println!("{}", entry.path.display());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn infer_clone_directory(repo: &str) -> String {
+    let trimmed = repo.trim_end_matches('/');
+    let last = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    let without_git = last.strip_suffix(".git").unwrap_or(last);
+    if without_git.is_empty() {
+        "repo".to_string()
+    } else {
+        without_git.to_string()
+    }
+}
+
+fn init_git_repo(project_dir: &std::path::Path, default_branch: &str) -> Result<()> {
+    let init_with_branch = std::process::Command::new("git")
+        .current_dir(project_dir)
+        .args(["init", "-b", default_branch])
+        .status()
+        .context("running git init -b")?;
+    if init_with_branch.success() {
+        return Ok(());
+    }
+
+    let init_basic = std::process::Command::new("git")
+        .current_dir(project_dir)
+        .arg("init")
+        .status()
+        .context("running git init")?;
+    if !init_basic.success() {
+        anyhow::bail!("git init failed with status {init_basic}");
+    }
+    let checkout = std::process::Command::new("git")
+        .current_dir(project_dir)
+        .args(["checkout", "-b", default_branch])
+        .status()
+        .context("running git checkout -b")?;
+    if !checkout.success() {
+        anyhow::bail!("git checkout -b failed with status {checkout}");
+    }
+
+    Ok(())
+}
+
+fn sync_project(entry: &projects::ProjectEntry) -> Result<()> {
+    let fetch_status = std::process::Command::new("git")
+        .current_dir(&entry.path)
+        .args(["fetch", "--all", "--prune"])
+        .status()
+        .context("running git fetch --all --prune")?;
+    if !fetch_status.success() {
+        anyhow::bail!("git fetch failed with status {fetch_status}");
+    }
+
+    let mut pull_cmd = std::process::Command::new("git");
+    pull_cmd
+        .current_dir(&entry.path)
+        .args(["pull", "--ff-only"]);
+    if let Some(branch) = &entry.default_branch {
+        pull_cmd.arg("origin").arg(branch);
+    }
+    let pull_status = pull_cmd.status().context("running git pull --ff-only")?;
+    if !pull_status.success() {
+        anyhow::bail!("git pull failed with status {pull_status}");
+    }
+
+    Ok(())
+}
+
+fn find_git_repos(root: &std::path::Path, recursive: bool) -> Result<Vec<PathBuf>> {
+    let mut repos = Vec::new();
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(root.to_path_buf());
+
+    while let Some(dir) = queue.pop_front() {
+        if dir.join(".git").exists() {
+            repos.push(dir.clone());
+            // If this is already a git repo, do not recurse into children.
+            continue;
+        }
+
+        for entry in std::fs::read_dir(&dir)
+            .with_context(|| format!("reading directory {}", dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name == ".git" {
+                    continue;
+                }
+            }
+            if recursive {
+                queue.push_back(path);
+            } else if path.join(".git").exists() {
+                repos.push(path);
+            }
+        }
+    }
+
+    repos.sort();
+    repos.dedup();
+    Ok(repos)
+}
+
+fn current_git_branch(path: &std::path::Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .current_dir(path)
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch)
+    }
+}
+
+#[derive(Debug, Default)]
+struct ChangeCounts {
+    staged: usize,
+    unstaged: usize,
+    untracked: usize,
+}
+
+#[derive(Debug)]
+struct ProjectHealthRow {
+    branch: String,
+    ahead: u64,
+    behind: u64,
+    changes: ChangeCounts,
+    status: String,
+}
+
+fn project_health_row(path: &std::path::Path) -> Result<ProjectHealthRow> {
+    let branch = current_git_branch(path).unwrap_or_else(|| "(detached HEAD)".to_string());
+    let upstream = git_output(
+        path,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    )
+    .ok();
+    let changes = collect_change_counts(path)?;
+    let (ahead, behind) = if upstream.is_some() {
+        git_ahead_behind(path)?
+    } else {
+        (0, 0)
+    };
+
+    let dirty = changes.staged + changes.unstaged + changes.untracked;
+    let status = if dirty == 0 && ahead == 0 && behind == 0 {
+        "clean".to_string()
+    } else if behind > 0 && ahead == 0 {
+        "behind".to_string()
+    } else if ahead > 0 && behind == 0 {
+        "ahead".to_string()
+    } else if ahead > 0 && behind > 0 {
+        "diverged".to_string()
+    } else {
+        "dirty".to_string()
+    };
+
+    Ok(ProjectHealthRow {
+        branch,
+        ahead,
+        behind,
+        changes,
+        status,
+    })
+}
+
+fn collect_change_counts(path: &std::path::Path) -> Result<ChangeCounts> {
+    let out = git_output(path, &["status", "--porcelain"])?;
+    let mut counts = ChangeCounts::default();
+    for line in out.lines() {
+        if line.starts_with("?? ") {
+            counts.untracked += 1;
+            continue;
+        }
+        let bytes = line.as_bytes();
+        if bytes.len() < 2 {
+            continue;
+        }
+        let x = bytes[0] as char;
+        let y = bytes[1] as char;
+        if x != ' ' && x != '?' {
+            counts.staged += 1;
+        }
+        if y != ' ' && y != '?' {
+            counts.unstaged += 1;
+        }
+    }
+    Ok(counts)
+}
+
+fn git_output(path: &std::path::Path, args: &[&str]) -> Result<String> {
+    let output = std::process::Command::new("git")
+        .current_dir(path)
+        .args(args)
+        .output()
+        .with_context(|| format!("running git {}", args.join(" ")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        anyhow::bail!("git {} failed: {}", args.join(" "), stderr);
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn git_ahead_behind(path: &std::path::Path) -> Result<(u64, u64)> {
+    let out = git_output(
+        path,
+        &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+    )?;
+    let mut parts = out.split_whitespace();
+    let ahead = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
+    let behind = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
+    Ok((ahead, behind))
+}
+
+fn status_badge(status: &str) -> &'static str {
+    match status {
+        "clean" => "OK",
+        "ahead" => "AHEAD",
+        "behind" => "BEHIND",
+        "diverged" => "DIVERGED",
+        "dirty" => "DIRTY",
+        _ => "UNKNOWN",
+    }
 }
 
 fn delete_session(store: &harness_memory::SessionStore, id: &str) -> Result<()> {

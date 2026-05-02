@@ -28,9 +28,8 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers,
-        MouseEvent, MouseEventKind,
-        DisableBracketedPaste, EnableBracketedPaste,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyCode, KeyModifiers, MouseEvent, MouseEventKind,
     },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -105,12 +104,18 @@ impl Default for Theme {
 
 impl Theme {
     fn load() -> Self {
-        let path = dirs::home_dir().unwrap_or_default().join(".harness/theme.toml");
+        let path = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".harness/theme.toml");
         if !path.exists() {
             return Self::default();
         }
-        let Ok(text) = std::fs::read_to_string(&path) else { return Self::default(); };
-        let Ok(val) = text.parse::<toml::Value>() else { return Self::default(); };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Self::default();
+        };
+        let Ok(val) = text.parse::<toml::Value>() else {
+            return Self::default();
+        };
         let get = |key: &str, def: Color| -> Color {
             val.get(key)
                 .and_then(|v| v.as_str())
@@ -133,11 +138,17 @@ impl Theme {
 
     fn assistant_label<'a>(&self, model: &str) -> &'a str {
         // Return a short provider-friendly label for the model
-        if model.contains("claude") { "claude" }
-        else if model.contains("grok") { "grok" }
-        else if model.contains("gpt") { "gpt" }
-        else if model.contains("qwen") { "qwen" }
-        else { "ai" }
+        if model.contains("claude") {
+            "claude"
+        } else if model.contains("grok") {
+            "grok"
+        } else if model.contains("gpt") {
+            "gpt"
+        } else if model.contains("qwen") {
+            "qwen"
+        } else {
+            "ai"
+        }
     }
 }
 
@@ -272,7 +283,9 @@ struct PendingConfirm {
 }
 
 fn is_first_run() -> bool {
-    let marker = dirs::home_dir().unwrap_or_default().join(".harness/.welcomed");
+    let marker = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness/.welcomed");
     !marker.exists()
 }
 
@@ -361,7 +374,8 @@ impl AppState {
         let out_str = cost::format_tokens(self.tokens_out);
         let cost_part = cost::price_for_model(&self.model)
             .map(|p| {
-                let usd = p.cost_with_cache(self.tokens_in, self.cache_read_tokens, self.tokens_out);
+                let usd =
+                    p.cost_with_cache(self.tokens_in, self.cache_read_tokens, self.tokens_out);
                 format!(" {}", cost::format_cost(usd))
             })
             .unwrap_or_default();
@@ -376,7 +390,11 @@ impl AppState {
 
     fn elapsed_str(&self) -> String {
         let secs = self.session_start.elapsed().as_secs();
-        if secs < 60 { format!("{secs}s") } else { format!("{}m{}s", secs / 60, secs % 60) }
+        if secs < 60 {
+            format!("{secs}s")
+        } else {
+            format!("{}m{}s", secs / 60, secs % 60)
+        }
     }
 
     fn insert_char(&mut self, c: char) {
@@ -432,7 +450,10 @@ impl AppState {
     fn move_word_left(&mut self) {
         let s = &self.input[..self.cursor_pos];
         let trimmed = s.trim_end();
-        let new_pos = trimmed.rfind(|c: char| c == ' ' || c == '/' || c == '.').map(|i| i + 1).unwrap_or(0);
+        let new_pos = trimmed
+            .rfind(|c: char| c == ' ' || c == '/' || c == '.')
+            .map(|i| i + 1)
+            .unwrap_or(0);
         self.cursor_pos = new_pos;
     }
 
@@ -440,7 +461,10 @@ impl AppState {
         let s = &self.input[self.cursor_pos..];
         let trimmed = s.trim_start();
         let skip = s.len() - trimmed.len();
-        let word_end = trimmed.find(|c: char| c == ' ' || c == '/' || c == '.').map(|i| i + skip + 1).unwrap_or(s.len());
+        let word_end = trimmed
+            .find(|c: char| c == ' ' || c == '/' || c == '.')
+            .map(|i| i + skip + 1)
+            .unwrap_or(s.len());
         self.cursor_pos += word_end;
     }
 
@@ -481,7 +505,9 @@ impl AppState {
     }
 
     fn history_up(&mut self) {
-        if self.input_history.is_empty() { return; }
+        if self.input_history.is_empty() {
+            return;
+        }
         let new_idx = match self.history_idx {
             None => {
                 self.history_saved = self.input.clone();
@@ -526,7 +552,10 @@ impl AppState {
     }
 
     fn scroll_chat_up(&mut self, n: usize) {
-        let cur = self.chat_scroll.selected().unwrap_or(self.chat_items_len.saturating_sub(1));
+        let cur = self
+            .chat_scroll
+            .selected()
+            .unwrap_or(self.chat_items_len.saturating_sub(1));
         let new = cur.saturating_sub(n);
         self.chat_scroll.select(Some(new));
     }
@@ -539,7 +568,10 @@ impl AppState {
     }
 
     fn scroll_event_up(&mut self, n: usize) {
-        let cur = self.event_scroll.selected().unwrap_or(self.event_items_len.saturating_sub(1));
+        let cur = self
+            .event_scroll
+            .selected()
+            .unwrap_or(self.event_items_len.saturating_sub(1));
         let new = cur.saturating_sub(n);
         self.event_scroll.select(Some(new));
     }
@@ -611,7 +643,9 @@ impl AppState {
     }
 
     fn focus_active(&self) -> bool {
-        self.focus_until.map(|t| Instant::now() < t).unwrap_or(false)
+        self.focus_until
+            .map(|t| Instant::now() < t)
+            .unwrap_or(false)
     }
 
     fn focus_mins_remaining(&self) -> u64 {
@@ -669,8 +703,14 @@ fn at_file_completions(partial: &str) -> Vec<String> {
         partial.to_string()
     };
 
-    let search_dir = if dir.is_empty() { ".".to_string() } else { dir.clone() };
-    let Ok(entries) = std::fs::read_dir(&search_dir) else { return vec![] };
+    let search_dir = if dir.is_empty() {
+        ".".to_string()
+    } else {
+        dir.clone()
+    };
+    let Ok(entries) = std::fs::read_dir(&search_dir) else {
+        return vec![];
+    };
 
     let mut results: Vec<String> = entries
         .filter_map(|e| e.ok())
@@ -707,7 +747,12 @@ pub async fn run(
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableBracketedPaste, EnableMouseCapture)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableMouseCapture
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -810,7 +855,9 @@ async fn event_loop(
         // Spinner tick
         {
             let mut st = state.lock().unwrap();
-            if st.busy { st.tick_spinner(); }
+            if st.busy {
+                st.tick_spinner();
+            }
         }
 
         // Draw
@@ -874,7 +921,14 @@ async fn event_loop(
             let elapsed = st.elapsed_str();
             let turns = session.messages.len();
             st.status = "Done".to_string();
-            st.status_right = format!("{} · {} · {} turns · {} · {}", &session.id[..8], model, turns, cost_str, elapsed);
+            st.status_right = format!(
+                "{} · {} · {} turns · {} · {}",
+                &session.id[..8],
+                model,
+                turns,
+                cost_str,
+                elapsed
+            );
             st.scroll_to_bottom();
         }
 
@@ -894,17 +948,23 @@ async fn event_loop(
                 let trimmed = pasted.trim();
                 let is_image_path = {
                     let lower = trimmed.to_lowercase();
-                    (lower.ends_with(".png") || lower.ends_with(".jpg")
-                        || lower.ends_with(".jpeg") || lower.ends_with(".gif")
+                    (lower.ends_with(".png")
+                        || lower.ends_with(".jpg")
+                        || lower.ends_with(".jpeg")
+                        || lower.ends_with(".gif")
                         || lower.ends_with(".webp"))
                         && std::path::Path::new(trimmed).exists()
                 };
                 if is_image_path {
                     st.push_event(format!("[paste] image → {trimmed}"));
                     let at_ref = format!("@{trimmed} ");
-                    for c in at_ref.chars() { st.insert_char(c); }
+                    for c in at_ref.chars() {
+                        st.insert_char(c);
+                    }
                 } else {
-                    for c in pasted.chars() { st.insert_char(c); }
+                    for c in pasted.chars() {
+                        st.insert_char(c);
+                    }
                 }
                 continue;
             }
@@ -914,7 +974,9 @@ async fn event_loop(
                 {
                     let search = state.lock().unwrap().search_mode;
                     if search {
-                        if handle_search_key(&state, key) { continue; }
+                        if handle_search_key(&state, key) {
+                            continue;
+                        }
                     }
                 }
 
@@ -922,7 +984,9 @@ async fn event_loop(
                     // ── Quit ─────────────────────────────────────────────────
                     (KeyCode::Char('c'), KeyModifiers::CONTROL)
                     | (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
-                        if let Some(tx) = &ambient_shutdown { let _ = tx.send(()); }
+                        if let Some(tx) = &ambient_shutdown {
+                            let _ = tx.send(());
+                        }
                         break;
                     }
 
@@ -942,8 +1006,12 @@ async fn event_loop(
 
                     // ── Ctrl+Y — copy last response ───────────────────────────
                     (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
-                        let last = state.lock().unwrap()
-                            .chat.iter().rev()
+                        let last = state
+                            .lock()
+                            .unwrap()
+                            .chat
+                            .iter()
+                            .rev()
                             .find(|m| m.role == "assistant")
                             .map(|m| m.content.clone());
                         if let Some(text) = last {
@@ -964,7 +1032,8 @@ async fn event_loop(
                             if st.fork_mode {
                                 let turns = count_user_turns(&session.messages);
                                 st.status = format!("FORK MODE — enter turn (1-{turns}) + Enter to fork, Esc to cancel");
-                                st.input.clear(); st.cursor_pos = 0;
+                                st.input.clear();
+                                st.cursor_pos = 0;
                             } else {
                                 st.status = "Ready".to_string();
                             }
@@ -993,7 +1062,8 @@ async fn event_loop(
                         let mut st = state.lock().unwrap();
                         if st.fork_mode {
                             st.fork_mode = false;
-                            st.input.clear(); st.cursor_pos = 0;
+                            st.input.clear();
+                            st.cursor_pos = 0;
                             st.status = "Fork cancelled.".to_string();
                         }
                         drop(st);
@@ -1083,13 +1153,18 @@ async fn event_loop(
                                     let mut st = state.lock().unwrap();
                                     let short = session.id[..8.min(session.id.len())].to_string();
                                     st.fork_mode = false;
-                                    st.input.clear(); st.cursor_pos = 0;
-                                    st.chat.clear(); st.event_log.clear();
+                                    st.input.clear();
+                                    st.cursor_pos = 0;
+                                    st.chat.clear();
+                                    st.event_log.clear();
                                     st.session_id = short.clone();
-                                    st.push_event(format!("[fork] session {short} forked at turn {turn_n}"));
+                                    st.push_event(format!(
+                                        "[fork] session {short} forked at turn {turn_n}"
+                                    ));
                                     st.status = format!("Forked at turn {turn_n} — continue here.");
                                 } else {
-                                    state.lock().unwrap().status = "Fork: enter a valid turn number.".to_string();
+                                    state.lock().unwrap().status =
+                                        "Fork: enter a valid turn number.".to_string();
                                 }
                                 continue;
                             }
@@ -1105,7 +1180,9 @@ async fn event_loop(
                         }
 
                         let busy = state.lock().unwrap().busy;
-                        if busy { continue; }
+                        if busy {
+                            continue;
+                        }
 
                         let prompt = {
                             let mut st = state.lock().unwrap();
@@ -1113,16 +1190,28 @@ async fn event_loop(
                             st.slash_suggestions.clear();
                             st.take_input()
                         };
-                        if prompt.trim().is_empty() { continue; }
+                        if prompt.trim().is_empty() {
+                            continue;
+                        }
 
                         // Slash commands
                         if prompt.trim_start().starts_with('/') {
                             let cmd = prompt.trim();
                             handle_slash_command(
-                                cmd, &state, session, provider, session_store,
-                                &agent_tx, &done_tx, tools, memory_store, embed_model,
-                                system_prompt, model,
-                            ).await;
+                                cmd,
+                                &state,
+                                session,
+                                provider,
+                                session_store,
+                                &agent_tx,
+                                &done_tx,
+                                tools,
+                                memory_store,
+                                embed_model,
+                                system_prompt,
+                                model,
+                            )
+                            .await;
                             continue;
                         }
 
@@ -1136,7 +1225,11 @@ async fn event_loop(
                             } else {
                                 prompt.clone()
                             };
-                            st.chat.push(ChatMessage { role: "user".into(), content: label, ts: Instant::now() });
+                            st.chat.push(ChatMessage {
+                                role: "user".into(),
+                                content: label,
+                                ts: Instant::now(),
+                            });
                             st.busy = true;
                             st.streaming.clear();
                             st.status = "Thinking…".to_string();
@@ -1160,9 +1253,17 @@ async fn event_loop(
 
                         tokio::spawn(async move {
                             let res = agent::drive_agent_with_schema(
-                                &p2, &t2, mem2.as_ref(), em2.as_deref(),
-                                &mut sess_clone, &sys, Some(&atx), think_budget, resp_schema,
-                            ).await;
+                                &p2,
+                                &t2,
+                                mem2.as_ref(),
+                                em2.as_deref(),
+                                &mut sess_clone,
+                                &sys,
+                                Some(&atx),
+                                think_budget,
+                                resp_schema,
+                            )
+                            .await;
                             if let Err(e) = res {
                                 let _ = atx.send(AgentEvent::Error(format!("Agent error: {e}")));
                             }
@@ -1177,10 +1278,16 @@ async fn event_loop(
                             let has_slash = !state.lock().unwrap().slash_suggestions.is_empty();
                             if has_slash {
                                 let mut st = state.lock().unwrap();
-                                st.slash_suggest_idx = (st.slash_suggest_idx + 1) % st.slash_suggestions.len();
+                                st.slash_suggest_idx =
+                                    (st.slash_suggest_idx + 1) % st.slash_suggestions.len();
                                 // Apply selected command to input (strip description)
                                 let selected = st.slash_suggestions[st.slash_suggest_idx].clone();
-                                let cmd = selected.split("  —").next().unwrap_or("").trim().to_string();
+                                let cmd = selected
+                                    .split("  —")
+                                    .next()
+                                    .unwrap_or("")
+                                    .trim()
+                                    .to_string();
                                 st.input = cmd.clone();
                                 st.cursor_pos = cmd.len();
                                 continue;
@@ -1199,10 +1306,17 @@ async fn event_loop(
                                 st.tab_completions = at_file_completions(partial);
                                 st.tab_completion_idx = 0;
                             } else {
-                                st.tab_completion_idx = (st.tab_completion_idx + 1) % st.tab_completions.len().max(1);
+                                st.tab_completion_idx =
+                                    (st.tab_completion_idx + 1) % st.tab_completions.len().max(1);
                             }
-                            if let Some(c) = st.tab_completions.get(st.tab_completion_idx).cloned() {
-                                let new_input = format!("{}@{}{}", &input_snap[..at_pos], c, &input_snap[cursor_snap..]);
+                            if let Some(c) = st.tab_completions.get(st.tab_completion_idx).cloned()
+                            {
+                                let new_input = format!(
+                                    "{}@{}{}",
+                                    &input_snap[..at_pos],
+                                    c,
+                                    &input_snap[cursor_snap..]
+                                );
                                 let new_cursor = at_pos + 1 + c.len();
                                 st.input = new_input;
                                 st.cursor_pos = new_cursor;
@@ -1245,7 +1359,10 @@ async fn event_loop(
                     (KeyCode::End, _) => {
                         let input = state.lock().unwrap().input.clone();
                         let cursor = state.lock().unwrap().cursor_pos;
-                        let line_end = input[cursor..].find('\n').map(|i| cursor + i).unwrap_or(input.len());
+                        let line_end = input[cursor..]
+                            .find('\n')
+                            .map(|i| cursor + i)
+                            .unwrap_or(input.len());
                         state.lock().unwrap().cursor_pos = line_end;
                     }
 
@@ -1307,7 +1424,9 @@ async fn event_loop(
                     }
 
                     // ── Regular char input ────────────────────────────────────
-                    (KeyCode::Char(c), m) if !m.contains(KeyModifiers::CONTROL) && !m.contains(KeyModifiers::ALT) => {
+                    (KeyCode::Char(c), m)
+                        if !m.contains(KeyModifiers::CONTROL) && !m.contains(KeyModifiers::ALT) =>
+                    {
                         state.lock().unwrap().tab_completions.clear();
                         state.lock().unwrap().insert_char(c);
                     }
@@ -1341,7 +1460,10 @@ fn handle_voice(state: &Arc<Mutex<AppState>>) {
     let busy = state.lock().unwrap().busy;
     let recording = state.lock().unwrap().recording_voice;
     if busy || recording {
-        state.lock().unwrap().push_event("[voice] busy, please wait.");
+        state
+            .lock()
+            .unwrap()
+            .push_event("[voice] busy, please wait.");
         return;
     }
     {
@@ -1353,7 +1475,7 @@ fn handle_voice(state: &Arc<Mutex<AppState>>) {
     let state2 = state.clone();
     let openai_key = std::env::var("OPENAI_API_KEY").ok();
     tokio::spawn(async move {
-        use harness_voice::{WhisperBackend, record_and_transcribe};
+        use harness_voice::{record_and_transcribe, WhisperBackend};
         let backend = WhisperBackend::detect(openai_key.as_deref());
         let result = record_and_transcribe(Duration::from_secs(5), &backend).await;
         let mut st = state2.lock().unwrap();
@@ -1365,7 +1487,9 @@ fn handle_voice(state: &Arc<Mutex<AppState>>) {
                 st.status = "Transcribed — press Enter to send.".to_string();
                 st.push_event(format!("[voice] {}", &t[..t.len().min(80)]));
             }
-            Ok(_) => { st.status = "Voice: no speech detected.".to_string(); }
+            Ok(_) => {
+                st.status = "Voice: no speech detected.".to_string();
+            }
             Err(e) => {
                 st.push_event(format!("[voice] error: {e}"));
                 st.status = format!("Voice error: {e}");
@@ -1410,7 +1534,12 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
                 st.search_match_pos = (st.search_match_pos + 1) % nmatches;
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format!("Search: \"{}\" ({}/{})", st.search_query, st.search_match_pos + 1, nmatches);
+                st.status = format!(
+                    "Search: \"{}\" ({}/{})",
+                    st.search_query,
+                    st.search_match_pos + 1,
+                    nmatches
+                );
             }
             true
         }
@@ -1421,7 +1550,12 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
                 st.search_match_pos = (st.search_match_pos + 1) % nmatches;
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format!("Search: \"{}\" ({}/{})", st.search_query, st.search_match_pos + 1, nmatches);
+                st.status = format!(
+                    "Search: \"{}\" ({}/{})",
+                    st.search_query,
+                    st.search_match_pos + 1,
+                    nmatches
+                );
             }
             true
         }
@@ -1432,7 +1566,12 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
                 st.search_match_pos = (st.search_match_pos + nmatches - 1) % nmatches;
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format!("Search: \"{}\" ({}/{})", st.search_query, st.search_match_pos + 1, nmatches);
+                st.status = format!(
+                    "Search: \"{}\" ({}/{})",
+                    st.search_query,
+                    st.search_match_pos + 1,
+                    nmatches
+                );
             }
             true
         }
@@ -1454,7 +1593,10 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
 
 fn run_search(st: &mut AppState) {
     let q = st.search_query.to_lowercase();
-    st.search_matches = st.chat.iter().enumerate()
+    st.search_matches = st
+        .chat
+        .iter()
+        .enumerate()
         .filter(|(_, m)| m.content.to_lowercase().contains(&q))
         .map(|(i, _)| i)
         .collect();
@@ -1466,7 +1608,11 @@ fn run_search(st: &mut AppState) {
     if q.is_empty() {
         st.status = "Search: ".to_string();
     } else {
-        st.status = format!("Search: \"{}\" — {nmatches} match{}", q, if nmatches == 1 { "" } else { "es" });
+        st.status = format!(
+            "Search: \"{}\" — {nmatches} match{}",
+            q,
+            if nmatches == 1 { "" } else { "es" }
+        );
     }
 }
 
@@ -1545,53 +1691,100 @@ async fn handle_slash_command(
     match command {
         "/clear" => {
             let mut st = state.lock().unwrap();
-            st.chat.clear(); st.event_log.clear(); st.streaming.clear();
+            st.chat.clear();
+            st.event_log.clear();
+            st.streaming.clear();
             st.status = "Chat cleared.".to_string();
         }
 
         "/undo" => {
             let mut st = state.lock().unwrap();
             match crate::checkpoint::undo() {
-                Ok(msg) => { st.push_event(format!("[undo] {msg}")); st.status = "Undo complete.".to_string(); }
-                Err(e) => { st.push_event(format!("[undo] {e}")); st.status = format!("Undo failed: {e}"); }
+                Ok(msg) => {
+                    st.push_event(format!("[undo] {msg}"));
+                    st.status = "Undo complete.".to_string();
+                }
+                Err(e) => {
+                    st.push_event(format!("[undo] {e}"));
+                    st.status = format!("Undo failed: {e}");
+                }
             }
         }
 
         "/diff" => {
             state.lock().unwrap().push_event("[diff] running git diff…");
-            match tokio::process::Command::new("git").args(["diff", "--stat", "HEAD"]).output().await {
+            match tokio::process::Command::new("git")
+                .args(["diff", "--stat", "HEAD"])
+                .output()
+                .await
+            {
                 Ok(out) => {
                     let text = String::from_utf8_lossy(&out.stdout);
                     let mut st = state.lock().unwrap();
-                    for line in text.lines().take(40) { st.push_event(format!("  {line}")); }
-                    if text.trim().is_empty() { st.push_event("  (no changes)"); }
+                    for line in text.lines().take(40) {
+                        st.push_event(format!("  {line}"));
+                    }
+                    if text.trim().is_empty() {
+                        st.push_event("  (no changes)");
+                    }
                     st.status = "git diff in event log.".to_string();
                 }
-                Err(e) => { state.lock().unwrap().push_event(format!("[diff] {e}")); }
+                Err(e) => {
+                    state.lock().unwrap().push_event(format!("[diff] {e}"));
+                }
             }
         }
 
         "/test" => {
             let busy = state.lock().unwrap().busy;
-            if busy { state.lock().unwrap().push_event("[test] agent running."); return; }
+            if busy {
+                state.lock().unwrap().push_event("[test] agent running.");
+                return;
+            }
             let test_cmd = detect_test_command();
-            { let mut st = state.lock().unwrap(); st.busy = true; st.status = format!("Running: {test_cmd}…"); st.push_event(format!("[test] {test_cmd}")); }
+            {
+                let mut st = state.lock().unwrap();
+                st.busy = true;
+                st.status = format!("Running: {test_cmd}…");
+                st.push_event(format!("[test] {test_cmd}"));
+            }
             let atx = agent_tx.clone();
             let state2 = state.clone();
             let cmd_str = test_cmd.clone();
             tokio::spawn(async move {
-                let out = tokio::process::Command::new("sh").arg("-c").arg(&cmd_str).output().await;
+                let out = tokio::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(&cmd_str)
+                    .output()
+                    .await;
                 let mut st = state2.lock().unwrap();
                 st.busy = false;
                 match out {
                     Ok(o) => {
-                        let all = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
-                        for line in all.lines().take(60) { st.push_event(format!("  {line}")); }
-                        let status = if o.status.success() { "passed ✓" } else { "FAILED ✗" };
+                        let all = format!(
+                            "{}{}",
+                            String::from_utf8_lossy(&o.stdout),
+                            String::from_utf8_lossy(&o.stderr)
+                        );
+                        for line in all.lines().take(60) {
+                            st.push_event(format!("  {line}"));
+                        }
+                        let status = if o.status.success() {
+                            "passed ✓"
+                        } else {
+                            "FAILED ✗"
+                        };
                         st.status = format!("Tests {status}.");
-                        let _ = atx.send(AgentEvent::ToolResult { name: "test".into(), id: "test".into(), result: all });
+                        let _ = atx.send(AgentEvent::ToolResult {
+                            name: "test".into(),
+                            id: "test".into(),
+                            result: all,
+                        });
                     }
-                    Err(e) => { st.push_event(format!("[test] {e}")); st.status = format!("Test error: {e}"); }
+                    Err(e) => {
+                        st.push_event(format!("[test] {e}"));
+                        st.status = format!("Test error: {e}");
+                    }
                 }
             });
         }
@@ -1601,25 +1794,42 @@ async fn handle_slash_command(
             let (in_tok, out_tok, model_name) = (st.tokens_in, st.tokens_out, st.model.clone());
             drop(st);
             let cost_line = match cost::price_for_model(&model_name) {
-                Some(p) => format!("Cost: {} (↑{} ↓{} @ {})", cost::format_cost(p.cost_usd(in_tok, out_tok)), cost::format_tokens(in_tok), cost::format_tokens(out_tok), model_name),
-                None => format!("Tokens: ↑{} ↓{} (no pricing for {model_name})", cost::format_tokens(in_tok), cost::format_tokens(out_tok)),
+                Some(p) => format!(
+                    "Cost: {} (↑{} ↓{} @ {})",
+                    cost::format_cost(p.cost_usd(in_tok, out_tok)),
+                    cost::format_tokens(in_tok),
+                    cost::format_tokens(out_tok),
+                    model_name
+                ),
+                None => format!(
+                    "Tokens: ↑{} ↓{} (no pricing for {model_name})",
+                    cost::format_tokens(in_tok),
+                    cost::format_tokens(out_tok)
+                ),
             };
             let mut st = state.lock().unwrap();
-            st.push_event(cost_line.clone()); st.status = cost_line;
+            st.push_event(cost_line.clone());
+            st.status = cost_line;
         }
 
         "/plan" => {
             let mut st = state.lock().unwrap();
             st.plan_mode = !st.plan_mode;
-            if st.plan_mode { st.status = "Plan mode ON (restart with --plan to fully gate).".to_string(); }
-            else { st.status = "Plan mode OFF.".to_string(); }
+            if st.plan_mode {
+                st.status = "Plan mode ON (restart with --plan to fully gate).".to_string();
+            } else {
+                st.status = "Plan mode OFF.".to_string();
+            }
         }
 
         "/model" => {
             let name = parts.get(1).copied().unwrap_or("");
             if name.is_empty() {
                 let model_name = state.lock().unwrap().model.clone();
-                state.lock().unwrap().push_event(format!("[model] current: {model_name}"));
+                state
+                    .lock()
+                    .unwrap()
+                    .push_event(format!("[model] current: {model_name}"));
             } else {
                 let mut st = state.lock().unwrap();
                 st.model = name.to_string();
@@ -1628,43 +1838,55 @@ async fn handle_slash_command(
             }
         }
 
-        "/runs" => {
-            match crate::background::list(10) {
-                Ok(runs) if runs.is_empty() => state.lock().unwrap().push_event("[runs] No background runs. Use `harness run-bg <prompt>`."),
-                Ok(runs) => {
-                    let mut st = state.lock().unwrap();
-                    st.push_event(format!("[runs] {} run(s):", runs.len()));
-                    for run in &runs {
-                        let p = if run.prompt.len() > 50 { format!("{}…", &run.prompt[..50]) } else { run.prompt.clone() };
-                        st.push_event(format!("  {} [{}] {}", run.id, run.status, p));
-                    }
+        "/runs" => match crate::background::list(10) {
+            Ok(runs) if runs.is_empty() => state
+                .lock()
+                .unwrap()
+                .push_event("[runs] No background runs. Use `harness run-bg <prompt>`."),
+            Ok(runs) => {
+                let mut st = state.lock().unwrap();
+                st.push_event(format!("[runs] {} run(s):", runs.len()));
+                for run in &runs {
+                    let p = if run.prompt.len() > 50 {
+                        format!("{}…", &run.prompt[..50])
+                    } else {
+                        run.prompt.clone()
+                    };
+                    st.push_event(format!("  {} [{}] {}", run.id, run.status, p));
                 }
-                Err(e) => state.lock().unwrap().push_event(format!("[runs] {e}")),
             }
-        }
+            Err(e) => state.lock().unwrap().push_event(format!("[runs] {e}")),
+        },
 
-        "/sessions" => {
-            match session_store.list(20) {
-                Ok(sessions) if sessions.is_empty() => {
-                    state.lock().unwrap().push_event("[sessions] No sessions yet.");
-                }
-                Ok(sessions) => {
-                    let mut st = state.lock().unwrap();
-                    st.push_event(format!("[sessions] {} session(s) — use `harness --resume <id>` to load:", sessions.len()));
-                    for (id, name, updated) in &sessions {
-                        let short = &id[..8.min(id.len())];
-                        let n = name.as_deref().unwrap_or("(unnamed)");
-                        st.push_event(format!("  {short}  {n}  {updated}"));
-                    }
-                    st.status = format!("{} sessions in event log →", sessions.len());
-                }
-                Err(e) => state.lock().unwrap().push_event(format!("[sessions] {e}")),
+        "/sessions" => match session_store.list(20) {
+            Ok(sessions) if sessions.is_empty() => {
+                state
+                    .lock()
+                    .unwrap()
+                    .push_event("[sessions] No sessions yet.");
             }
-        }
+            Ok(sessions) => {
+                let mut st = state.lock().unwrap();
+                st.push_event(format!(
+                    "[sessions] {} session(s) — use `harness --resume <id>` to load:",
+                    sessions.len()
+                ));
+                for (id, name, updated) in &sessions {
+                    let short = &id[..8.min(id.len())];
+                    let n = name.as_deref().unwrap_or("(unnamed)");
+                    st.push_event(format!("  {short}  {n}  {updated}"));
+                }
+                st.status = format!("{} sessions in event log →", sessions.len());
+            }
+            Err(e) => state.lock().unwrap().push_event(format!("[sessions] {e}")),
+        },
 
         "/compact" => {
             let busy = state.lock().unwrap().busy;
-            if busy { state.lock().unwrap().push_event("[compact] agent running."); return; }
+            if busy {
+                state.lock().unwrap().push_event("[compact] agent running.");
+                return;
+            }
             state.lock().unwrap().push_event("[compact] compacting…");
             crate::agent::compact_context(provider, session).await;
             let remaining = session.messages.len();
@@ -1674,13 +1896,20 @@ async fn handle_slash_command(
         }
 
         "/fork" => {
-            state.lock().unwrap().push_event("[fork] Use Ctrl+E to enter fork mode.");
+            state
+                .lock()
+                .unwrap()
+                .push_event("[fork] Use Ctrl+E to enter fork mode.");
         }
 
         "/ts" => {
             let mut st = state.lock().unwrap();
             st.timestamps_visible = !st.timestamps_visible;
-            st.status = if st.timestamps_visible { "Timestamps ON".into() } else { "Timestamps OFF".into() };
+            st.status = if st.timestamps_visible {
+                "Timestamps ON".into()
+            } else {
+                "Timestamps OFF".into()
+            };
         }
 
         "/think" => {
@@ -1722,20 +1951,37 @@ async fn handle_slash_command(
                         st.push_event(format!("[memory] saved → {}", path.display()));
                         st.status = format!("Remembered under '{}'", topic.trim());
                     }
-                    Err(e) => state.lock().unwrap().push_event(format!("[memory] error: {e}")),
+                    Err(e) => state
+                        .lock()
+                        .unwrap()
+                        .push_event(format!("[memory] error: {e}")),
                 }
             } else {
-                state.lock().unwrap().push_event("[memory] Usage: /remember <topic>: <fact>");
+                state
+                    .lock()
+                    .unwrap()
+                    .push_event("[memory] Usage: /remember <topic>: <fact>");
             }
         }
 
         "/forget" => {
             let topic = parts.get(1).copied().unwrap_or("").trim();
-            if topic.is_empty() { state.lock().unwrap().push_event("[memory] Usage: /forget <topic>"); }
-            else {
+            if topic.is_empty() {
+                state
+                    .lock()
+                    .unwrap()
+                    .push_event("[memory] Usage: /forget <topic>");
+            } else {
                 match crate::memory_project::forget(topic) {
-                    Ok(true) => { let mut st = state.lock().unwrap(); st.push_event(format!("[memory] forgot '{topic}'")); st.status = format!("Forgot '{topic}'"); }
-                    Ok(false) => state.lock().unwrap().push_event(format!("[memory] no memory for '{topic}'")),
+                    Ok(true) => {
+                        let mut st = state.lock().unwrap();
+                        st.push_event(format!("[memory] forgot '{topic}'"));
+                        st.status = format!("Forgot '{topic}'");
+                    }
+                    Ok(false) => state
+                        .lock()
+                        .unwrap()
+                        .push_event(format!("[memory] no memory for '{topic}'")),
                     Err(e) => state.lock().unwrap().push_event(format!("[memory] {e}")),
                 }
             }
@@ -1744,8 +1990,14 @@ async fn handle_slash_command(
         "/memories" => {
             let topics = crate::memory_project::list_topics();
             let mut st = state.lock().unwrap();
-            if topics.is_empty() { st.push_event("[memory] no topics. Use /remember topic: fact"); }
-            else { st.push_event(format!("[memory] {} topic(s):", topics.len())); for t in &topics { st.push_event(format!("  • {t}")); } }
+            if topics.is_empty() {
+                st.push_event("[memory] no topics. Use /remember topic: fact");
+            } else {
+                st.push_event(format!("[memory] {} topic(s):", topics.len()));
+                for t in &topics {
+                    st.push_event(format!("  • {t}"));
+                }
+            }
             st.status = format!("{} topics", topics.len());
         }
 
@@ -1755,9 +2007,13 @@ async fn handle_slash_command(
                 state.lock().unwrap().push_event("[pr] fetching PRs…");
                 let state2 = state.clone();
                 tokio::spawn(async move {
-                    let msg = harness_tools::tools::gh::pr_list().await.unwrap_or_else(|e| format!("gh error: {e}"));
+                    let msg = harness_tools::tools::gh::pr_list()
+                        .await
+                        .unwrap_or_else(|e| format!("gh error: {e}"));
                     let mut st = state2.lock().unwrap();
-                    for line in msg.lines().take(30) { st.push_event(format!("  {line}")); }
+                    for line in msg.lines().take(30) {
+                        st.push_event(format!("  {line}"));
+                    }
                     st.status = "PRs in event log →".to_string();
                 });
             } else {
@@ -1773,10 +2029,18 @@ async fn handle_slash_command(
             state.lock().unwrap().push_event("[issues] fetching…");
             let state2 = state.clone();
             tokio::spawn(async move {
-                let out = tokio::process::Command::new("gh").args(["issue", "list", "--limit", "20"]).output().await;
-                let msg = match out { Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(), Err(e) => format!("gh error: {e}") };
+                let out = tokio::process::Command::new("gh")
+                    .args(["issue", "list", "--limit", "20"])
+                    .output()
+                    .await;
+                let msg = match out {
+                    Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+                    Err(e) => format!("gh error: {e}"),
+                };
                 let mut st = state2.lock().unwrap();
-                for line in msg.lines().take(40) { st.push_event(format!("  {line}")); }
+                for line in msg.lines().take(40) {
+                    st.push_event(format!("  {line}"));
+                }
                 st.status = "Issues in event log →".to_string();
             });
         }
@@ -1785,10 +2049,18 @@ async fn handle_slash_command(
             state.lock().unwrap().push_event("[ci] checking runs…");
             let state2 = state.clone();
             tokio::spawn(async move {
-                let out = tokio::process::Command::new("gh").args(["run", "list", "--limit", "10"]).output().await;
-                let msg = match out { Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(), Err(e) => format!("gh error: {e}") };
+                let out = tokio::process::Command::new("gh")
+                    .args(["run", "list", "--limit", "10"])
+                    .output()
+                    .await;
+                let msg = match out {
+                    Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+                    Err(e) => format!("gh error: {e}"),
+                };
                 let mut st = state2.lock().unwrap();
-                for line in msg.lines().take(20) { st.push_event(format!("  {line}")); }
+                for line in msg.lines().take(20) {
+                    st.push_event(format!("  {line}"));
+                }
                 st.status = "CI runs in event log →".to_string();
             });
         }
@@ -1796,15 +2068,24 @@ async fn handle_slash_command(
         "/notify" | "/notify test" => {
             let notif_cfg = state.lock().unwrap().notifications.clone();
             crate::notifications::test_notification(&notif_cfg);
-            state.lock().unwrap().push_event("[notify] test notification sent");
+            state
+                .lock()
+                .unwrap()
+                .push_event("[notify] test notification sent");
         }
 
         "/obsidian" => {
-            state.lock().unwrap().push_event("[obsidian] bridge coming in Phase E12.");
+            state
+                .lock()
+                .unwrap()
+                .push_event("[obsidian] bridge coming in Phase E12.");
         }
 
         "/trace" => {
-            state.lock().unwrap().push_event("[trace] observability coming in Phase E7.");
+            state
+                .lock()
+                .unwrap()
+                .push_event("[trace] observability coming in Phase E7.");
         }
 
         "/schema" => {
@@ -1813,7 +2094,10 @@ async fn handle_slash_command(
             let rest = cmd.trim_start_matches("/schema").trim();
             if rest == "clear" || rest.is_empty() {
                 state.lock().unwrap().response_schema = None;
-                state.lock().unwrap().push_event("[schema] structured output cleared.");
+                state
+                    .lock()
+                    .unwrap()
+                    .push_event("[schema] structured output cleared.");
             } else {
                 // Split into name + json
                 let mut schema_parts = rest.splitn(2, ' ');
@@ -1822,12 +2106,18 @@ async fn handle_slash_command(
                 match serde_json::from_str::<serde_json::Value>(schema_str) {
                     Ok(schema_val) => {
                         let rs = harness_provider_core::ResponseSchema::new(name, schema_val);
-                        let msg = format!("[schema] set to '{}' — responses will be strict JSON.", rs.name);
+                        let msg = format!(
+                            "[schema] set to '{}' — responses will be strict JSON.",
+                            rs.name
+                        );
                         state.lock().unwrap().response_schema = Some(rs);
                         state.lock().unwrap().push_event(msg);
                     }
                     Err(e) => {
-                        state.lock().unwrap().push_event(format!("[schema] invalid JSON: {e}"));
+                        state
+                            .lock()
+                            .unwrap()
+                            .push_event(format!("[schema] invalid JSON: {e}"));
                     }
                 }
             }
@@ -1838,19 +2128,40 @@ async fn handle_slash_command(
         }
 
         _ => {
-            state.lock().unwrap().push_event(format!("[unknown] {cmd} — type /help or press F1"));
+            state
+                .lock()
+                .unwrap()
+                .push_event(format!("[unknown] {cmd} — type /help or press F1"));
         }
     }
 
-    let _ = (session, provider, session_store, done_tx, tools, memory_store, embed_model, system_prompt, model);
+    let _ = (
+        session,
+        provider,
+        session_store,
+        done_tx,
+        tools,
+        memory_store,
+        embed_model,
+        system_prompt,
+        model,
+    );
 }
 
 fn detect_test_command() -> String {
-    if std::path::Path::new("Cargo.toml").exists() { "cargo test 2>&1".into() }
-    else if std::path::Path::new("package.json").exists() { "npm test 2>&1".into() }
-    else if std::path::Path::new("pyproject.toml").exists() || std::path::Path::new("setup.py").exists() { "python -m pytest 2>&1".into() }
-    else if std::path::Path::new("go.mod").exists() { "go test ./... 2>&1".into() }
-    else { "make test 2>&1".into() }
+    if std::path::Path::new("Cargo.toml").exists() {
+        "cargo test 2>&1".into()
+    } else if std::path::Path::new("package.json").exists() {
+        "npm test 2>&1".into()
+    } else if std::path::Path::new("pyproject.toml").exists()
+        || std::path::Path::new("setup.py").exists()
+    {
+        "python -m pytest 2>&1".into()
+    } else if std::path::Path::new("go.mod").exists() {
+        "go test ./... 2>&1".into()
+    } else {
+        "make test 2>&1".into()
+    }
 }
 
 // ── Apply incoming agent events ────────────────────────────────────────────────
@@ -1866,7 +2177,13 @@ fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
             st.push_event(format!("→ {name}"));
         }
         AgentEvent::ToolResult { name, result, .. } => {
-            let preview = result.lines().next().unwrap_or("").chars().take(100).collect::<String>();
+            let preview = result
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(100)
+                .collect::<String>();
             let full_entry = format!("← {name}: {preview}");
             st.push_event(full_entry);
             // Store full result for expansion (keyed as last event)
@@ -1897,8 +2214,13 @@ fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
                     .map(|p| p.cost_with_cache(input as u64, st.cache_read_tokens, output as u64))
                     .unwrap_or(0.0);
                 let project = std::env::current_dir()
-                    .ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).unwrap_or_default();
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+                    .ok()
+                    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+                    .unwrap_or_default();
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
                 let row = cost_db::UsageRow {
                     session_id: st.session_id_full.clone(),
                     project,
@@ -1913,7 +2235,8 @@ fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
                 };
                 let _ = db.record(&row);
 
-                let (daily_pct, monthly_pct) = cost_db::check_budget(db, st.budget_daily_usd, st.budget_monthly_usd);
+                let (daily_pct, monthly_pct) =
+                    cost_db::check_budget(db, st.budget_daily_usd, st.budget_monthly_usd);
                 for (opt_pct, period) in [(&daily_pct, "daily"), (&monthly_pct, "monthly")] {
                     if let Some(pct) = opt_pct {
                         if *pct >= 80.0 {
@@ -1941,13 +2264,21 @@ fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
         AgentEvent::Done => {
             if !st.streaming.is_empty() {
                 let text = std::mem::take(&mut st.streaming);
-                st.chat.push(ChatMessage { role: "assistant".into(), content: text, ts: Instant::now() });
+                st.chat.push(ChatMessage {
+                    role: "assistant".into(),
+                    content: text,
+                    ts: Instant::now(),
+                });
             }
             st.scroll_to_bottom();
         }
         AgentEvent::Error(msg) => {
             st.push_event(format!("⚠ error: {msg}"));
-            st.chat.push(ChatMessage { role: "error".into(), content: msg.clone(), ts: Instant::now() });
+            st.chat.push(ChatMessage {
+                role: "error".into(),
+                content: msg.clone(),
+                ts: Instant::now(),
+            });
             st.status = format!("Error: {}", msg.chars().take(60).collect::<String>());
         }
     }
@@ -1972,7 +2303,10 @@ fn draw_all(f: &mut ratatui::Frame, state: &mut AppState, hl: &Highlighter, them
 
     let main = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(left_pct), Constraint::Percentage(right_pct)])
+        .constraints([
+            Constraint::Percentage(left_pct),
+            Constraint::Percentage(right_pct),
+        ])
         .split(root[0]);
 
     // Compute item counts BEFORE drawing so scroll bounds are up to date
@@ -2009,14 +2343,31 @@ fn draw_all(f: &mut ratatui::Frame, state: &mut AppState, hl: &Highlighter, them
 
 fn compute_chat_items(state: &AppState) -> usize {
     // Estimate: each message = header line + content lines + blank
-    state.chat.iter().map(|m| {
-        1 + m.content.lines().count() + 1
-    }).sum::<usize>() + if !state.streaming.is_empty() { 1 + state.streaming.lines().count() } else { 0 }
+    state
+        .chat
+        .iter()
+        .map(|m| 1 + m.content.lines().count() + 1)
+        .sum::<usize>()
+        + if !state.streaming.is_empty() {
+            1 + state.streaming.lines().count()
+        } else {
+            0
+        }
 }
 
-fn draw_chat(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, hl: &Highlighter, theme: &Theme) {
+fn draw_chat(
+    f: &mut ratatui::Frame,
+    state: &mut AppState,
+    area: Rect,
+    hl: &Highlighter,
+    theme: &Theme,
+) {
     let mut items: Vec<ListItem> = Vec::new();
-    let search_q = if state.search_mode { state.search_query.to_lowercase() } else { String::new() };
+    let search_q = if state.search_mode {
+        state.search_query.to_lowercase()
+    } else {
+        String::new()
+    };
 
     for (msg_idx, msg) in state.chat.iter().enumerate() {
         let is_search_match = !search_q.is_empty() && state.search_matches.contains(&msg_idx);
@@ -2027,11 +2378,19 @@ fn draw_chat(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, hl: &High
         };
         let ts_str = if state.timestamps_visible {
             let elapsed = msg.ts.elapsed();
-            let secs = state.session_start.elapsed().as_secs().saturating_sub(elapsed.as_secs());
+            let secs = state
+                .session_start
+                .elapsed()
+                .as_secs()
+                .saturating_sub(elapsed.as_secs());
             format!(" +{secs}s")
-        } else { String::new() };
+        } else {
+            String::new()
+        };
         let header_style = if is_search_match {
-            Style::default().fg(theme.search_hl_color).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(theme.search_hl_color)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(color).add_modifier(Modifier::BOLD)
         };
@@ -2062,7 +2421,9 @@ fn draw_chat(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, hl: &High
         let spinner = state.spinner_char();
         items.push(ListItem::new(Line::from(Span::styled(
             format!("┌ [{label}] {spinner}"),
-            Style::default().fg(theme.streaming_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.streaming_color)
+                .add_modifier(Modifier::BOLD),
         ))));
         for line in state.streaming.lines() {
             items.push(ListItem::new(Line::from(Span::styled(
@@ -2081,14 +2442,25 @@ fn draw_chat(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, hl: &High
     }
 
     let title = if state.busy {
-        let elapsed = state.tool_start.map(|t| format!(" {:.0}s", t.elapsed().as_secs_f32())).unwrap_or_default();
+        let elapsed = state
+            .tool_start
+            .map(|t| format!(" {:.0}s", t.elapsed().as_secs_f32()))
+            .unwrap_or_default();
         format!(" Chat {}  {} ", state.spinner_char(), elapsed)
     } else {
-        format!(" Chat [{} turns] ", state.chat.iter().filter(|m| m.role == "user").count())
+        format!(
+            " Chat [{} turns] ",
+            state.chat.iter().filter(|m| m.role == "user").count()
+        )
     };
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(theme.border_color)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(theme.border_color)),
+        )
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
@@ -2102,19 +2474,38 @@ fn prefix_line(line: Line<'static>, prefix: &'static str) -> Line<'static> {
 }
 
 fn draw_event_log(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, theme: &Theme) {
-    let items: Vec<ListItem> = state.event_log.iter().map(|line| {
-        let color = if line.starts_with('→') { theme.tool_in_color }
-            else if line.starts_with('←') { theme.tool_out_color }
-            else if line.starts_with('⚠') || line.starts_with("error") { theme.error_color }
-            else if line.starts_with("memory") || line.starts_with("cache") { theme.dim_color }
-            else if line.starts_with("swarm") { Color::LightCyan }
-            else { theme.border_color };
-        ListItem::new(Line::from(Span::styled(line.as_str(), Style::default().fg(color))))
-    }).collect();
+    let items: Vec<ListItem> = state
+        .event_log
+        .iter()
+        .map(|line| {
+            let color = if line.starts_with('→') {
+                theme.tool_in_color
+            } else if line.starts_with('←') {
+                theme.tool_out_color
+            } else if line.starts_with('⚠') || line.starts_with("error") {
+                theme.error_color
+            } else if line.starts_with("memory") || line.starts_with("cache") {
+                theme.dim_color
+            } else if line.starts_with("swarm") {
+                Color::LightCyan
+            } else {
+                theme.border_color
+            };
+            ListItem::new(Line::from(Span::styled(
+                line.as_str(),
+                Style::default().fg(color),
+            )))
+        })
+        .collect();
 
     let title = " Events ";
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(theme.border_color)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(theme.border_color)),
+        )
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
@@ -2133,25 +2524,40 @@ fn draw_input(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &Them
     };
 
     let title = if !state.tab_completions.is_empty() {
-        let cur = state.tab_completions.get(state.tab_completion_idx).map(|s| s.as_str()).unwrap_or("");
+        let cur = state
+            .tab_completions
+            .get(state.tab_completion_idx)
+            .map(|s| s.as_str())
+            .unwrap_or("");
         format!(" Message  [Tab→{cur}] ")
     } else if state.search_mode {
         format!(" Search: {} ", state.search_query)
     } else if let Some(idx) = state.history_idx {
-        format!(" History [{}/{}] — ↑↓ to navigate, Enter to send ", idx + 1, state.input_history.len())
+        format!(
+            " History [{}/{}] — ↑↓ to navigate, Enter to send ",
+            idx + 1,
+            state.input_history.len()
+        )
     } else {
         " Message  [Enter send · Shift+Enter newline · /help · @file Tab] ".to_string()
     };
 
     let input_widget = Paragraph::new(input_with_cursor)
-        .block(Block::default().borders(Borders::ALL).title(title).border_style(
-            if state.busy {
-                Style::default().fg(theme.dim_color)
-            } else {
-                Style::default().fg(theme.border_color)
-            }
-        ))
-        .style(Style::default().fg(if state.busy { Color::DarkGray } else { Color::White }))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(if state.busy {
+                    Style::default().fg(theme.dim_color)
+                } else {
+                    Style::default().fg(theme.border_color)
+                }),
+        )
+        .style(Style::default().fg(if state.busy {
+            Color::DarkGray
+        } else {
+            Color::White
+        }))
         .wrap(Wrap { trim: false });
     f.render_widget(input_widget, area);
 }
@@ -2160,7 +2566,9 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
     let style = if state.computer_use_active {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     } else if state.pending_confirm.is_some() {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else if state.busy {
         Style::default().fg(Color::Yellow)
     } else {
@@ -2168,11 +2576,21 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
     };
 
     let mut indicators = String::new();
-    if state.computer_use_active { indicators.push_str("[⚠CU] "); }
-    if state.plan_mode { indicators.push_str("[PLAN] "); }
-    if state.recording_voice { indicators.push_str("[🎙REC] "); }
-    if state.focus_active() { indicators.push_str(&format!("[FOCUS {}m] ", state.focus_mins_remaining())); }
-    if state.search_mode { indicators.push_str("[SEARCH] "); }
+    if state.computer_use_active {
+        indicators.push_str("[⚠CU] ");
+    }
+    if state.plan_mode {
+        indicators.push_str("[PLAN] ");
+    }
+    if state.recording_voice {
+        indicators.push_str("[🎙REC] ");
+    }
+    if state.focus_active() {
+        indicators.push_str(&format!("[FOCUS {}m] ", state.focus_mins_remaining()));
+    }
+    if state.search_mode {
+        indicators.push_str("[SEARCH] ");
+    }
 
     // Left side: indicators + status message
     let left = format!("{indicators}{}", state.status);
@@ -2195,10 +2613,18 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
 
 fn draw_slash_popup(f: &mut ratatui::Frame, state: &AppState, input_area: Rect, theme: &Theme) {
     let suggestions = &state.slash_suggestions;
-    if suggestions.is_empty() { return; }
+    if suggestions.is_empty() {
+        return;
+    }
 
     let height = (suggestions.len() as u16).min(8) + 2;
-    let width = suggestions.iter().map(|s| s.len()).max().unwrap_or(20).min(60) as u16 + 4;
+    let width = suggestions
+        .iter()
+        .map(|s| s.len())
+        .max()
+        .unwrap_or(20)
+        .min(60) as u16
+        + 4;
 
     let x = input_area.x + 2;
     let y = input_area.y.saturating_sub(height);
@@ -2206,17 +2632,25 @@ fn draw_slash_popup(f: &mut ratatui::Frame, state: &AppState, input_area: Rect, 
 
     f.render_widget(Clear, popup);
 
-    let items: Vec<ListItem> = suggestions.iter().enumerate().map(|(i, s)| {
-        let style = if i == state.slash_suggest_idx {
-            Style::default().fg(Color::Black).bg(theme.accent_color)
-        } else {
-            Style::default().fg(Color::White)
-        };
-        ListItem::new(Line::from(Span::styled(format!(" {s} "), style)))
-    }).collect();
+    let items: Vec<ListItem> = suggestions
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let style = if i == state.slash_suggest_idx {
+                Style::default().fg(Color::Black).bg(theme.accent_color)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            ListItem::new(Line::from(Span::styled(format!(" {s} "), style)))
+        })
+        .collect();
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Commands ").border_style(Style::default().fg(theme.accent_color)));
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Commands ")
+            .border_style(Style::default().fg(theme.accent_color)),
+    );
     f.render_widget(list, popup);
 }
 
@@ -2229,7 +2663,11 @@ fn draw_search_bar(f: &mut ratatui::Frame, state: &AppState, chat_area: Rect, th
         1,
     );
     let nmatches = state.search_matches.len();
-    let match_info = if nmatches > 0 { format!(" [{}/{nmatches}]", state.search_match_pos + 1) } else { String::new() };
+    let match_info = if nmatches > 0 {
+        format!(" [{}/{nmatches}]", state.search_match_pos + 1)
+    } else {
+        String::new()
+    };
     let text = format!("/ {}{match_info} Esc:close", state.search_query);
     f.render_widget(
         Paragraph::new(text).style(Style::default().fg(Color::Black).bg(theme.search_hl_color)),
@@ -2248,45 +2686,119 @@ fn draw_welcome_overlay(f: &mut ratatui::Frame, theme: &Theme) {
     f.render_widget(Clear, popup_area);
 
     let lines: Vec<Line> = vec![
-        Line::from(Span::styled(" Welcome to Harness — April 2026", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            " Welcome to Harness — April 2026",
+            Style::default()
+                .fg(theme.accent_color)
+                .add_modifier(Modifier::BOLD),
+        )),
         Line::from(Span::raw("")),
-        Line::from(Span::styled(" Your AI coding assistant for 16-hour days.", Style::default().fg(Color::White))),
+        Line::from(Span::styled(
+            " Your AI coding assistant for 16-hour days.",
+            Style::default().fg(Color::White),
+        )),
         Line::from(Span::raw("")),
-        Line::from(Span::styled(" Try these first prompts:", Style::default().fg(Color::Gray))),
-        Line::from(Span::styled("   Read README.md and summarize this project.", Style::default().fg(Color::Yellow))),
-        Line::from(Span::styled("   Run the tests and show me which are failing.", Style::default().fg(Color::Yellow))),
-        Line::from(Span::styled("   Refactor src/main.rs to be cleaner.", Style::default().fg(Color::Yellow))),
+        Line::from(Span::styled(
+            " Try these first prompts:",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::styled(
+            "   Read README.md and summarize this project.",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            "   Run the tests and show me which are failing.",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            "   Refactor src/main.rs to be cleaner.",
+            Style::default().fg(Color::Yellow),
+        )),
         Line::from(Span::raw("")),
-        Line::from(Span::styled(" Keybindings:", Style::default().fg(Color::Gray))),
+        Line::from(Span::styled(
+            " Keybindings:",
+            Style::default().fg(Color::Gray),
+        )),
         Line::from(vec![
-            Span::styled("   Enter", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "   Enter",
+                Style::default()
+                    .fg(theme.accent_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" send  "),
-            Span::styled("Shift+Enter", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Shift+Enter",
+                Style::default()
+                    .fg(theme.accent_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" newline  "),
-            Span::styled("↑↓", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "↑↓",
+                Style::default()
+                    .fg(theme.accent_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" scroll/history"),
         ]),
         Line::from(vec![
-            Span::styled("   Ctrl+F", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "   Ctrl+F",
+                Style::default()
+                    .fg(theme.accent_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" search  "),
-            Span::styled("Ctrl+Y", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Ctrl+Y",
+                Style::default()
+                    .fg(theme.accent_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" copy  "),
-            Span::styled("Ctrl+S", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Ctrl+S",
+                Style::default()
+                    .fg(theme.accent_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" voice  "),
-            Span::styled("F1", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "F1",
+                Style::default()
+                    .fg(theme.accent_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::raw(" help"),
         ]),
         Line::from(Span::raw("")),
-        Line::from(Span::styled(" Type /help or press F1 for all commands.", Style::default().fg(Color::Gray))),
-        Line::from(Span::styled(" Use @filename to pin files · Tab to autocomplete.", Style::default().fg(Color::Gray))),
+        Line::from(Span::styled(
+            " Type /help or press F1 for all commands.",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::styled(
+            " Use @filename to pin files · Tab to autocomplete.",
+            Style::default().fg(Color::Gray),
+        )),
         Line::from(Span::raw("")),
-        Line::from(Span::styled(" Press Enter to get started", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            " Press Enter to get started",
+            Style::default()
+                .fg(theme.accent_color)
+                .add_modifier(Modifier::BOLD),
+        )),
     ];
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.accent_color))
-        .title(Span::styled(" harness — first run ", Style::default().fg(theme.accent_color).add_modifier(Modifier::BOLD)));
+        .title(Span::styled(
+            " harness — first run ",
+            Style::default()
+                .fg(theme.accent_color)
+                .add_modifier(Modifier::BOLD),
+        ));
 
     f.render_widget(Paragraph::new(lines).block(block), popup_area);
 }
@@ -2302,42 +2814,82 @@ fn draw_confirm_overlay(f: &mut ratatui::Frame, pc: &PendingConfirm, _theme: &Th
     f.render_widget(Clear, popup_area);
 
     let title = format!(" Plan mode — {} ", pc.tool_name);
-    let preview_lines: Vec<Line> = pc.preview.lines().map(|l| {
-        let color = if l.starts_with("+ ") { Color::Green }
-            else if l.starts_with("- ") { Color::Red }
-            else if l.starts_with("$ ") { Color::Yellow }
-            else { Color::White };
-        Line::from(Span::styled(format!(" {l}"), Style::default().fg(color)))
-    }).collect();
+    let preview_lines: Vec<Line> = pc
+        .preview
+        .lines()
+        .map(|l| {
+            let color = if l.starts_with("+ ") {
+                Color::Green
+            } else if l.starts_with("- ") {
+                Color::Red
+            } else if l.starts_with("$ ") {
+                Color::Yellow
+            } else {
+                Color::White
+            };
+            Line::from(Span::styled(format!(" {l}"), Style::default().fg(color)))
+        })
+        .collect();
 
     let mut content: Vec<Line> = preview_lines;
     content.push(Line::from(Span::raw("")));
     content.push(Line::from(vec![
-        Span::styled(" y", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " y",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" approve   "),
-        Span::styled("n", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "n",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" deny   "),
-        Span::styled("a", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "a",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" always allow   "),
-        Span::styled("Esc", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Esc",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" skip   "),
-        Span::styled("Enter", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" approve"),
     ]));
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Yellow))
-        .title(Span::styled(title, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        .title(Span::styled(
+            title,
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
 
-    let para = Paragraph::new(content).block(block).wrap(Wrap { trim: false });
+    let para = Paragraph::new(content)
+        .block(block)
+        .wrap(Wrap { trim: false });
     f.render_widget(para, popup_area);
 }
 
 // ── Fork session helpers ──────────────────────────────────────────────────────
 
 fn count_user_turns(messages: &[harness_provider_core::Message]) -> usize {
-    messages.iter().filter(|m| matches!(m.role, harness_provider_core::Role::User)).count()
+    messages
+        .iter()
+        .filter(|m| matches!(m.role, harness_provider_core::Role::User))
+        .count()
 }
 
 fn fork_session_at(original: &harness_memory::Session, turn_n: usize) -> harness_memory::Session {
@@ -2348,9 +2900,13 @@ fn fork_session_at(original: &harness_memory::Session, turn_n: usize) -> harness
     }
     let mut user_count = 0;
     for msg in &original.messages {
-        if matches!(msg.role, Role::User) { user_count += 1; }
+        if matches!(msg.role, Role::User) {
+            user_count += 1;
+        }
         new_session.messages.push(msg.clone());
-        if user_count >= turn_n { break; }
+        if user_count >= turn_n {
+            break;
+        }
     }
     new_session
 }

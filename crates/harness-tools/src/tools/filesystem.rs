@@ -27,7 +27,9 @@ impl Tool for ReadFileTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let path = args["path"].as_str().ok_or_else(|| anyhow::anyhow!("missing path"))?;
+        let path = args["path"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing path"))?;
         let content = tokio::fs::read_to_string(path).await?;
 
         let start = args["start_line"].as_u64().map(|n| n as usize).unwrap_or(1);
@@ -68,8 +70,12 @@ impl Tool for WriteFileTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let path = args["path"].as_str().ok_or_else(|| anyhow::anyhow!("missing path"))?;
-        let content = args["content"].as_str().ok_or_else(|| anyhow::anyhow!("missing content"))?;
+        let path = args["path"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing path"))?;
+        let content = args["content"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing content"))?;
 
         if let Some(parent) = std::path::Path::new(path).parent() {
             tokio::fs::create_dir_all(parent).await?;
@@ -135,7 +141,8 @@ impl Tool for PatchFileTool {
             .ok_or_else(|| anyhow::anyhow!("missing new_content"))?;
         let dry_run = args["dry_run"].as_bool().unwrap_or(false);
 
-        let original = tokio::fs::read_to_string(path).await
+        let original = tokio::fs::read_to_string(path)
+            .await
             .map_err(|e| anyhow::anyhow!("read {path}: {e}"))?;
 
         // Count occurrences to guard against ambiguous matches.
@@ -169,7 +176,7 @@ impl Tool for PatchFileTool {
             let prefix = match change.tag() {
                 ChangeTag::Delete => "-",
                 ChangeTag::Insert => "+",
-                ChangeTag::Equal  => " ",
+                ChangeTag::Equal => " ",
             };
             diff_lines.push(format!("{prefix}{}", change.value()));
         }
@@ -180,7 +187,8 @@ impl Tool for PatchFileTool {
             return Ok(format!("--- dry run: {path} ---\n{}", trimmed.join("")));
         }
 
-        tokio::fs::write(path, &patched).await
+        tokio::fs::write(path, &patched)
+            .await
             .map_err(|e| anyhow::anyhow!("write {path}: {e}"))?;
 
         let added: usize = diff_lines.iter().filter(|l| l.starts_with('+')).count();
@@ -251,7 +259,9 @@ impl Tool for ListDirTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let path = args["path"].as_str().ok_or_else(|| anyhow::anyhow!("missing path"))?;
+        let path = args["path"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing path"))?;
         let recursive = args["recursive"].as_bool().unwrap_or(false);
         let max_depth = args["max_depth"].as_u64().unwrap_or(3) as usize;
 

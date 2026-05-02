@@ -66,11 +66,18 @@ impl Tool for FindDefinitionTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let file = args["file"].as_str().ok_or_else(|| anyhow::anyhow!("missing file"))?;
-        let line = args["line"].as_u64().ok_or_else(|| anyhow::anyhow!("missing line"))? as u32;
-        let col  = args["col"].as_u64().ok_or_else(|| anyhow::anyhow!("missing col"))? as u32;
+        let file = args["file"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing file"))?;
+        let line = args["line"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("missing line"))? as u32;
+        let col = args["col"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("missing col"))? as u32;
         let mut c = self.client.lock().await;
-        c.goto_definition(file, line.saturating_sub(1), col.saturating_sub(1)).await
+        c.goto_definition(file, line.saturating_sub(1), col.saturating_sub(1))
+            .await
     }
 }
 
@@ -100,11 +107,18 @@ impl Tool for FindReferencesTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let file = args["file"].as_str().ok_or_else(|| anyhow::anyhow!("missing file"))?;
-        let line = args["line"].as_u64().ok_or_else(|| anyhow::anyhow!("missing line"))? as u32;
-        let col  = args["col"].as_u64().ok_or_else(|| anyhow::anyhow!("missing col"))? as u32;
+        let file = args["file"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing file"))?;
+        let line = args["line"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("missing line"))? as u32;
+        let col = args["col"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("missing col"))? as u32;
         let mut c = self.client.lock().await;
-        c.references(file, line.saturating_sub(1), col.saturating_sub(1)).await
+        c.references(file, line.saturating_sub(1), col.saturating_sub(1))
+            .await
     }
 }
 
@@ -136,12 +150,26 @@ impl Tool for RenameSymbolTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let file     = args["file"].as_str().ok_or_else(|| anyhow::anyhow!("missing file"))?;
-        let line     = args["line"].as_u64().ok_or_else(|| anyhow::anyhow!("missing line"))? as u32;
-        let col      = args["col"].as_u64().ok_or_else(|| anyhow::anyhow!("missing col"))? as u32;
-        let new_name = args["new_name"].as_str().ok_or_else(|| anyhow::anyhow!("missing new_name"))?;
+        let file = args["file"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing file"))?;
+        let line = args["line"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("missing line"))? as u32;
+        let col = args["col"]
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("missing col"))? as u32;
+        let new_name = args["new_name"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing new_name"))?;
         let mut c = self.client.lock().await;
-        c.rename(file, line.saturating_sub(1), col.saturating_sub(1), new_name).await
+        c.rename(
+            file,
+            line.saturating_sub(1),
+            col.saturating_sub(1),
+            new_name,
+        )
+        .await
     }
 }
 
