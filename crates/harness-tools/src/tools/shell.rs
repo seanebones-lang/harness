@@ -3,9 +3,11 @@ use harness_provider_core::ToolDefinition;
 use serde_json::{json, Value};
 #[cfg(windows)]
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::process::Command;
 
 use crate::registry::Tool;
+use crate::workspace_root::WorkspaceRoot;
 
 /// On Windows, prefer Git Bash `sh`/`bash` (on PATH on GitHub runners and typical dev installs)
 /// so POSIX shell syntax matches Unix. Falls back to `cmd.exe /C` if neither exists.
@@ -25,7 +27,7 @@ fn windows_shell_interpreter() -> (PathBuf, bool) {
 }
 
 /// Configuration forwarded from the main config at build time.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ShellConfig {
     /// Patterns blocked unconditionally (error returned if matched).
     pub denylist: Vec<String>,
@@ -33,27 +35,29 @@ pub struct ShellConfig {
     pub confirm_required: Vec<String>,
     /// Path to append command log. `None` = no logging.
     pub log_path: Option<std::path::PathBuf>,
+    /// When non-empty, only these absolute argv0 paths (first shell token) are allowed.
+    pub cmd_allowlist: Option<Vec<String>>,
+}
+
+impl Default for ShellConfig {
+    fn default() -> Self {
+        Self {
+            denylist: default_denylist(),
+            confirm_required: default_confirm_required(),
+            log_path: default_log_path(),
+            cmd_allowlist: None,
+        }
+    }
 }
 
 pub struct ShellTool {
     config: ShellConfig,
+    workspace: Arc<WorkspaceRoot>,
 }
 
 impl ShellTool {
-    pub fn new(config: ShellConfig) -> Self {
-        Self { config }
-    }
-}
-
-impl Default for ShellTool {
-    fn default() -> Self {
-        Self {
-            config: ShellConfig {
-                denylist: default_denylist(),
-                confirm_required: default_confirm_required(),
-                log_path: default_log_path(),
-            },
-        }
+    pub fn new(config: ShellConfig, workspace: Arc<WorkspaceRoot>) -> Self {
+        Self { config, workspace }
     }
 }
 
@@ -133,11 +137,28 @@ impl Tool for ShellTool {
             }
         }
 
+        if let Some(allow) = self.config.cmd_allowlist.as_ref().filter(|a| !a.is_empty()) {
+            if let Some(tok) = command.split_whitespace().next() {
+                if tok.starts_with('/') && !allow.iter().any(|a| a.as_str() == tok) {
+                    return Err(anyhow::anyhow!(
+                        "absolute-path command `{}` is not in [shell].cmd_allowlist",
+                        tok
+                    ));
+                }
+            }
+        }
+
         // Log the command before execution.
         self.log_command(command);
 
         let cwd = args["cwd"].as_str();
         let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(120);
+
+        let effective_cwd = if let Some(dir) = cwd {
+            self.workspace.resolve(dir)?
+        } else {
+            self.workspace.root().to_path_buf()
+        };
 
         let mut cmd = {
             #[cfg(windows)]
@@ -160,10 +181,7 @@ impl Tool for ShellTool {
         };
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
-
-        if let Some(dir) = cwd {
-            cmd.current_dir(dir);
-        }
+        cmd.current_dir(&effective_cwd);
 
         let child = cmd.spawn()?;
 

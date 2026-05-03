@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_imports)]
 //! Parallel sub-agent swarm: spawn non-blocking agents and track them.
 //!
 //! Exposes:
@@ -15,7 +14,7 @@ use anyhow::Result;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{oneshot, Semaphore};
 
@@ -48,7 +47,9 @@ pub struct TaskEntry {
     pub prompt: String,
     pub status: TaskStatus,
     pub result: Option<String>,
+    #[allow(dead_code)]
     pub created_ts: i64,
+    #[allow(dead_code)]
     pub completed_ts: Option<i64>,
 }
 
@@ -96,6 +97,7 @@ fn new_task_id() -> TaskId {
 
 /// In-memory swarm state (tasks spawned in this process).
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct SwarmState {
     pub running: HashMap<TaskId, tokio::task::JoinHandle<()>>,
     pub cancel_txs: HashMap<TaskId, oneshot::Sender<()>>,

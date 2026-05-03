@@ -343,6 +343,10 @@ fn parse_openai_sse(
         buf: String,
         // index → (id, name, accumulated_args)
         tool_calls: std::collections::HashMap<u32, (String, String, String)>,
+        /// Tool calls accumulated for the current assistant turn; emitted one `Delta::ToolCall` at a time.
+        pending_tool_calls: std::collections::VecDeque<ToolCall>,
+        /// After all `pending_tool_calls` are emitted, send this `Done` (e.g. `ToolUse`).
+        pending_stop_after_tools: Option<StopReason>,
         done: bool,
     }
 
@@ -350,12 +354,23 @@ fn parse_openai_sse(
         stream: Box::pin(byte_stream),
         buf: String::new(),
         tool_calls: std::collections::HashMap::new(),
+        pending_tool_calls: std::collections::VecDeque::new(),
+        pending_stop_after_tools: None,
         done: false,
     };
 
     futures::stream::unfold(state, |mut s| async move {
         if s.done {
             return None;
+        }
+
+        // Drain multi-tool batches: emit every tool call before the final `Done`.
+        if let Some(call) = s.pending_tool_calls.pop_front() {
+            return Some((Ok(Delta::ToolCall(call)), s));
+        }
+        if let Some(sr) = s.pending_stop_after_tools.take() {
+            s.done = true;
+            return Some((Ok(Delta::Done { stop_reason: sr }), s));
         }
 
         loop {
@@ -418,22 +433,27 @@ fn parse_openai_sse(
                                 }
 
                                 if let Some(reason) = finish_reason {
-                                    // Flush accumulated tool calls.
+                                    // Flush every accumulated tool call (OpenAI may batch several).
                                     if !s.tool_calls.is_empty() {
                                         let mut sorted: Vec<_> = s.tool_calls.drain().collect();
                                         sorted.sort_by_key(|(k, _)| *k);
-                                        // Return the first one; downstream agent will call again.
-                                        if let Some((_, (id, name, args))) =
-                                            sorted.into_iter().next()
-                                        {
-                                            let call = ToolCall {
+                                        for (_, (id, name, args)) in sorted {
+                                            s.pending_tool_calls.push_back(ToolCall {
                                                 id,
                                                 kind: "function".into(),
                                                 function: ToolCallFunction {
                                                     name,
                                                     arguments: args,
                                                 },
-                                            };
+                                            });
+                                        }
+                                        let sr = match reason {
+                                            "tool_calls" => StopReason::ToolUse,
+                                            "length" => StopReason::MaxTokens,
+                                            _ => StopReason::EndTurn,
+                                        };
+                                        s.pending_stop_after_tools = Some(sr);
+                                        if let Some(call) = s.pending_tool_calls.pop_front() {
                                             return Some((Ok(Delta::ToolCall(call)), s));
                                         }
                                     }
@@ -470,4 +490,50 @@ fn parse_openai_sse(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod openai_sse_tests {
+    use super::*;
+    use futures::StreamExt;
+
+    fn sse_bytes(lines: &[&str]) -> bytes::Bytes {
+        let mut s = String::new();
+        for line in lines {
+            s.push_str(line);
+            if !line.ends_with('\n') {
+                s.push('\n');
+            }
+        }
+        bytes::Bytes::from(s)
+    }
+
+    #[tokio::test]
+    async fn emits_all_parallel_tool_calls_before_done() {
+        let body = sse_bytes(&[
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"tool_a","arguments":""}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_b","function":{"name":"tool_b","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#,
+        ]);
+        let stream = futures::stream::once(async move { Ok::<_, reqwest::Error>(body) });
+        let parsed = parse_openai_sse(stream);
+        tokio::pin!(parsed);
+        let mut tools = Vec::new();
+        let mut last_done = None;
+        while let Some(item) = parsed.next().await {
+            let d = item.expect("delta");
+            match d {
+                Delta::ToolCall(tc) => tools.push((tc.function.name, tc.id)),
+                Delta::Done { stop_reason } => last_done = Some(stop_reason),
+                _ => {}
+            }
+        }
+        assert_eq!(
+            tools,
+            vec![
+                ("tool_a".into(), "call_a".into()),
+                ("tool_b".into(), "call_b".into())
+            ]
+        );
+        assert_eq!(last_done, Some(StopReason::ToolUse));
+    }
 }

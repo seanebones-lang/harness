@@ -11,6 +11,32 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  supply-chain:
+    name: Supply chain (audit + deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+      - uses: taiki-e/install-action@cargo-deny
+      - name: cargo audit
+        run: cargo audit
+      - name: cargo deny
+        run: cargo deny check
+
+  msrv:
+    name: MSRV check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.76.0
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: cargo check workspace
+        run: cargo check --workspace --all-targets
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

@@ -39,13 +39,12 @@ use serde::{Deserialize, Serialize};
 use std::path::Path as FsPath;
 use std::process::Command;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio::time::{timeout, Duration};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 
 use crate::agent;
-use crate::events::AgentEvent;
+use crate::events::{channel as agent_event_channel, AgentEvent};
 use crate::projects;
 
 // ── Shared server state ───────────────────────────────────────────────────────
@@ -326,7 +325,7 @@ async fn chat(
     State(state): State<Arc<ServerState>>,
     Json(req): Json<ChatRequest>,
 ) -> Sse<BoxSseStream> {
-    let (tx, rx) = mpsc::unbounded_channel::<AgentEvent>();
+    let (tx, rx) = agent_event_channel();
 
     // Resolve or create session
     let mut session = match req.session_id.as_deref() {
@@ -384,7 +383,7 @@ async fn chat(
     });
 
     // Convert AgentEvent stream into SSE
-    let event_stream = UnboundedReceiverStream::new(rx).map(|event| {
+    let event_stream = ReceiverStream::new(rx).map(|event| {
         let data = match event {
             AgentEvent::TextChunk(s) => {
                 format!(

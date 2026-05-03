@@ -37,6 +37,7 @@ use crossterm::{
 use harness_memory::{MemoryStore, Session, SessionStore};
 use harness_provider_core::{ArcProvider, Message};
 use harness_tools::{ConfirmRequest, ToolExecutor};
+use parking_lot::Mutex;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -46,7 +47,7 @@ use ratatui::{
     Terminal,
 };
 use std::io;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 
@@ -54,8 +55,12 @@ use crate::agent::{self, DEFAULT_SYSTEM};
 use crate::config::Config;
 use crate::cost;
 use crate::cost_db::{self, CostDb};
-use crate::events::AgentEvent;
+use crate::events::{try_emit, AgentEvent};
 use crate::highlight::Highlighter;
+
+mod theme;
+
+use theme::Theme;
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -69,106 +74,6 @@ struct ChatMessage {
     role: String,
     content: String,
     ts: Instant,
-}
-
-#[derive(Clone)]
-struct Theme {
-    user_color: Color,
-    assistant_color: Color,
-    streaming_color: Color,
-    error_color: Color,
-    tool_in_color: Color,
-    tool_out_color: Color,
-    dim_color: Color,
-    border_color: Color,
-    accent_color: Color,
-    search_hl_color: Color,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Self {
-            user_color: Color::Cyan,
-            assistant_color: Color::Green,
-            streaming_color: Color::Yellow,
-            error_color: Color::Red,
-            tool_in_color: Color::Magenta,
-            tool_out_color: Color::Blue,
-            dim_color: Color::DarkGray,
-            border_color: Color::Gray,
-            accent_color: Color::Cyan,
-            search_hl_color: Color::LightYellow,
-        }
-    }
-}
-
-impl Theme {
-    fn load() -> Self {
-        let path = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".harness/theme.toml");
-        if !path.exists() {
-            return Self::default();
-        }
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            return Self::default();
-        };
-        let Ok(val) = text.parse::<toml::Value>() else {
-            return Self::default();
-        };
-        let get = |key: &str, def: Color| -> Color {
-            val.get(key)
-                .and_then(|v| v.as_str())
-                .and_then(parse_color)
-                .unwrap_or(def)
-        };
-        Self {
-            user_color: get("user", Color::Cyan),
-            assistant_color: get("assistant", Color::Green),
-            streaming_color: get("streaming", Color::Yellow),
-            error_color: get("error", Color::Red),
-            tool_in_color: get("tool_in", Color::Magenta),
-            tool_out_color: get("tool_out", Color::Blue),
-            dim_color: get("dim", Color::DarkGray),
-            border_color: get("border", Color::Gray),
-            accent_color: get("accent", Color::Cyan),
-            search_hl_color: get("search_hl", Color::LightYellow),
-        }
-    }
-
-    fn assistant_label<'a>(&self, model: &str) -> &'a str {
-        // Return a short provider-friendly label for the model
-        if model.contains("claude") {
-            "claude"
-        } else if model.contains("grok") {
-            "grok"
-        } else if model.contains("gpt") {
-            "gpt"
-        } else if model.contains("qwen") {
-            "qwen"
-        } else {
-            "ai"
-        }
-    }
-}
-
-fn parse_color(s: &str) -> Option<Color> {
-    match s.to_lowercase().as_str() {
-        "black" => Some(Color::Black),
-        "red" => Some(Color::Red),
-        "green" => Some(Color::Green),
-        "yellow" => Some(Color::Yellow),
-        "blue" => Some(Color::Blue),
-        "magenta" => Some(Color::Magenta),
-        "cyan" => Some(Color::Cyan),
-        "white" => Some(Color::White),
-        "gray" | "grey" => Some(Color::Gray),
-        "darkgray" | "darkgrey" => Some(Color::DarkGray),
-        "lightyellow" => Some(Color::LightYellow),
-        "lightcyan" => Some(Color::LightCyan),
-        "lightgreen" => Some(Color::LightGreen),
-        _ => None,
-    }
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -740,7 +645,7 @@ pub async fn run(
     cfg: Config,
     resume_id: Option<&str>,
     ambient_shutdown: Option<watch::Sender<()>>,
-    confirm_rx: Option<mpsc::UnboundedReceiver<ConfirmRequest>>,
+    confirm_rx: Option<mpsc::Receiver<ConfirmRequest>>,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -756,7 +661,7 @@ pub async fn run(
     let has_confirm_gate = confirm_rx.is_some();
     let state = Arc::new(Mutex::new(AppState::new(&model)));
     {
-        let mut st = state.lock().unwrap();
+        let mut st = state.lock();
         st.plan_mode = has_confirm_gate;
         st.computer_use_active = cfg.computer_use.is_enabled();
         st.budget_daily_usd = cfg.budget.daily_usd;
@@ -771,7 +676,7 @@ pub async fn run(
     };
 
     if let Some(id) = resume_id {
-        let mut st = state.lock().unwrap();
+        let mut st = state.lock();
         st.session_id = id[..8.min(id.len())].to_string();
         st.session_id_full = id.to_string();
         for msg in &session.messages {
@@ -842,16 +747,16 @@ async fn event_loop(
     model: &str,
     system_prompt: &str,
     ambient_shutdown: Option<watch::Sender<()>>,
-    mut confirm_rx: Option<mpsc::UnboundedReceiver<ConfirmRequest>>,
+    mut confirm_rx: Option<mpsc::Receiver<ConfirmRequest>>,
 ) -> Result<()> {
     let highlighter = Highlighter::new();
-    let (agent_tx, mut agent_rx) = mpsc::unbounded_channel::<AgentEvent>();
+    let (agent_tx, mut agent_rx) = crate::events::channel();
     let (done_tx, mut done_rx) = mpsc::unbounded_channel::<harness_memory::Session>();
 
     loop {
         // Spinner tick
         {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             if st.busy {
                 st.tick_spinner();
             }
@@ -859,7 +764,7 @@ async fn event_loop(
 
         // Draw
         {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             let hl = &highlighter;
             let theme = st.theme.clone();
             terminal.draw(|f| draw_all(f, &mut st, hl, &theme))?;
@@ -871,10 +776,10 @@ async fn event_loop(
         }
 
         // Poll for confirmation requests
-        if state.lock().unwrap().pending_confirm.is_none() {
+        if state.lock().pending_confirm.is_none() {
             if let Some(rx) = &mut confirm_rx {
                 if let Ok(req) = rx.try_recv() {
-                    let mut st = state.lock().unwrap();
+                    let mut st = state.lock();
                     st.pending_confirm = Some(PendingConfirm {
                         tool_name: req.tool_name,
                         preview: req.preview,
@@ -907,7 +812,7 @@ async fn event_loop(
                     }
                 });
             }
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.busy = false;
             st.tool_start = None;
             st.session_id = session.id[..8].to_string();
@@ -938,7 +843,7 @@ async fn event_loop(
 
             // Bracketed paste
             if let Event::Paste(pasted) = &ev {
-                let mut st = state.lock().unwrap();
+                let mut st = state.lock();
                 let trimmed = pasted.trim();
                 let is_image_path = {
                     let lower = trimmed.to_lowercase();
@@ -966,7 +871,7 @@ async fn event_loop(
             if let Event::Key(key) = ev {
                 // Search mode intercept
                 {
-                    let search = state.lock().unwrap().search_mode;
+                    let search = state.lock().search_mode;
                     if search && handle_search_key(&state, key) {
                         continue;
                     }
@@ -989,7 +894,7 @@ async fn event_loop(
 
                     // ── Ctrl+F / forward-slash focus → search ─────────────────
                     (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
-                        let mut st = state.lock().unwrap();
+                        let mut st = state.lock();
                         st.search_mode = true;
                         st.search_query.clear();
                         st.search_matches.clear();
@@ -1000,7 +905,6 @@ async fn event_loop(
                     (KeyCode::Char('y'), KeyModifiers::CONTROL) => {
                         let last = state
                             .lock()
-                            .unwrap()
                             .chat
                             .iter()
                             .rev()
@@ -1009,14 +913,14 @@ async fn event_loop(
                         if let Some(text) = last {
                             if let Ok(mut cb) = arboard::Clipboard::new() {
                                 let _ = cb.set_text(&text);
-                                state.lock().unwrap().status = "Copied last response.".to_string();
+                                state.lock().status = "Copied last response.".to_string();
                             }
                         }
                     }
 
                     // ── Ctrl+E — fork mode ────────────────────────────────────
                     (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
-                        let mut st = state.lock().unwrap();
+                        let mut st = state.lock();
                         if st.busy {
                             st.push_event("[fork] agent running, please wait.");
                         } else {
@@ -1034,24 +938,24 @@ async fn event_loop(
 
                     // ── Ctrl+] / Ctrl+[ — resize panels ───────────────────────
                     (KeyCode::Char(']'), KeyModifiers::CONTROL) => {
-                        let mut st = state.lock().unwrap();
+                        let mut st = state.lock();
                         st.right_panel_pct = st.right_panel_pct.saturating_add(5).min(70);
                         st.status = format!("Right panel: {}%", st.right_panel_pct);
                     }
                     (KeyCode::Char('['), KeyModifiers::CONTROL) => {
-                        let mut st = state.lock().unwrap();
+                        let mut st = state.lock();
                         st.right_panel_pct = st.right_panel_pct.saturating_sub(5).max(20);
                         st.status = format!("Right panel: {}%", st.right_panel_pct);
                     }
 
                     // ── Ctrl+L — scroll to bottom ─────────────────────────────
                     (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
-                        state.lock().unwrap().scroll_to_bottom();
+                        state.lock().scroll_to_bottom();
                     }
 
                     // ── Esc ───────────────────────────────────────────────────
                     (KeyCode::Esc, _) => {
-                        let mut st = state.lock().unwrap();
+                        let mut st = state.lock();
                         if st.fork_mode {
                             st.fork_mode = false;
                             st.input.clear();
@@ -1059,10 +963,10 @@ async fn event_loop(
                             st.status = "Fork cancelled.".to_string();
                         }
                         drop(st);
-                        let confirm = state.lock().unwrap().pending_confirm.take();
+                        let confirm = state.lock().pending_confirm.take();
                         if let Some(pc) = confirm {
                             let _ = pc.reply.send(false);
-                            let mut st = state.lock().unwrap();
+                            let mut st = state.lock();
                             st.push_event(format!("[plan] skipped: {}", pc.tool_name));
                             st.status = "Skipped.".to_string();
                         }
@@ -1070,7 +974,7 @@ async fn event_loop(
 
                     // ── Y — approve confirm ────────────────────────────────────
                     (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                        let confirm = state.lock().unwrap().pending_confirm.take();
+                        let confirm = state.lock().pending_confirm.take();
                         if let Some(pc) = confirm {
                             approve_confirm(&state, pc);
                             continue;
@@ -1081,10 +985,10 @@ async fn event_loop(
 
                     // ── N — deny confirm ───────────────────────────────────────
                     (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                        let confirm = state.lock().unwrap().pending_confirm.take();
+                        let confirm = state.lock().pending_confirm.take();
                         if let Some(pc) = confirm {
                             let _ = pc.reply.send(false);
-                            let mut st = state.lock().unwrap();
+                            let mut st = state.lock();
                             st.push_event(format!("[plan] denied: {}", pc.tool_name));
                             st.status = "Denied.".to_string();
                             continue;
@@ -1094,15 +998,15 @@ async fn event_loop(
 
                     // ── A — always allow ──────────────────────────────────────
                     (KeyCode::Char('a'), KeyModifiers::NONE) => {
-                        let has_confirm = state.lock().unwrap().pending_confirm.is_some();
+                        let has_confirm = state.lock().pending_confirm.is_some();
                         if has_confirm {
-                            let confirm = state.lock().unwrap().pending_confirm.take();
+                            let confirm = state.lock().pending_confirm.take();
                             if let Some(pc) = confirm {
                                 let tool = pc.tool_name.clone();
                                 let first_arg = pc.preview.lines().next().unwrap_or("").to_string();
                                 approve_confirm(&state, pc);
                                 // Emit trust suggestion
-                                state.lock().unwrap().push_event(
+                                state.lock().push_event(
                                     format!("[trust] Run: harness trust {tool} \"{first_arg}\" to always allow.")
                                 );
                             }
@@ -1115,13 +1019,13 @@ async fn event_loop(
                     (KeyCode::Enter, m) => {
                         // Shift+Enter or Alt+Enter: insert newline
                         if m.contains(KeyModifiers::SHIFT) || m.contains(KeyModifiers::ALT) {
-                            state.lock().unwrap().insert_char('\n');
+                            state.lock().insert_char('\n');
                             continue;
                         }
 
                         // Welcome dismiss
                         {
-                            let mut st = state.lock().unwrap();
+                            let mut st = state.lock();
                             if st.show_welcome {
                                 st.show_welcome = false;
                                 st.status = "Ready".to_string();
@@ -1135,14 +1039,14 @@ async fn event_loop(
 
                         // Fork mode
                         {
-                            let fork_active = state.lock().unwrap().fork_mode;
+                            let fork_active = state.lock().fork_mode;
                             if fork_active {
-                                let input = state.lock().unwrap().input.trim().to_string();
+                                let input = state.lock().input.trim().to_string();
                                 if let Ok(turn_n) = input.parse::<usize>() {
                                     let new_session = fork_session_at(session, turn_n);
                                     *session = new_session;
                                     session_store.save(session)?;
-                                    let mut st = state.lock().unwrap();
+                                    let mut st = state.lock();
                                     let short = session.id[..8.min(session.id.len())].to_string();
                                     st.fork_mode = false;
                                     st.input.clear();
@@ -1155,7 +1059,7 @@ async fn event_loop(
                                     ));
                                     st.status = format!("Forked at turn {turn_n} — continue here.");
                                 } else {
-                                    state.lock().unwrap().status =
+                                    state.lock().status =
                                         "Fork: enter a valid turn number.".to_string();
                                 }
                                 continue;
@@ -1164,20 +1068,20 @@ async fn event_loop(
 
                         // Approve pending confirm
                         {
-                            let confirm = state.lock().unwrap().pending_confirm.take();
+                            let confirm = state.lock().pending_confirm.take();
                             if let Some(pc) = confirm {
                                 approve_confirm(&state, pc);
                                 continue;
                             }
                         }
 
-                        let busy = state.lock().unwrap().busy;
+                        let busy = state.lock().busy;
                         if busy {
                             continue;
                         }
 
                         let prompt = {
-                            let mut st = state.lock().unwrap();
+                            let mut st = state.lock();
                             st.tab_completions.clear();
                             st.slash_suggestions.clear();
                             st.take_input()
@@ -1211,7 +1115,7 @@ async fn event_loop(
                         let expanded = expand_at_files(&prompt);
 
                         {
-                            let mut st = state.lock().unwrap();
+                            let mut st = state.lock();
                             let label = if prompt.len() > 100 {
                                 format!("{}…", &prompt[..100])
                             } else {
@@ -1240,8 +1144,8 @@ async fn event_loop(
                         let atx = agent_tx.clone();
                         let dtx = done_tx.clone();
                         let mut sess_clone = session.clone();
-                        let think_budget = state.lock().unwrap().thinking_budget;
-                        let resp_schema = state.lock().unwrap().response_schema.clone();
+                        let think_budget = state.lock().thinking_budget;
+                        let resp_schema = state.lock().response_schema.clone();
 
                         tokio::spawn(async move {
                             let res = agent::drive_agent_with_schema(
@@ -1257,7 +1161,10 @@ async fn event_loop(
                             )
                             .await;
                             if let Err(e) = res {
-                                let _ = atx.send(AgentEvent::Error(format!("Agent error: {e}")));
+                                try_emit(
+                                    Some(&atx),
+                                    AgentEvent::Error(format!("Agent error: {e}")),
+                                );
                             }
                             let _ = dtx.send(sess_clone);
                         });
@@ -1267,9 +1174,9 @@ async fn event_loop(
                     (KeyCode::Tab, _) => {
                         // Slash suggestion completion
                         {
-                            let has_slash = !state.lock().unwrap().slash_suggestions.is_empty();
+                            let has_slash = !state.lock().slash_suggestions.is_empty();
                             if has_slash {
-                                let mut st = state.lock().unwrap();
+                                let mut st = state.lock();
                                 st.slash_suggest_idx =
                                     (st.slash_suggest_idx + 1) % st.slash_suggestions.len();
                                 // Apply selected command to input (strip description)
@@ -1287,13 +1194,13 @@ async fn event_loop(
                         }
                         // @file completion
                         let (input_snap, cursor_snap) = {
-                            let st = state.lock().unwrap();
+                            let st = state.lock();
                             (st.input.clone(), st.cursor_pos)
                         };
                         let before_cursor = &input_snap[..cursor_snap];
                         if let Some(at_pos) = before_cursor.rfind('@') {
                             let partial = &before_cursor[at_pos + 1..];
-                            let mut st = state.lock().unwrap();
+                            let mut st = state.lock();
                             if st.tab_completions.is_empty() {
                                 st.tab_completions = at_file_completions(partial);
                                 st.tab_completion_idx = 0;
@@ -1318,96 +1225,96 @@ async fn event_loop(
 
                     // ── Backspace ─────────────────────────────────────────────
                     (KeyCode::Backspace, _) => {
-                        let mut st = state.lock().unwrap();
+                        let mut st = state.lock();
                         st.tab_completions.clear();
                         st.backspace();
                     }
 
                     // ── Delete forward ────────────────────────────────────────
                     (KeyCode::Delete, _) => {
-                        state.lock().unwrap().delete_forward();
+                        state.lock().delete_forward();
                     }
 
                     // ── Left / Right cursor movement ─────────────────────────
                     (KeyCode::Left, m) if m.contains(KeyModifiers::ALT) => {
-                        state.lock().unwrap().move_word_left();
+                        state.lock().move_word_left();
                     }
                     (KeyCode::Left, _) => {
-                        state.lock().unwrap().move_left();
+                        state.lock().move_left();
                     }
                     (KeyCode::Right, m) if m.contains(KeyModifiers::ALT) => {
-                        state.lock().unwrap().move_word_right();
+                        state.lock().move_word_right();
                     }
                     (KeyCode::Right, _) => {
-                        state.lock().unwrap().move_right();
+                        state.lock().move_right();
                     }
                     (KeyCode::Home, _) => {
                         // Go to start of current line in input
-                        let input = state.lock().unwrap().input.clone();
-                        let cursor = state.lock().unwrap().cursor_pos;
+                        let input = state.lock().input.clone();
+                        let cursor = state.lock().cursor_pos;
                         let line_start = input[..cursor].rfind('\n').map(|i| i + 1).unwrap_or(0);
-                        state.lock().unwrap().cursor_pos = line_start;
+                        state.lock().cursor_pos = line_start;
                     }
                     (KeyCode::End, _) => {
-                        let input = state.lock().unwrap().input.clone();
-                        let cursor = state.lock().unwrap().cursor_pos;
+                        let input = state.lock().input.clone();
+                        let cursor = state.lock().cursor_pos;
                         let line_end = input[cursor..]
                             .find('\n')
                             .map(|i| cursor + i)
                             .unwrap_or(input.len());
-                        state.lock().unwrap().cursor_pos = line_end;
+                        state.lock().cursor_pos = line_end;
                     }
 
                     // ── Readline shortcuts ────────────────────────────────────
                     (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
-                        state.lock().unwrap().cursor_pos = 0;
+                        state.lock().cursor_pos = 0;
                     }
                     // Note: Ctrl+E is fork mode (see above). Use End key for end-of-line.
                     (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
-                        state.lock().unwrap().kill_word_back();
+                        state.lock().kill_word_back();
                     }
                     (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-                        state.lock().unwrap().kill_line();
+                        state.lock().kill_line();
                     }
                     (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
-                        state.lock().unwrap().kill_to_end();
+                        state.lock().kill_to_end();
                     }
 
                     // ── Scroll chat (Up/Down) or input history ────────────────
                     (KeyCode::Up, _) => {
-                        let input_empty = state.lock().unwrap().input.is_empty();
+                        let input_empty = state.lock().input.is_empty();
                         if input_empty {
-                            state.lock().unwrap().history_up();
+                            state.lock().history_up();
                         } else {
-                            state.lock().unwrap().scroll_chat_up(3);
+                            state.lock().scroll_chat_up(3);
                         }
                     }
                     (KeyCode::Down, _) => {
-                        let at_history = state.lock().unwrap().history_idx.is_some();
+                        let at_history = state.lock().history_idx.is_some();
                         if at_history {
-                            state.lock().unwrap().history_down();
+                            state.lock().history_down();
                         } else {
-                            state.lock().unwrap().scroll_chat_down(3);
+                            state.lock().scroll_chat_down(3);
                         }
                     }
 
                     // ── Ctrl+Up/Down — scroll chat by half page ───────────────
                     (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                        state.lock().unwrap().scroll_chat_up(10);
+                        state.lock().scroll_chat_up(10);
                     }
                     (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-                        let has_confirm = state.lock().unwrap().pending_confirm.is_some();
+                        let has_confirm = state.lock().pending_confirm.is_some();
                         if !has_confirm {
-                            state.lock().unwrap().scroll_chat_down(10);
+                            state.lock().scroll_chat_down(10);
                         }
                     }
 
                     // ── PageUp/Down — scroll event log ────────────────────────
                     (KeyCode::PageUp, _) => {
-                        state.lock().unwrap().scroll_event_up(5);
+                        state.lock().scroll_event_up(5);
                     }
                     (KeyCode::PageDown, _) => {
-                        state.lock().unwrap().scroll_event_down(5);
+                        state.lock().scroll_event_down(5);
                     }
 
                     // ── F1 — help ─────────────────────────────────────────────
@@ -1419,8 +1326,8 @@ async fn event_loop(
                     (KeyCode::Char(c), m)
                         if !m.contains(KeyModifiers::CONTROL) && !m.contains(KeyModifiers::ALT) =>
                     {
-                        state.lock().unwrap().tab_completions.clear();
-                        state.lock().unwrap().insert_char(c);
+                        state.lock().tab_completions.clear();
+                        state.lock().insert_char(c);
                     }
 
                     _ => {}
@@ -1433,33 +1340,30 @@ async fn event_loop(
 }
 
 fn handle_char(state: &Arc<Mutex<AppState>>, c: char) {
-    state.lock().unwrap().insert_char(c);
+    state.lock().insert_char(c);
 }
 
 fn handle_mouse(state: &Arc<Mutex<AppState>>, mouse: MouseEvent) {
     match mouse.kind {
         MouseEventKind::ScrollUp => {
-            state.lock().unwrap().scroll_chat_up(3);
+            state.lock().scroll_chat_up(3);
         }
         MouseEventKind::ScrollDown => {
-            state.lock().unwrap().scroll_chat_down(3);
+            state.lock().scroll_chat_down(3);
         }
         _ => {}
     }
 }
 
 fn handle_voice(state: &Arc<Mutex<AppState>>) {
-    let busy = state.lock().unwrap().busy;
-    let recording = state.lock().unwrap().recording_voice;
+    let busy = state.lock().busy;
+    let recording = state.lock().recording_voice;
     if busy || recording {
-        state
-            .lock()
-            .unwrap()
-            .push_event("[voice] busy, please wait.");
+        state.lock().push_event("[voice] busy, please wait.");
         return;
     }
     {
-        let mut st = state.lock().unwrap();
+        let mut st = state.lock();
         st.recording_voice = true;
         st.status = "Recording… (5s) Ctrl+S to cancel".to_string();
         st.push_event("[voice] recording 5s…");
@@ -1470,7 +1374,7 @@ fn handle_voice(state: &Arc<Mutex<AppState>>) {
         use harness_voice::{record_and_transcribe, WhisperBackend};
         let backend = WhisperBackend::detect(openai_key.as_deref());
         let result = record_and_transcribe(Duration::from_secs(5), &backend).await;
-        let mut st = state2.lock().unwrap();
+        let mut st = state2.lock();
         st.recording_voice = false;
         match result {
             Ok(t) if !t.is_empty() => {
@@ -1492,7 +1396,7 @@ fn handle_voice(state: &Arc<Mutex<AppState>>) {
 
 fn approve_confirm(state: &Arc<Mutex<AppState>>, pc: PendingConfirm) {
     let _ = pc.reply.send(true);
-    let mut st = state.lock().unwrap();
+    let mut st = state.lock();
     let first_arg = pc.preview.lines().next().unwrap_or("").to_string();
     let key = (pc.tool_name.clone(), first_arg.clone());
     let count = st.approval_counts.entry(key).or_insert(0);
@@ -1512,7 +1416,7 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
     let mods = key.modifiers;
     match (code, mods) {
         (KeyCode::Esc, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.search_mode = false;
             st.search_query.clear();
             st.search_matches.clear();
@@ -1520,7 +1424,7 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
             true
         }
         (KeyCode::Enter, _) => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             let nmatches = st.search_matches.len();
             if nmatches > 0 {
                 st.search_match_pos = (st.search_match_pos + 1) % nmatches;
@@ -1536,7 +1440,7 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
             true
         }
         (KeyCode::Char('n'), KeyModifiers::NONE) => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             let nmatches = st.search_matches.len();
             if nmatches > 0 {
                 st.search_match_pos = (st.search_match_pos + 1) % nmatches;
@@ -1552,7 +1456,7 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
             true
         }
         (KeyCode::Char('p'), KeyModifiers::NONE) => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             let nmatches = st.search_matches.len();
             if nmatches > 0 {
                 st.search_match_pos = (st.search_match_pos + nmatches - 1) % nmatches;
@@ -1568,13 +1472,13 @@ fn handle_search_key(state: &Arc<Mutex<AppState>>, key: crossterm::event::KeyEve
             true
         }
         (KeyCode::Backspace, _) => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.search_query.pop();
             run_search(&mut st);
             true
         }
         (KeyCode::Char(c), m) if !m.contains(KeyModifiers::CONTROL) => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.search_query.push(c);
             run_search(&mut st);
             true
@@ -1609,7 +1513,7 @@ fn run_search(st: &mut AppState) {
 }
 
 fn show_help(state: &Arc<Mutex<AppState>>) {
-    let mut st = state.lock().unwrap();
+    let mut st = state.lock();
     for line in &[
         "━━━ HARNESS COMMANDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "SLASH COMMANDS",
@@ -1669,7 +1573,7 @@ async fn handle_slash_command(
     session: &mut harness_memory::Session,
     provider: &ArcProvider,
     session_store: &harness_memory::SessionStore,
-    agent_tx: &mpsc::UnboundedSender<AgentEvent>,
+    agent_tx: &tokio::sync::mpsc::Sender<AgentEvent>,
     done_tx: &mpsc::UnboundedSender<harness_memory::Session>,
     tools: &ToolExecutor,
     memory_store: Option<&harness_memory::MemoryStore>,
@@ -1682,7 +1586,7 @@ async fn handle_slash_command(
 
     match command {
         "/clear" => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.chat.clear();
             st.event_log.clear();
             st.streaming.clear();
@@ -1690,7 +1594,7 @@ async fn handle_slash_command(
         }
 
         "/undo" => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             match crate::checkpoint::undo() {
                 Ok(msg) => {
                     st.push_event(format!("[undo] {msg}"));
@@ -1704,7 +1608,7 @@ async fn handle_slash_command(
         }
 
         "/diff" => {
-            state.lock().unwrap().push_event("[diff] running git diff…");
+            state.lock().push_event("[diff] running git diff…");
             match tokio::process::Command::new("git")
                 .args(["diff", "--stat", "HEAD"])
                 .output()
@@ -1712,7 +1616,7 @@ async fn handle_slash_command(
             {
                 Ok(out) => {
                     let text = String::from_utf8_lossy(&out.stdout);
-                    let mut st = state.lock().unwrap();
+                    let mut st = state.lock();
                     for line in text.lines().take(40) {
                         st.push_event(format!("  {line}"));
                     }
@@ -1722,20 +1626,20 @@ async fn handle_slash_command(
                     st.status = "git diff in event log.".to_string();
                 }
                 Err(e) => {
-                    state.lock().unwrap().push_event(format!("[diff] {e}"));
+                    state.lock().push_event(format!("[diff] {e}"));
                 }
             }
         }
 
         "/test" => {
-            let busy = state.lock().unwrap().busy;
+            let busy = state.lock().busy;
             if busy {
-                state.lock().unwrap().push_event("[test] agent running.");
+                state.lock().push_event("[test] agent running.");
                 return;
             }
             let test_cmd = detect_test_command();
             {
-                let mut st = state.lock().unwrap();
+                let mut st = state.lock();
                 st.busy = true;
                 st.status = format!("Running: {test_cmd}…");
                 st.push_event(format!("[test] {test_cmd}"));
@@ -1749,7 +1653,7 @@ async fn handle_slash_command(
                     .arg(&cmd_str)
                     .output()
                     .await;
-                let mut st = state2.lock().unwrap();
+                let mut st = state2.lock();
                 st.busy = false;
                 match out {
                     Ok(o) => {
@@ -1767,11 +1671,14 @@ async fn handle_slash_command(
                             "FAILED ✗"
                         };
                         st.status = format!("Tests {status}.");
-                        let _ = atx.send(AgentEvent::ToolResult {
-                            name: "test".into(),
-                            id: "test".into(),
-                            result: all,
-                        });
+                        try_emit(
+                            Some(&atx),
+                            AgentEvent::ToolResult {
+                                name: "test".into(),
+                                id: "test".into(),
+                                result: all,
+                            },
+                        );
                     }
                     Err(e) => {
                         st.push_event(format!("[test] {e}"));
@@ -1782,7 +1689,7 @@ async fn handle_slash_command(
         }
 
         "/cost" => {
-            let st = state.lock().unwrap();
+            let st = state.lock();
             let (in_tok, out_tok, model_name) = (st.tokens_in, st.tokens_out, st.model.clone());
             drop(st);
             let cost_line = match cost::price_for_model(&model_name) {
@@ -1799,13 +1706,13 @@ async fn handle_slash_command(
                     cost::format_tokens(out_tok)
                 ),
             };
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.push_event(cost_line.clone());
             st.status = cost_line;
         }
 
         "/plan" => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.plan_mode = !st.plan_mode;
             if st.plan_mode {
                 st.status = "Plan mode ON (restart with --plan to fully gate).".to_string();
@@ -1817,13 +1724,12 @@ async fn handle_slash_command(
         "/model" => {
             let name = parts.get(1).copied().unwrap_or("");
             if name.is_empty() {
-                let model_name = state.lock().unwrap().model.clone();
+                let model_name = state.lock().model.clone();
                 state
                     .lock()
-                    .unwrap()
                     .push_event(format!("[model] current: {model_name}"));
             } else {
-                let mut st = state.lock().unwrap();
+                let mut st = state.lock();
                 st.model = name.to_string();
                 st.push_event(format!("[model] → {name}"));
                 st.status = format!("Model: {name}");
@@ -1833,10 +1739,9 @@ async fn handle_slash_command(
         "/runs" => match crate::background::list(10) {
             Ok(runs) if runs.is_empty() => state
                 .lock()
-                .unwrap()
                 .push_event("[runs] No background runs. Use `harness run-bg <prompt>`."),
             Ok(runs) => {
-                let mut st = state.lock().unwrap();
+                let mut st = state.lock();
                 st.push_event(format!("[runs] {} run(s):", runs.len()));
                 for run in &runs {
                     let p = if run.prompt.len() > 50 {
@@ -1847,18 +1752,15 @@ async fn handle_slash_command(
                     st.push_event(format!("  {} [{}] {}", run.id, run.status, p));
                 }
             }
-            Err(e) => state.lock().unwrap().push_event(format!("[runs] {e}")),
+            Err(e) => state.lock().push_event(format!("[runs] {e}")),
         },
 
         "/sessions" => match session_store.list(20) {
             Ok(sessions) if sessions.is_empty() => {
-                state
-                    .lock()
-                    .unwrap()
-                    .push_event("[sessions] No sessions yet.");
+                state.lock().push_event("[sessions] No sessions yet.");
             }
             Ok(sessions) => {
-                let mut st = state.lock().unwrap();
+                let mut st = state.lock();
                 st.push_event(format!(
                     "[sessions] {} session(s) — use `harness --resume <id>` to load:",
                     sessions.len()
@@ -1870,19 +1772,19 @@ async fn handle_slash_command(
                 }
                 st.status = format!("{} sessions in event log →", sessions.len());
             }
-            Err(e) => state.lock().unwrap().push_event(format!("[sessions] {e}")),
+            Err(e) => state.lock().push_event(format!("[sessions] {e}")),
         },
 
         "/compact" => {
-            let busy = state.lock().unwrap().busy;
+            let busy = state.lock().busy;
             if busy {
-                state.lock().unwrap().push_event("[compact] agent running.");
+                state.lock().push_event("[compact] agent running.");
                 return;
             }
-            state.lock().unwrap().push_event("[compact] compacting…");
+            state.lock().push_event("[compact] compacting…");
             crate::agent::compact_context(provider, session).await;
             let remaining = session.messages.len();
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.push_event(format!("[compact] {remaining} messages remain."));
             st.status = format!("Compacted ({remaining} messages).");
         }
@@ -1890,12 +1792,11 @@ async fn handle_slash_command(
         "/fork" => {
             state
                 .lock()
-                .unwrap()
                 .push_event("[fork] Use Ctrl+E to enter fork mode.");
         }
 
         "/ts" => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             st.timestamps_visible = !st.timestamps_visible;
             st.status = if st.timestamps_visible {
                 "Timestamps ON".into()
@@ -1905,7 +1806,7 @@ async fn handle_slash_command(
         }
 
         "/think" => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             let arg = parts.get(1).copied().unwrap_or("").trim();
             if arg.is_empty() || arg == "off" {
                 st.thinking_budget = None;
@@ -1921,7 +1822,7 @@ async fn handle_slash_command(
         }
 
         "/focus" => {
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             let arg = parts.get(1).copied().unwrap_or("").trim();
             if arg == "off" {
                 st.focus_until = None;
@@ -1939,19 +1840,15 @@ async fn handle_slash_command(
             if let Some((topic, fact)) = rest.split_once(':') {
                 match crate::memory_project::remember(topic.trim(), fact.trim()) {
                     Ok(path) => {
-                        let mut st = state.lock().unwrap();
+                        let mut st = state.lock();
                         st.push_event(format!("[memory] saved → {}", path.display()));
                         st.status = format!("Remembered under '{}'", topic.trim());
                     }
-                    Err(e) => state
-                        .lock()
-                        .unwrap()
-                        .push_event(format!("[memory] error: {e}")),
+                    Err(e) => state.lock().push_event(format!("[memory] error: {e}")),
                 }
             } else {
                 state
                     .lock()
-                    .unwrap()
                     .push_event("[memory] Usage: /remember <topic>: <fact>");
             }
         }
@@ -1959,29 +1856,25 @@ async fn handle_slash_command(
         "/forget" => {
             let topic = parts.get(1).copied().unwrap_or("").trim();
             if topic.is_empty() {
-                state
-                    .lock()
-                    .unwrap()
-                    .push_event("[memory] Usage: /forget <topic>");
+                state.lock().push_event("[memory] Usage: /forget <topic>");
             } else {
                 match crate::memory_project::forget(topic) {
                     Ok(true) => {
-                        let mut st = state.lock().unwrap();
+                        let mut st = state.lock();
                         st.push_event(format!("[memory] forgot '{topic}'"));
                         st.status = format!("Forgot '{topic}'");
                     }
                     Ok(false) => state
                         .lock()
-                        .unwrap()
                         .push_event(format!("[memory] no memory for '{topic}'")),
-                    Err(e) => state.lock().unwrap().push_event(format!("[memory] {e}")),
+                    Err(e) => state.lock().push_event(format!("[memory] {e}")),
                 }
             }
         }
 
         "/memories" => {
             let topics = crate::memory_project::list_topics();
-            let mut st = state.lock().unwrap();
+            let mut st = state.lock();
             if topics.is_empty() {
                 st.push_event("[memory] no topics. Use /remember topic: fact");
             } else {
@@ -1996,13 +1889,13 @@ async fn handle_slash_command(
         "/pr" => {
             let pr_num = parts.get(1).copied().unwrap_or("").trim();
             if pr_num.is_empty() {
-                state.lock().unwrap().push_event("[pr] fetching PRs…");
+                state.lock().push_event("[pr] fetching PRs…");
                 let state2 = state.clone();
                 tokio::spawn(async move {
                     let msg = harness_tools::tools::gh::pr_list()
                         .await
                         .unwrap_or_else(|e| format!("gh error: {e}"));
-                    let mut st = state2.lock().unwrap();
+                    let mut st = state2.lock();
                     for line in msg.lines().take(30) {
                         st.push_event(format!("  {line}"));
                     }
@@ -2010,7 +1903,7 @@ async fn handle_slash_command(
                 });
             } else {
                 let num = pr_num.to_string();
-                let mut st = state.lock().unwrap();
+                let mut st = state.lock();
                 st.input = format!("Review PR #{num} — fetch diff, comments, and CI status. Summarize and suggest improvements.");
                 st.cursor_pos = st.input.len();
                 st.status = format!("PR #{num} loaded — press Enter to review");
@@ -2018,7 +1911,7 @@ async fn handle_slash_command(
         }
 
         "/issues" => {
-            state.lock().unwrap().push_event("[issues] fetching…");
+            state.lock().push_event("[issues] fetching…");
             let state2 = state.clone();
             tokio::spawn(async move {
                 let out = tokio::process::Command::new("gh")
@@ -2029,7 +1922,7 @@ async fn handle_slash_command(
                     Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
                     Err(e) => format!("gh error: {e}"),
                 };
-                let mut st = state2.lock().unwrap();
+                let mut st = state2.lock();
                 for line in msg.lines().take(40) {
                     st.push_event(format!("  {line}"));
                 }
@@ -2038,7 +1931,7 @@ async fn handle_slash_command(
         }
 
         "/ci" => {
-            state.lock().unwrap().push_event("[ci] checking runs…");
+            state.lock().push_event("[ci] checking runs…");
             let state2 = state.clone();
             tokio::spawn(async move {
                 let out = tokio::process::Command::new("gh")
@@ -2049,7 +1942,7 @@ async fn handle_slash_command(
                     Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
                     Err(e) => format!("gh error: {e}"),
                 };
-                let mut st = state2.lock().unwrap();
+                let mut st = state2.lock();
                 for line in msg.lines().take(20) {
                     st.push_event(format!("  {line}"));
                 }
@@ -2058,25 +1951,20 @@ async fn handle_slash_command(
         }
 
         "/notify" | "/notify test" => {
-            let notif_cfg = state.lock().unwrap().notifications.clone();
+            let notif_cfg = state.lock().notifications.clone();
             crate::notifications::test_notification(&notif_cfg);
-            state
-                .lock()
-                .unwrap()
-                .push_event("[notify] test notification sent");
+            state.lock().push_event("[notify] test notification sent");
         }
 
         "/obsidian" => {
             state
                 .lock()
-                .unwrap()
                 .push_event("[obsidian] bridge coming in Phase E12.");
         }
 
         "/trace" => {
             state
                 .lock()
-                .unwrap()
                 .push_event("[trace] observability coming in Phase E7.");
         }
 
@@ -2085,10 +1973,9 @@ async fn handle_slash_command(
             //        /schema clear
             let rest = cmd.trim_start_matches("/schema").trim();
             if rest == "clear" || rest.is_empty() {
-                state.lock().unwrap().response_schema = None;
+                state.lock().response_schema = None;
                 state
                     .lock()
-                    .unwrap()
                     .push_event("[schema] structured output cleared.");
             } else {
                 // Split into name + json
@@ -2102,13 +1989,12 @@ async fn handle_slash_command(
                             "[schema] set to '{}' — responses will be strict JSON.",
                             rs.name
                         );
-                        state.lock().unwrap().response_schema = Some(rs);
-                        state.lock().unwrap().push_event(msg);
+                        state.lock().response_schema = Some(rs);
+                        state.lock().push_event(msg);
                     }
                     Err(e) => {
                         state
                             .lock()
-                            .unwrap()
                             .push_event(format!("[schema] invalid JSON: {e}"));
                     }
                 }
@@ -2122,7 +2008,6 @@ async fn handle_slash_command(
         _ => {
             state
                 .lock()
-                .unwrap()
                 .push_event(format!("[unknown] {cmd} — type /help or press F1"));
         }
     }
@@ -2159,7 +2044,7 @@ fn detect_test_command() -> String {
 // ── Apply incoming agent events ────────────────────────────────────────────────
 
 fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
-    let mut st = state.lock().unwrap();
+    let mut st = state.lock();
     match event {
         AgentEvent::TextChunk(chunk) => {
             st.streaming.push_str(&chunk);

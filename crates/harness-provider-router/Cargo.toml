@@ -9,6 +9,7 @@ harness-provider-xai = { path = "../harness-provider-xai" }
 harness-provider-anthropic = { path = "../harness-provider-anthropic" }
 harness-provider-openai = { path = "../harness-provider-openai" }
 harness-provider-ollama = { path = "../harness-provider-ollama" }
+harness-provider-mlx = { path = "../harness-provider-mlx" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }

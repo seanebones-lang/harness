@@ -12,18 +12,26 @@ use std::path::Path;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
+use harness_provider_core::ArcProvider;
+
 /// Load all MCP servers from a config file and register their tools into `registry`.
 /// Optionally forwards progress events to a channel.
+/// `sampling_provider`: when set, MCP `sampling/createMessage` can call the active LLM.
 /// Silently skips servers that fail to initialize (logs warnings).
-pub async fn load_mcp_tools(config_path: &Path, registry: &mut ToolRegistry) -> Result<()> {
-    load_mcp_tools_with_progress(config_path, registry, None).await
+pub async fn load_mcp_tools(
+    config_path: &Path,
+    registry: &mut ToolRegistry,
+    sampling_provider: Option<ArcProvider>,
+) -> Result<()> {
+    load_mcp_tools_with_progress(config_path, registry, None, sampling_provider).await
 }
 
-/// Load MCP tools, with optional progress event channel.
+/// Load MCP tools with optional progress channel and LLM for MCP sampling.
 pub async fn load_mcp_tools_with_progress(
     config_path: &Path,
     registry: &mut ToolRegistry,
     progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
+    sampling_provider: Option<ArcProvider>,
 ) -> Result<()> {
     let cfg = match config::load(config_path) {
         Ok(c) => c,
@@ -31,7 +39,14 @@ pub async fn load_mcp_tools_with_progress(
     };
 
     for (name, server_cfg) in cfg.mcp_servers {
-        match McpClient::spawn_with_opts(&name, &server_cfg, progress_tx.clone()).await {
+        match McpClient::spawn_with_opts(
+            &name,
+            &server_cfg,
+            progress_tx.clone(),
+            sampling_provider.clone(),
+        )
+        .await
+        {
             Ok(client) => {
                 match client.list_tools().await {
                     Ok(tools) => {

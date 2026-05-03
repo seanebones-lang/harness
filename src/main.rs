@@ -21,449 +21,29 @@ mod sync;
 mod trust;
 mod tui;
 
+mod cli;
+
 // mimalloc is linked but turso already sets the global allocator.
 // We still benefit from mimalloc being in the dependency tree via turso.
 
 use anyhow::{Context, Result};
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser};
 use clap_complete::generate;
-use harness_browser::BrowserTool;
-use harness_lsp::{
-    detect_and_spawn, DiagnosticsTool, FindDefinitionTool, FindReferencesTool, RenameSymbolTool,
-};
 use harness_provider_core::ArcProvider;
 use harness_provider_router::ProviderRouter;
 use harness_provider_xai::{XaiConfig, XaiProvider};
+use harness_tools::registry::Tool;
 use harness_tools::tools::{
-    ApplyPatchTool, ComputerUseTool, GhTool, GitTool, ListDirTool, PatchFileTool, ReadFileTool,
-    RebuildSelfTool, ReloadSelfTool, SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool,
-    SpawnAgentTool, TestRunnerTool, WriteFileTool,
+    GhTool, ListDirTool, PatchFileTool, ReadFileTool, RebuildSelfTool, ReloadSelfTool,
+    SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool, WriteFileTool,
 };
-use harness_tools::{ToolExecutor, ToolRegistry};
+use harness_tools::{SandboxMode, ToolExecutor, ToolRegistry, WorkspaceRoot};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing_subscriber::{fmt, EnvFilter};
 
-#[derive(Parser)]
-#[command(
-    name = "harness",
-    about = "Harness — multi-provider AI coding agent (Claude · GPT · Grok · Qwen)",
-    long_about = "Harness is a Rust-native AI coding agent supporting Anthropic Claude 4.x, OpenAI GPT-5.x, xAI Grok 4.x, and Ollama Qwen3-Coder. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or XAI_API_KEY and run `harness` to start.",
-    version
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
-
-    /// Prompt to run in non-interactive mode.
-    prompt: Option<String>,
-
-    /// Resume a session by id prefix or name.
-    #[arg(long, short)]
-    resume: Option<String>,
-
-    /// Config file path (default: ~/.harness/config.toml or .harness/config.toml).
-    #[arg(long)]
-    config: Option<PathBuf>,
-
-    /// Model override (e.g. grok-4.3, grok-4.1-fast-reasoning, claude-opus-4-7).
-    #[arg(long, short)]
-    model: Option<String>,
-
-    /// Disable semantic memory recall for this run.
-    #[arg(long)]
-    no_memory: bool,
-
-    /// Enable browser tool (requires Chrome with --remote-debugging-port=9222).
-    #[arg(long)]
-    browser: bool,
-
-    /// Chrome DevTools remote URL (default: http://localhost:9222).
-    #[arg(long, default_value = "http://localhost:9222")]
-    browser_url: String,
-
-    /// Verbose logging.
-    #[arg(long, short)]
-    verbose: bool,
-
-    /// Plan mode: preview file writes, patches, and shell commands before they execute.
-    /// In TUI, press Enter to approve or Esc to skip each change.
-    #[arg(long)]
-    plan: bool,
-
-    /// Attach an image file to the initial prompt (PNG, JPEG, GIF, WEBP).
-    #[arg(long)]
-    image: Option<PathBuf>,
-
-    /// Enable extended thinking with a token budget.
-    /// Example: --think 10000. Use without value for adaptive thinking (Opus 4.7 only).
-    #[arg(long, value_name = "BUDGET")]
-    think: Option<u32>,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// List recent sessions.
-    Sessions,
-    /// Manage linked projects in a local registry.
-    #[command(visible_alias = "proj")]
-    Project {
-        #[command(subcommand)]
-        action: ProjectAction,
-    },
-    /// Run a single prompt non-interactively.
-    Run { prompt: String },
-    /// Start the harness HTTP server.
-    Serve {
-        /// Address to listen on.
-        #[arg(long, default_value = "127.0.0.1:8787")]
-        addr: String,
-    },
-    /// Connect to a running harness server and chat via SSE.
-    Connect {
-        /// Server base URL.
-        #[arg(default_value = "http://127.0.0.1:8787")]
-        url: String,
-        /// Prompt to send.
-        prompt: String,
-        /// Existing session id to continue.
-        #[arg(long)]
-        session: Option<String>,
-    },
-    /// Run harness in self-development mode: the agent can edit its own source
-    /// and trigger rebuilds via the rebuild_self and reload_self tools.
-    SelfDev {
-        /// Directory containing harness source (defaults to current dir).
-        #[arg(long)]
-        src: Option<PathBuf>,
-        /// Model for self-dev (default: same as main session model, e.g. claude-sonnet-4-6).
-        #[arg(long)]
-        model: Option<String>,
-    },
-    /// Export a session as Markdown.
-    Export {
-        /// Session id prefix or name.
-        id: String,
-        /// Output file path (defaults to stdout).
-        #[arg(long, short)]
-        output: Option<PathBuf>,
-    },
-    /// Delete a session by id prefix or full id.
-    Delete {
-        /// Session id prefix or full id.
-        id: String,
-    },
-    /// Start the harness daemon (long-lived process over ~/.harness/daemon.sock).
-    /// The daemon holds provider clients, SQLite, LSP servers, and ambient memory.
-    /// Other harness processes auto-connect to the daemon when it's running.
-    Daemon,
-    /// Check if the harness daemon is running and print its status.
-    DaemonStatus,
-    /// Run a prompt as a background agent (detached process).
-    /// Output is streamed to ~/.harness/runs/<id>/output.log.
-    RunBg {
-        /// Prompt to run in the background.
-        prompt: String,
-    },
-    /// List recent background runs.
-    Runs,
-    /// Add a tool auto-approval rule (skip confirmation for matching calls).
-    /// Example: harness trust shell "cargo check"
-    Trust {
-        /// Tool name (e.g. shell, write_file, git, *).
-        tool: String,
-        /// Pattern to match in the first argument (use * for all).
-        pattern: String,
-    },
-    /// Remove a previously added trust rule.
-    Untrust { tool: String, pattern: String },
-    /// List all trust rules.
-    TrustList,
-    /// Set up harness for the first time (writes ~/.harness/config.toml).
-    /// Pass --project to also write a project-level .harness/config.toml in CWD.
-    Init {
-        /// Also create a project-local .harness/config.toml in the current directory.
-        #[arg(long)]
-        project: bool,
-        /// Overwrite existing config files without prompting.
-        #[arg(long)]
-        force: bool,
-    },
-    /// Show harness configuration and environment status.
-    Status,
-    /// Restore the most recent harness checkpoint stash (undo last agent turn).
-    Undo,
-    /// Manage harness checkpoint stashes.
-    Checkpoint {
-        #[command(subcommand)]
-        action: CheckpointAction,
-    },
-    /// List available providers and models, with an interactive picker to change defaults.
-    Models {
-        /// Set the default model (writes to .harness/config.toml). Format: "provider:model" or just "model".
-        #[arg(long)]
-        set: Option<String>,
-    },
-    /// Sync Harness state across machines via an encrypted git repository.
-    Sync {
-        #[command(subcommand)]
-        action: SyncAction,
-    },
-    /// Show cost and usage statistics from the cost database.
-    Cost {
-        #[command(subcommand)]
-        action: CostAction,
-    },
-    /// Open a PR review session pre-loaded with PR context (diff, comments, CI status).
-    /// Requires gh CLI to be installed and authenticated.
-    Pr {
-        /// PR number.
-        number: u64,
-    },
-    /// Store a project memory fact in .harness/memory/<topic>.md.
-    /// These are automatically injected into the system prompt each session.
-    Memorize {
-        /// Topic name (used as filename, e.g. "architecture").
-        topic: String,
-        /// Fact to remember.
-        fact: String,
-    },
-    /// Remove a project memory topic.
-    Forget {
-        /// Topic to remove.
-        topic: String,
-    },
-    /// List all project memory topics.
-    Memories,
-    /// Record audio and transcribe via Whisper.
-    /// Requires sox (brew install sox) for recording.
-    Voice {
-        /// Duration to record in seconds (default: 5).
-        #[arg(long, short, default_value = "5")]
-        duration: u64,
-        /// Send transcript as a prompt to the agent instead of just printing it.
-        #[arg(long)]
-        send: bool,
-        /// Use OpenAI Realtime API for duplex voice conversation (requires OPENAI_API_KEY).
-        #[arg(long)]
-        realtime: bool,
-    },
-    /// Manage parallel sub-agent swarm tasks.
-    Swarm {
-        #[command(subcommand)]
-        action: SwarmAction,
-    },
-    /// Export observability traces.
-    Trace {
-        /// Trace ID to export (omit for last trace).
-        id: Option<String>,
-    },
-    /// Run health checks: API keys, tools, config, daemon, MCP, LSP, and more.
-    Doctor,
-    /// Generate shell completions (bash, zsh, fish, powershell, elvish).
-    Completions {
-        /// Shell type.
-        #[arg(value_enum)]
-        shell: clap_complete::Shell,
-    },
-}
-
-#[derive(Subcommand)]
-enum CheckpointAction {
-    /// List all harness checkpoint stashes.
-    List,
-}
-
-#[derive(Subcommand)]
-enum SyncAction {
-    /// Initialise sync with a remote git repository.
-    Init {
-        /// Git remote URL (e.g. git@github.com:user/harness-state.git).
-        git_url: String,
-    },
-    /// Encrypt and push state to the remote.
-    Push,
-    /// Pull and decrypt state from the remote.
-    Pull,
-    /// Show sync status.
-    Status,
-    /// Show/set the sync passphrase.
-    Auth,
-}
-
-#[derive(Subcommand)]
-enum SwarmAction {
-    /// List recent swarm tasks.
-    List,
-    /// Show status of a specific task.
-    Status {
-        /// Task ID.
-        id: String,
-    },
-    /// Show result of a completed task.
-    Result {
-        /// Task ID.
-        id: String,
-    },
-}
-
-#[derive(Subcommand)]
-enum CostAction {
-    /// Show cost for today.
-    Today,
-    /// Show cost for the past 7 days.
-    Week,
-    /// Show cost for the past 30 days.
-    Month,
-    /// Show all-time cost.
-    All,
-    /// Show cost broken down by model.
-    ByModel,
-    /// Show cost broken down by project.
-    ByProject,
-    /// Tail recent usage rows live.
-    Watch,
-}
-
-#[derive(Subcommand)]
-enum ProjectAction {
-    /// Create a new local git project and link it.
-    #[command(visible_alias = "new")]
-    Init {
-        /// Project name.
-        name: String,
-        /// Parent folder to create the project in (defaults to current directory).
-        #[arg(long)]
-        path: Option<PathBuf>,
-        /// Initial branch name (default: main).
-        #[arg(long = "default-branch", default_value = "main")]
-        default_branch: String,
-    },
-    /// Add a project to ~/.harness/projects.json.
-    #[command(visible_alias = "link")]
-    Add {
-        /// Optional project nickname (defaults to folder name).
-        #[arg(long)]
-        name: Option<String>,
-        /// Project path (defaults to current directory).
-        #[arg(long)]
-        path: Option<PathBuf>,
-        /// Optional git remote URL override.
-        #[arg(long)]
-        remote: Option<String>,
-        /// Optional default branch override.
-        #[arg(long = "default-branch")]
-        default_branch: Option<String>,
-    },
-    /// Clone a repo and link it in the project registry.
-    #[command(visible_alias = "cl")]
-    Clone {
-        /// Repository URL/path to clone.
-        repo: String,
-        /// Optional project nickname (defaults to cloned folder name).
-        #[arg(long)]
-        name: Option<String>,
-        /// Optional clone directory (defaults to repo-derived folder name).
-        #[arg(long)]
-        directory: Option<PathBuf>,
-        /// Optional default branch to store in registry.
-        #[arg(long = "default-branch")]
-        default_branch: Option<String>,
-    },
-    /// List all linked projects.
-    #[command(visible_alias = "ls")]
-    List,
-    /// Show a one-screen health summary for all linked projects.
-    #[command(visible_alias = "dash")]
-    Dashboard,
-    /// Remove a linked project by name or path.
-    #[command(visible_alias = "rm")]
-    Remove {
-        /// Project name (from `project list`) or absolute path.
-        target: String,
-    },
-    /// Fetch + fast-forward pull for a linked project.
-    #[command(visible_alias = "up")]
-    Sync {
-        /// Project name (from `project list`) or absolute path.
-        target: Option<String>,
-        /// Sync every linked project.
-        #[arg(long, conflicts_with = "target")]
-        all: bool,
-    },
-    /// Push the current branch for a linked project.
-    #[command(visible_alias = "pub")]
-    Push {
-        /// Project name (from `project list`) or absolute path.
-        target: String,
-        /// Optional remote name (default: origin).
-        #[arg(long, default_value = "origin")]
-        remote: String,
-        /// Optional branch override (defaults to current branch).
-        #[arg(long)]
-        branch: Option<String>,
-        /// Force push with lease (blocked for main/master).
-        #[arg(long)]
-        force: bool,
-    },
-    /// Show git health for a linked project.
-    #[command(visible_alias = "st")]
-    Status {
-        /// Project name (from `project list`) or absolute path.
-        target: String,
-    },
-    /// Import local git repos into the linked project registry.
-    #[command(visible_alias = "scan")]
-    Import {
-        /// Root folder to scan (defaults to current directory).
-        #[arg(long)]
-        root: Option<PathBuf>,
-        /// Recursively scan nested folders.
-        #[arg(long)]
-        recursive: bool,
-    },
-    /// Remove linked projects whose paths no longer exist.
-    #[command(visible_alias = "clean")]
-    Prune,
-    /// Run a command inside a linked project directory.
-    #[command(visible_alias = "run")]
-    Exec {
-        /// Project name (from `project list`) or absolute path.
-        target: String,
-        /// Command to run (use `--` before command).
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true, num_args = 1..)]
-        command: Vec<String>,
-    },
-    /// Publish a linked project to GitHub using gh CLI.
-    #[command(visible_alias = "ship")]
-    Publish {
-        /// Project name (from `project list`) or absolute path.
-        target: String,
-        /// GitHub repo name (owner/name or name). Defaults to project name.
-        #[arg(long)]
-        repo: Option<String>,
-        /// Remote name to configure (default: origin).
-        #[arg(long, default_value = "origin")]
-        remote: String,
-        /// Create as public repository.
-        #[arg(long, conflicts_with = "private")]
-        public: bool,
-        /// Create as private repository (default).
-        #[arg(long, default_value_t = true)]
-        private: bool,
-        /// Push current branch after creating the remote.
-        #[arg(long, default_value_t = true)]
-        push: bool,
-    },
-    /// Resolve and print a linked project path.
-    Open {
-        /// Project name (from `project list`) or absolute path.
-        target: String,
-        /// Launch harness in the project directory after resolving it.
-        #[arg(long)]
-        run: bool,
-    },
-}
+use cli::{build_tools, connect_to_server, graceful_ambient_shutdown};
+use cli::{CheckpointAction, Cli, Commands, CostAction, ProjectAction, SwarmAction, SyncAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -499,8 +79,14 @@ async fn main() -> Result<()> {
         .unwrap_or(false);
     let has_ollama = cfg.providers.contains_key("ollama");
 
-    if !has_anthropic && !has_xai && !has_openai && !has_ollama && cfg.providers.is_empty() {
-        eprintln!("harness: no API key found.\n\nSet one of:\n  ANTHROPIC_API_KEY (recommended — claude-sonnet-4-6)\n  XAI_API_KEY       (grok-4.3)\n  OPENAI_API_KEY    (gpt-5.5)\n\nOr run: harness doctor  for a guided setup.");
+    if !has_anthropic
+        && !has_xai
+        && !has_openai
+        && !has_ollama
+        && cfg.providers.is_empty()
+        && !harness_provider_mlx::mlx_runtime_available()
+    {
+        eprintln!("harness: no API key found.\n\nSet one of:\n  ANTHROPIC_API_KEY (recommended — claude-sonnet-4-6)\n  XAI_API_KEY       (grok-4.3)\n  OPENAI_API_KEY    (gpt-5.5)\n\nOr start a local model (Ollama / MLX LM server).\n\nOr run: harness doctor  for a guided setup.");
         std::process::exit(1);
     }
 
@@ -595,6 +181,8 @@ async fn main() -> Result<()> {
         &cfg,
         browser_enabled,
         &browser_url,
+        memory_store.clone(),
+        embed_model.clone(),
     )
     .await;
 
@@ -624,7 +212,18 @@ async fn main() -> Result<()> {
             .await?;
         }
 
-        Some(Commands::Pr { number }) => {
+        Some(Commands::Pr { number, comment }) => {
+            if let Some(body) = comment {
+                let out = GhTool
+                    .execute(serde_json::json!({
+                        "action": "pr_comment",
+                        "number": number,
+                        "message": body,
+                    }))
+                    .await?;
+                println!("{out}");
+                return Ok(());
+            }
             use harness_tools::tools::gh::pr_context;
             eprintln!("Fetching PR #{number} context…");
             let context = pr_context(number)
@@ -921,6 +520,65 @@ async fn main() -> Result<()> {
 
         Some(Commands::Swarm { action }) => {
             match action {
+                SwarmAction::Run {
+                    prompt,
+                    model: run_model,
+                    count,
+                } => {
+                    let n = count.unwrap_or(1).clamp(1, 32);
+                    let worker_model = run_model.unwrap_or_else(|| model.clone());
+                    for i in 0..n {
+                        let label = if n > 1 {
+                            format!("{prompt} [swarm {}/{}]", i + 1, n)
+                        } else {
+                            prompt.clone()
+                        };
+                        let id = swarm::register_task(&label)?;
+                        let p = provider.clone();
+                        let t = tools.clone();
+                        let mem = memory_store.clone();
+                        let emb = embed_model.clone();
+                        let sys = cfg.agent.system_prompt.clone();
+                        let m2 = worker_model.clone();
+                        swarm::spawn_task(id, move |_tid| {
+                            let p = p.clone();
+                            let t = t.clone();
+                            let mem = mem.clone();
+                            let emb = emb.clone();
+                            let label = label.clone();
+                            let m2 = m2.clone();
+                            let sys = sys.clone();
+                            async move {
+                                use harness_memory::Session;
+                                use harness_provider_core::Message;
+                                let mut session = Session::new(&m2);
+                                session.push(Message::user(&label));
+                                agent::drive_agent(
+                                    &p,
+                                    &t,
+                                    mem.as_ref(),
+                                    emb.as_deref(),
+                                    &mut session,
+                                    sys.as_deref().unwrap_or(agent::DEFAULT_SYSTEM),
+                                    None,
+                                )
+                                .await?;
+                                let reply = session
+                                    .messages
+                                    .iter()
+                                    .rev()
+                                    .find(|m| {
+                                        matches!(m.role, harness_provider_core::Role::Assistant)
+                                    })
+                                    .map(|m| m.content.as_str().to_string())
+                                    .unwrap_or_else(|| "(no response)".into());
+                                Ok(reply)
+                            }
+                        })
+                        .await;
+                    }
+                    println!("Queued {n} swarm task(s). Use: harness swarm list");
+                }
                 SwarmAction::List => swarm::print_status()?,
                 SwarmAction::Status { id } => match swarm::get_task(&id)? {
                     Some(t) => println!("{} [{}] {}", t.id, t.status.as_str(), t.prompt),
@@ -1167,235 +825,6 @@ async fn main() -> Result<()> {
 }
 
 /// Signal the ambient consolidation task to stop and wait up to 5 s for it.
-async fn graceful_ambient_shutdown(
-    ambient: Option<(tokio::sync::watch::Sender<()>, tokio::task::JoinHandle<()>)>,
-) {
-    if let Some((tx, handle)) = ambient {
-        let _ = tx.send(());
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), handle).await;
-    }
-}
-
-/// Build the full tool executor: base tools + SpawnAgentTool + MCP tools.
-async fn build_tools(
-    provider: ArcProvider,
-    model: String,
-    cfg: &config::Config,
-    browser_enabled: bool,
-    browser_url: &str,
-) -> ToolExecutor {
-    let shell_cfg = ToolShellConfig {
-        denylist: cfg.shell.effective_denylist(),
-        confirm_required: cfg.shell.effective_confirm_required(),
-        log_path: cfg
-            .shell
-            .log_path
-            .clone()
-            .or_else(|| dirs::home_dir().map(|h| h.join(".harness").join("shell.log"))),
-    };
-
-    // Sub-agent runner: runs a prompt through a fresh session with base tools only.
-    let sub_provider: ArcProvider = provider.clone();
-    let sub_model = model.clone();
-    let sub_shell_cfg = shell_cfg.clone();
-    let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |task: String| {
-        let p: ArcProvider = sub_provider.clone();
-        let m = sub_model.clone();
-        let scfg = sub_shell_cfg.clone();
-        let sub_tools = {
-            let mut r = ToolRegistry::new();
-            r.register(ReadFileTool);
-            r.register(WriteFileTool);
-            r.register(PatchFileTool);
-            r.register(ListDirTool);
-            r.register(ShellTool::new(scfg));
-            r.register(SearchCodeTool);
-            ToolExecutor::new(r)
-        };
-        Box::pin(async move {
-            use harness_memory::Session;
-            use harness_provider_core::Message;
-            let mut session = Session::new(&m);
-            session.push(Message::user(&task));
-            agent::drive_agent(
-                &p,
-                &sub_tools,
-                None,
-                None,
-                &mut session,
-                agent::DEFAULT_SYSTEM,
-                None,
-            )
-            .await?;
-            let reply = session
-                .messages
-                .iter()
-                .rev()
-                .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
-                .map(|m| m.content.as_str().to_string())
-                .unwrap_or_else(|| "(no response)".into());
-            Ok(reply)
-        })
-    });
-
-    let mut registry = ToolRegistry::new();
-    registry.register(ReadFileTool);
-    registry.register(WriteFileTool);
-    registry.register(PatchFileTool);
-    registry.register(ApplyPatchTool);
-    registry.register(ListDirTool);
-    registry.register(ShellTool::new(shell_cfg));
-    registry.register(SearchCodeTool);
-    registry.register(GitTool);
-    registry.register(GhTool);
-    registry.register(TestRunnerTool);
-    registry.register(SpawnAgentTool::new(runner));
-
-    if browser_enabled {
-        registry.register(BrowserTool::new(browser_url));
-        tracing::info!(url = %browser_url, "browser tool enabled");
-    }
-
-    // Computer use: gated, only enable if explicitly configured
-    if cfg.computer_use.is_enabled() {
-        let model_lower = model.to_lowercase();
-        if model_lower.contains("claude-opus-4-7")
-            || model_lower.contains("claude-opus-4")
-            || model_lower.contains("claude-sonnet-4")
-        {
-            registry.register(ComputerUseTool);
-            tracing::warn!("⚠️  COMPUTER USE ENABLED — agent can control mouse/keyboard");
-        } else {
-            tracing::warn!("computer_use enabled in config but model {} does not support it (requires Claude 4.7+)", model);
-        }
-    }
-
-    // Lazy LSP: only spawn if a supported project type is detected in the cwd.
-    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let has_supported_project = cwd.join("Cargo.toml").exists()
-        || cwd.join("tsconfig.json").exists()
-        || cwd.join("package.json").exists()
-        || cwd.join("pyproject.toml").exists()
-        || cwd.join("setup.py").exists()
-        || cwd.join("go.mod").exists();
-
-    if has_supported_project {
-        if let Some(lsp) = detect_and_spawn(&cwd).await {
-            registry.register(FindDefinitionTool {
-                client: lsp.clone(),
-            });
-            registry.register(FindReferencesTool {
-                client: lsp.clone(),
-            });
-            registry.register(RenameSymbolTool {
-                client: lsp.clone(),
-            });
-            registry.register(DiagnosticsTool { client: lsp });
-        }
-    }
-
-    // Load MCP tools.
-    if let Some(mcp_path) = harness_mcp::find_config() {
-        if let Err(e) = harness_mcp::load_mcp_tools(&mcp_path, &mut registry).await {
-            tracing::warn!("MCP load failed: {e}");
-        }
-    }
-    if let Some(mcp_path) = &cfg.mcp.config_path {
-        if mcp_path.exists() {
-            if let Err(e) = harness_mcp::load_mcp_tools(mcp_path, &mut registry).await {
-                tracing::warn!("MCP config load failed: {e}");
-            }
-        }
-    }
-
-    let executor = ToolExecutor::new(registry);
-
-    // Wire autotest if enabled in config.
-    let executor = if cfg.autotest.enabled {
-        executor.with_autotest(cfg.autotest.scope.clone())
-    } else {
-        executor
-    };
-
-    // Load trust rules.
-    let trust_store = trust::TrustStore::load();
-    let trusted_rules: Vec<(String, String)> = trust_store
-        .list()
-        .iter()
-        .map(|r| (r.tool.clone(), r.pattern.clone()))
-        .collect();
-
-    if trusted_rules.is_empty() {
-        executor
-    } else {
-        executor.with_trusted(trusted_rules)
-    }
-}
-
-/// Minimal SSE client for `harness connect`: streams events from server to stdout.
-async fn connect_to_server(base_url: &str, prompt: &str, session_id: Option<&str>) -> Result<()> {
-    let client = reqwest::Client::new();
-    let mut body = serde_json::json!({ "prompt": prompt });
-    if let Some(id) = session_id {
-        body["session_id"] = serde_json::Value::String(id.to_string());
-    }
-
-    let resp = client
-        .post(format!("{base_url}/api/chat"))
-        .json(&body)
-        .send()
-        .await
-        .context("connecting to harness server")?;
-
-    if !resp.status().is_success() {
-        let msg = resp.text().await.context("reading error body")?;
-        anyhow::bail!("server error: {msg}");
-    }
-
-    use futures::StreamExt;
-    let mut byte_stream = resp.bytes_stream();
-    let mut buf = String::new();
-
-    while let Some(chunk) = byte_stream.next().await {
-        let bytes: bytes::Bytes = chunk.context("reading SSE stream")?;
-        buf.push_str(&String::from_utf8_lossy(&bytes));
-
-        // Process complete SSE lines
-        while let Some(pos) = buf.find('\n') {
-            let line = buf[..pos].trim_end_matches('\r').to_string();
-            buf = buf[pos + 1..].to_string();
-
-            if let Some(data) = line.strip_prefix("data: ") {
-                if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
-                    match event["type"].as_str() {
-                        Some("text_chunk") => {
-                            print!("{}", event["content"].as_str().unwrap_or(""));
-                            use std::io::Write;
-                            std::io::stdout().flush().ok();
-                        }
-                        Some("tool_start") => {
-                            eprintln!("\n[→ {}]", event["name"].as_str().unwrap_or(""))
-                        }
-                        Some("tool_result") => {
-                            eprintln!("[← {}]", event["name"].as_str().unwrap_or(""))
-                        }
-                        Some("done") => {
-                            println!();
-                            break;
-                        }
-                        Some("error") => {
-                            eprintln!("error: {}", event["message"].as_str().unwrap_or("unknown"));
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 /// Self-dev mode: builds a tool executor with rebuild/reload tools, then launches
 /// the TUI with a self-dev system prompt so the agent can modify its own source.
 async fn run_self_dev(
@@ -1409,12 +838,36 @@ async fn run_self_dev(
 ) -> Result<()> {
     tracing::info!(src = %src_dir.display(), model = %model, "starting self-dev mode");
 
+    let workspace = Arc::new(WorkspaceRoot::new(
+        src_dir.clone(),
+        SandboxMode::from_config(cfg.tools.sandbox.as_deref()),
+    )?);
+
+    let shell_cfg = ToolShellConfig {
+        denylist: cfg.shell.effective_denylist(),
+        confirm_required: cfg.shell.effective_confirm_required(),
+        log_path: cfg
+            .shell
+            .log_path
+            .clone()
+            .or_else(|| dirs::home_dir().map(|h| h.join(".harness").join("shell.log"))),
+        cmd_allowlist: cfg.shell.cmd_allowlist.clone(),
+    };
+
     let mut registry = ToolRegistry::new();
-    registry.register(ReadFileTool);
-    registry.register(WriteFileTool);
-    registry.register(PatchFileTool);
-    registry.register(ListDirTool);
-    registry.register(ShellTool::default());
+    registry.register(ReadFileTool {
+        workspace: workspace.clone(),
+    });
+    registry.register(WriteFileTool {
+        workspace: workspace.clone(),
+    });
+    registry.register(PatchFileTool {
+        workspace: workspace.clone(),
+    });
+    registry.register(ListDirTool {
+        workspace: workspace.clone(),
+    });
+    registry.register(ShellTool::new(shell_cfg, workspace.clone()));
     registry.register(SearchCodeTool);
     registry.register(RebuildSelfTool::new(src_dir.clone()));
     registry.register(ReloadSelfTool::new(src_dir.clone()));
@@ -1432,9 +885,10 @@ async fn run_self_dev(
         },
         ..Default::default()
     };
-    // Keep memory/session settings from user config
+    // Keep memory/session + tool sandbox settings from user config
     sd_cfg.session = cfg.session.clone();
     sd_cfg.memory = cfg.memory.clone();
+    sd_cfg.tools = cfg.tools.clone();
 
     tui::run(
         provider,
@@ -1976,6 +1430,17 @@ async fn handle_doctor_command(cfg: &config::Config) {
             "running"
         } else {
             "not running (optional)"
+        }
+    );
+
+    let mlx_ok = harness_provider_mlx::mlx_runtime_available();
+    println!(
+        "  {} MLX LM server (OpenAI-compatible HTTP): {}",
+        if mlx_ok { "✓" } else { "○" },
+        if mlx_ok {
+            "mlx_lm.server on PATH or :8080 accepting connections"
+        } else {
+            "not detected (optional — Apple Silicon: mlx_lm.server, default http://127.0.0.1:8080/v1)"
         }
     );
 

@@ -81,7 +81,7 @@ harness completions bash > ~/.bash_completion.d/harness
 harness completions zsh > ~/.zsh/completions/_harness
 harness completions fish > ~/.config/fish/completions/harness.fish
 
-# Parallel swarm
+# Parallel swarm (experimental; SQLite-backed registry; `harness swarm run` added in remediation)
 harness swarm list
 harness swarm status <task-id>
 harness swarm result <task-id>
@@ -98,9 +98,10 @@ harness trace <trace-id>
 ```
 harness/
 ├── src/                            root binary
-│   ├── main.rs                     CLI (clap), tool wiring, self-dev entry
+│   ├── main.rs                     entry (`tokio::main`), command dispatch
+│   ├── cli/                        clap args (`args.rs`), tool wiring (`wiring.rs`)
 │   ├── agent.rs                    core agentic loop + memory injection
-│   ├── tui.rs                      two-panel ratatui TUI
+│   ├── tui/                        two-panel ratatui TUI (`mod.rs`, `theme.rs`)
 │   ├── highlight.rs                syntect → ratatui syntax highlighting
 │   ├── server.rs                   axum HTTP/SSE server (harness serve)
 │   ├── events.rs                   AgentEvent enum + channel helpers
@@ -120,8 +121,9 @@ harness/
 │   ├── harness-provider-openai/    GPT-5.x streaming SSE client + strict JSON schema
 │   ├── harness-provider-xai/       Grok 4.x streaming + native tools + strict JSON schema
 │   ├── harness-provider-ollama/    Local Ollama (Qwen3-Coder 30B default)
-│   ├── harness-provider-mlx/       MLX-native local models (macOS/aarch64, E11)
+│   ├── harness-provider-mlx/       MLX via `mlx_lm.server` (macOS/aarch64; added in remediation)
 │   ├── harness-provider-router/    Smart multi-provider router (env-key detection)
+│   ├── harness-lsp/                LSP client integration
 │   ├── harness-tools/              Tool trait + built-ins (shell/gh/computer/file/search)
 │   ├── harness-memory/             SQLite session store + vector memory store
 │   ├── harness-mcp/                MCP 2025-03-26 client: tools, resources, sampling, roots, progress (E8)
@@ -249,7 +251,7 @@ macOS notifications include subtitle and group_id for grouping. Focus mode (`/fo
 
 New MCP 2.0 features:
 - `resources/list` + `resources/read` — fetch server-exposed resources
-- `sampling/createMessage` — with user approval callback
+- `sampling/createMessage` — with user approval; approved requests run through the same `ArcProvider` used for chat (`load_mcp_tools(..., Some(provider))`)
 - Roots advertisement in `initialize` (CWD + home)
 - Progress notifications forwarded to `mpsc::UnboundedSender<ProgressEvent>`
 - `ServerCapabilities` struct captures `has_resources`, `has_sampling`, `has_logging`, `has_prompts`, `protocol_version`
@@ -303,7 +305,7 @@ New entry points:
 - `drive_agent_with_schema(…, thinking_budget, response_schema)` — structured output (E10)
 - `drive_agent_full(…, native_web_search, native_code_execution, native_x_search, response_schema)` — all flags
 
-## TUI layout (`src/tui.rs`)
+## TUI layout (`src/tui/mod.rs`)
 
 ```
 ┌──────────────── Chat (62%) ──────────────────┬─── Tools & Events (38%) ──┐
@@ -383,7 +385,7 @@ fallback = ["anthropic", "xai", "openai", "ollama"]
 [observability]
 enabled = true
 traces_dir = "~/.harness/traces"
-otlp_endpoint = ""   # optional: "http://localhost:4318/v1/traces"
+otlp_experimental_endpoint = ""   # optional base URL, e.g. "http://localhost:4318" (appends /v1/traces); legacy key: otlp_endpoint
 
 [swarm]
 max_concurrency = 4
@@ -404,7 +406,7 @@ bind = "127.0.0.1:9090"
 
 1. Create `crates/harness-tools/src/tools/mytool.rs`, implement `Tool` trait.
 2. Export from `crates/harness-tools/src/tools/mod.rs`.
-3. Register in `build_tools()` in `src/main.rs`.
+3. Register in `build_tools()` in `src/cli/wiring.rs`.
 4. Done — tool schema is automatically sent to the provider.
 
 ## Adding a new provider

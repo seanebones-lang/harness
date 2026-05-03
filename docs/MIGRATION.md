@@ -40,7 +40,7 @@ Phase E adds several new config sections to `~/.harness/config.toml`:
 [observability]
 enabled = true
 traces_dir = "~/.harness/traces"
-otlp_endpoint = ""
+otlp_experimental_endpoint = ""
 
 [swarm]
 max_concurrency = 4
@@ -55,7 +55,12 @@ github_owner = ""
 [collab]
 enabled = false
 bind = "127.0.0.1:9090"
+
+[tools]
+sandbox = "strict"
 ```
+
+When `[tools].sandbox` is `strict` (default in `config/default.toml`), filesystem tools resolve paths under the workspace root. Use `relaxed` to warn-and-allow escapes, or `off` to disable checks. Optional `[shell].cmd_allowlist` restricts argv0 for absolute-path commands.
 
 None of these are required — all Phase E features are opt-in via config. Existing configs continue to work unchanged.
 
@@ -67,6 +72,7 @@ Phase E adds the following new subcommands:
 |---------|-------------|
 | `harness doctor` | Self-diagnostic: check API keys, paths, services |
 | `harness completions <shell>` | Generate shell completions (bash, zsh, fish, …) |
+| `harness swarm run` | Queue background agent task(s); `--count`, `--model` |
 | `harness swarm list` | List recent swarm tasks |
 | `harness swarm status <id>` | Show one task’s state |
 | `harness swarm result <id>` | Print stored result when complete |

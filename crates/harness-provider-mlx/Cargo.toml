@@ -1,0 +1,10 @@
+[package]
+name = "harness-provider-mlx"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+harness-provider-core = { path = "../harness-provider-core" }
+harness-provider-openai = { path = "../harness-provider-openai" }
+anyhow = { workspace = true }
+which = { workspace = true }

@@ -21,11 +21,15 @@
 //! base_url = "http://localhost:11434"
 //! model = "qwen3-coder:30b"
 //!
+//! [providers.mlx]
+//! base_url = "http://127.0.0.1:8080/v1"
+//! model = "mlx-community/Qwen3-Coder-30B"
+//!
 //! [router]
 //! fast_model = "xai:grok-4-1-fast-reasoning"
 //! heavy_model = "anthropic:claude-opus-4-7"
 //! embed_model = "ollama:nomic-embed-text"
-//! fallback = ["anthropic", "xai", "openai", "ollama"]
+//! fallback = ["anthropic", "xai", "openai", "ollama", "mlx"]
 //! ```
 
 use async_trait::async_trait;
@@ -92,6 +96,7 @@ pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcPr
             }
             Ok(Arc::new(harness_provider_ollama::OllamaProvider::new(cfg)?))
         }
+        "mlx" => harness_provider_mlx::build_arc(entry.model.clone(), entry.base_url.clone()),
         _ => {
             let key = entry.api_key.as_deref().unwrap_or("");
             let mut cfg = harness_provider_xai::XaiConfig::new(key);
@@ -230,6 +235,7 @@ impl ProviderRouter {
                 .map(|k| !k.is_empty())
                 .unwrap_or(false);
         let has_ollama = entries.contains_key("ollama");
+        let has_mlx = entries.contains_key("mlx") || harness_provider_mlx::mlx_runtime_available();
 
         // Auto-populate providers from env keys if not explicitly configured
         let mut augmented: HashMap<String, ProviderEntry> = entries.clone();
@@ -266,14 +272,29 @@ impl ProviderRouter {
                 },
             );
         }
+        if has_mlx && !augmented.contains_key("mlx") {
+            augmented.insert(
+                "mlx".into(),
+                ProviderEntry {
+                    name: Some("mlx".into()),
+                    api_key: None,
+                    model: Some(harness_provider_mlx::DEFAULT_MODEL.into()),
+                    base_url: Some(harness_provider_mlx::DEFAULT_BASE_URL.into()),
+                },
+            );
+        }
 
-        // Default provider: anthropic > xai > openai > ollama (first found)
+        // Default provider: anthropic > xai > openai > ollama > mlx (first found)
         let smart_default = if has_anthropic {
             "anthropic"
         } else if has_xai {
             "xai"
         } else if has_openai {
             "openai"
+        } else if has_ollama {
+            "ollama"
+        } else if has_mlx {
+            "mlx"
         } else {
             "ollama"
         };
@@ -305,6 +326,10 @@ impl ProviderRouter {
                 "xai"
             } else if has_openai {
                 "openai"
+            } else if has_ollama {
+                "ollama"
+            } else if has_mlx {
+                "mlx"
             } else {
                 "ollama"
             };
@@ -322,6 +347,10 @@ impl ProviderRouter {
                 "xai"
             } else if has_openai {
                 "openai"
+            } else if has_ollama {
+                "ollama"
+            } else if has_mlx {
+                "mlx"
             } else {
                 "ollama"
             };
@@ -342,7 +371,7 @@ impl ProviderRouter {
             r.fallback = fb.clone();
         } else {
             let mut fb = Vec::new();
-            for n in &["anthropic", "xai", "openai", "ollama"] {
+            for n in &["anthropic", "xai", "openai", "ollama", "mlx"] {
                 if r.providers.contains_key(*n) && *n != default_name.as_str() {
                     fb.push(n.to_string());
                 }
