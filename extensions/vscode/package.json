@@ -3,6 +3,7 @@
   "displayName": "Harness — AI Coding Agent",
   "description": "AI coding agent with Claude 4.x, GPT-5, Grok 4, and Qwen3 in VS Code",
   "version": "0.1.0",
+  "license": "MIT",
   "publisher": "harness-ai",
   "engines": {
     "vscode": "^1.90.0"

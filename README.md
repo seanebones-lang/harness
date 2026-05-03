@@ -4,12 +4,21 @@ Harness is a terminal-based AI coding assistant. It reads files, edits code, run
 
 Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
 
+**Status:** Beta — fine for daily use; expect ongoing polish. Before tagging a release, run the gates in [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md). Latest go/no-go notes: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md).
+
+---
+
+## Prerequisites
+
+- **Rust** (stable, edition 2021) via [rustup](https://rustup.rs)
+- **Platform:** macOS and Linux are primary targets; Windows may work but is less exercised in CI
+
 ---
 
 ## Quick Start (3 commands)
 
 ```bash
-# 1. Build and install
+# 1. Build and install (replace clone URL if you use a fork)
 git clone https://github.com/seanebones-lang/harness.git
 cd harness
 cargo build --profile release-lto
@@ -407,6 +416,35 @@ For a developer deep-dive see [`CLAUDE.md`](CLAUDE.md). User-facing migration no
 
 ---
 
+## Troubleshooting
+
+| Symptom | What to try |
+|--------|--------------|
+| `command not found: harness` | Ensure `~/.local/bin` is on `PATH` (see Quick Start). Run `hash -r` or open a new shell. |
+| API / auth errors | `export ANTHROPIC_API_KEY=…` (or another provider key). Run `harness status` and `harness doctor`. |
+| `/pr`, `/issues`, `/ci` fail | Install and log in to GitHub CLI: `gh auth login`, then `gh auth status`. |
+| Checkpoint / `/undo` says not a git repo | Run `git init` in the project root (Harness uses git for checkpoints). |
+| Web UI empty or connection errors | Start the server: `harness serve --addr 127.0.0.1:8787`, then open the URL it prints. |
+| Browser / CDP tool errors | Chrome must run with `--remote-debugging-port` matching `[browser].url` in config (see `config/default.toml`). |
+
+---
+
+## Known limitations
+
+Non-exhaustive list; details live in [`TODO.md`](TODO.md):
+
+- **Polish:** ambient provider abstraction, extra `harness-browser` tests, optional ambient consolidation tests.
+- **UX:** session titles from async auto-naming can lag the first `harness sessions` list right after save.
+- **`gh` features:** PR/issue/CI slash commands require the `gh` CLI and a logged-in account.
+
+---
+
+## Reporting issues
+
+Open an issue on the project’s GitHub tracker with: OS, Rust version (`rustc --version`), `harness --version`, the command you ran, and redacted logs if any.
+
+---
+
 ## License
 
-Proprietary — **All Rights Reserved**. See [`LICENSE`](LICENSE). No license is granted by the copyright notice alone; contact the copyright holder for permission to use or redistribute.
+This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
