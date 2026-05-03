@@ -154,7 +154,7 @@ impl Provider for OpenAIProvider {
 
     fn pricing(&self) -> Option<Pricing> {
         let m = self.config.model.to_lowercase();
-        // April 2026 GPT-5.x family
+        // May 2026 GPT-5.x family
         if m.contains("gpt-5.5") {
             Some(Pricing {
                 input_per_m_usd: 5.00,

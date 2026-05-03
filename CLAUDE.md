@@ -1,4 +1,4 @@
-# harness — Codebase Guide (April 2026)
+# harness — Codebase Guide (May 2026)
 
 Rust coding agent. Multi-provider (Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, Ollama Qwen3-Coder). Fast, low-memory, multi-agent.
 
@@ -9,7 +9,7 @@ cargo build                        # dev build
 cargo build --profile selfdev      # fast self-modification build
 cargo build --profile release-lto  # distribution build (thin LTO, stripped)
 cargo test                         # workspace integration + crates (root + tests/* ; no API keys)
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt --all
 
 # Optional: [.githooks/commit-msg](.githooks/commit-msg) drops `Co-authored-by`, `Co-developed-by`,
@@ -26,8 +26,8 @@ ANTHROPIC_API_KEY=sk-ant-... harness
 # With extended thinking
 ANTHROPIC_API_KEY=sk-ant-... harness --think 10000
 
-# xAI Grok 4.20
-XAI_API_KEY=xai-... harness --model grok-4.20-0309-reasoning
+# xAI Grok 4.3 (flagship; see https://docs.x.ai/docs/models )
+XAI_API_KEY=xai-... harness --model grok-4.3
 
 # One-shot
 ANTHROPIC_API_KEY=sk-ant-... harness "refactor src/agent.rs to use a state machine"
@@ -137,13 +137,13 @@ harness/
 └── scripts/install.sh              Install from source to ~/.local/bin
 ```
 
-## April 2026 Model Defaults
+## May 2026 Model Defaults
 
 | Provider  | Default model                    | Notes                         |
 |-----------|----------------------------------|-------------------------------|
 | Anthropic | `claude-sonnet-4-6`              | Prompt caching on by default  |
 | OpenAI    | `gpt-5.5`                        | 1M context, Dec 2025 cutoff   |
-| xAI       | `grok-4.20-0309-reasoning`       | 2M context, native tools      |
+| xAI       | `grok-4.3`                       | 1M context, native tools, flagship |
 | Ollama    | `qwen3-coder:30b`                | Local, 256K ctx, SWE-bench RL |
 | MLX       | `mlx-community/Qwen3-Coder-30B`  | Apple Silicon native          |
 | Embed     | `nomic-embed-text` (Ollama)      | RAG default                   |
@@ -164,7 +164,7 @@ Smart router picks the best available provider based on which `*_API_KEY` env va
 | `ChatRequest` | Builder: `.with_messages()`, `.with_tools()`, `.with_system()`, `.thinking_budget`, `.native_web_search`, `.response_schema` |
 | `ResponseSchema` | Strict JSON schema constraint (`name`, `schema: Value`, `strict: bool`) |
 
-`ChatRequest` fields (April 2026):
+`ChatRequest` fields (May 2026):
 - `thinking_budget: Option<u32>` — adaptive thinking budget (Anthropic)
 - `native_web_search: bool` — enable provider-native web search
 - `native_code_execution: bool` — enable sandboxed code execution
@@ -188,7 +188,7 @@ Structured output: sets `response_format: {type: "json_schema", json_schema: {na
 Auto-builds providers from env keys when no `[providers]` block is configured. Smart routing:
 - `default` → anthropic > xai > openai > ollama > mlx
 - `fast` → same priority, uses fast/cheap model
-- `heavy` → same priority, uses opus/grok-reasoning
+- `heavy` → same priority, uses opus / grok-4.3 (when xAI is the heavy provider)
 - `embed` → ollama:nomic-embed-text if available
 
 ### `harness-tools`

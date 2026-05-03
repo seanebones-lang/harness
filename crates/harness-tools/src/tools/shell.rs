@@ -1,9 +1,28 @@
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
 use serde_json::{json, Value};
+#[cfg(windows)]
+use std::path::PathBuf;
 use tokio::process::Command;
 
 use crate::registry::Tool;
+
+/// On Windows, prefer Git Bash `sh`/`bash` (on PATH on GitHub runners and typical dev installs)
+/// so POSIX shell syntax matches Unix. Falls back to `cmd.exe /C` if neither exists.
+#[cfg(windows)]
+fn windows_shell_interpreter() -> (PathBuf, bool) {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            for name in ["sh.exe", "bash.exe"] {
+                let p = dir.join(name);
+                if p.is_file() {
+                    return (p, true);
+                }
+            }
+        }
+    }
+    (PathBuf::from("cmd.exe"), false)
+}
 
 /// Configuration forwarded from the main config at build time.
 #[derive(Debug, Clone, Default)]
@@ -120,8 +139,25 @@ impl Tool for ShellTool {
         let cwd = args["cwd"].as_str();
         let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(120);
 
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(command);
+        let mut cmd = {
+            #[cfg(windows)]
+            {
+                let (prog, is_posix) = windows_shell_interpreter();
+                let mut c = Command::new(prog);
+                if is_posix {
+                    c.arg("-c").arg(command);
+                } else {
+                    c.arg("/C").arg(command);
+                }
+                c
+            }
+            #[cfg(not(windows))]
+            {
+                let mut c = Command::new("sh");
+                c.arg("-c").arg(command);
+                c
+            }
+        };
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 

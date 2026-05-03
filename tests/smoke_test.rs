@@ -19,7 +19,7 @@ async fn session_round_trip() {
     let db = dir.path().join("sessions.db");
     let store = SessionStore::open(&db).unwrap();
 
-    let mut session = Session::new("grok-3-fast");
+    let mut session = Session::new("claude-sonnet-4-6");
     session.push(Message::user("hello"));
     session.push(Message::assistant("hi there"));
 
@@ -39,7 +39,7 @@ async fn session_find_by_prefix() {
     let dir = tempdir().unwrap();
     let store = SessionStore::open(dir.path().join("s.db")).unwrap();
 
-    let mut s = Session::new("grok-3-fast").with_name("my-coding-session");
+    let mut s = Session::new("claude-sonnet-4-6").with_name("my-coding-session");
     s.push(Message::user("test"));
     store.save(&s).unwrap();
 
@@ -63,7 +63,7 @@ async fn session_list() {
     let store = SessionStore::open(dir.path().join("s.db")).unwrap();
 
     for i in 0..5 {
-        let mut s = Session::new("grok-3-fast");
+        let mut s = Session::new("claude-sonnet-4-6");
         s.push(Message::user(format!("message {i}")));
         store.save(&s).unwrap();
     }
@@ -77,7 +77,7 @@ async fn session_delete_and_name_update() {
     let dir = tempdir().unwrap();
     let store = SessionStore::open(dir.path().join("s.db")).unwrap();
 
-    let mut s = Session::new("grok-3-fast");
+    let mut s = Session::new("claude-sonnet-4-6");
     s.push(Message::user("hello"));
     store.save(&s).unwrap();
 
@@ -152,7 +152,7 @@ fn tool_call_arg_parsing() {
 
 #[test]
 fn chat_request_builder() {
-    let req = ChatRequest::new("grok-3-fast")
+    let req = ChatRequest::new("claude-sonnet-4-6")
         .with_system("be helpful")
         .with_messages(vec![Message::user("hi")])
         .with_tools(vec![ToolDefinition::new(
@@ -161,7 +161,7 @@ fn chat_request_builder() {
             serde_json::json!({"type":"object"}),
         )]);
 
-    assert_eq!(req.model, "grok-3-fast");
+    assert_eq!(req.model, "claude-sonnet-4-6");
     assert_eq!(req.system.as_deref(), Some("be helpful"));
     assert_eq!(req.messages.len(), 1);
     assert_eq!(req.tools.len(), 1);
@@ -241,12 +241,24 @@ async fn shell_tool_timeout() {
     registry.register(ShellTool::default());
     let executor = ToolExecutor::new(registry);
 
+    /// Long-enough command for each platform's shell interpreter.
+    #[cfg(windows)]
+    let command = r#"powershell -NoProfile -Command "Start-Sleep -Seconds 10""#;
+    #[cfg(not(windows))]
+    let command = "sleep 10";
+
+    let arguments = serde_json::json!({
+        "command": command,
+        "timeout_secs": 1,
+    })
+    .to_string();
+
     let call = ToolCall {
         id: "s2".into(),
         kind: "function".into(),
         function: ToolCallFunction {
             name: "shell".into(),
-            arguments: r#"{"command": "sleep 10", "timeout_secs": 1}"#.into(),
+            arguments,
         },
     };
     let result = executor.execute(&call).await;

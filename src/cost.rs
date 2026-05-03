@@ -1,5 +1,5 @@
 //! Provider pricing table for cost estimation in the status bar.
-//! Prices are in USD per million tokens (April 2026).
+//! Prices are in USD per million tokens (May 2026).
 //! Update these when providers change pricing.
 
 /// Per-million-token price for input, cached input, and output.
@@ -51,8 +51,12 @@ impl TokenPrice {
 pub fn price_for_model(model: &str) -> Option<TokenPrice> {
     let m = model.to_lowercase();
 
-    // xAI / Grok — April 2026 SKUs
-    // Grok 4.20: $2/$6, cached input $0.20 (90% off)
+    // xAI / Grok — May 2026 SKUs (see https://docs.x.ai/docs/models )
+    // Grok 4.3 flagship: $1.25/$2.50 — must precede generic `grok-4` prefix checks
+    if m.contains("grok-4.3") {
+        return Some(TokenPrice::new(1.25, 0.20, 2.50));
+    }
+    // Grok 4.20 (pinned snapshot): $2/$6, cached input $0.20 (90% off)
     if m.contains("grok-4.20") || m.contains("grok-4-20") {
         return Some(TokenPrice::new(2.00, 0.20, 6.00));
     }
@@ -72,7 +76,7 @@ pub fn price_for_model(model: &str) -> Option<TokenPrice> {
         return Some(TokenPrice::new(2.00, 0.0, 10.00));
     }
 
-    // Anthropic / Claude — April 2026 SKUs
+    // Anthropic / Claude — May 2026 SKUs
     // Opus 4.7 / 4.6 / 4.5: $5/$25, cached reads $0.50
     if m.contains("claude-opus-4-7")
         || m.contains("claude-opus-4-6")
@@ -108,7 +112,7 @@ pub fn price_for_model(model: &str) -> Option<TokenPrice> {
         return Some(TokenPrice::new(0.25, 0.0, 1.25));
     }
 
-    // OpenAI — April 2026 SKUs
+    // OpenAI — May 2026 SKUs
     // GPT-5.5: $5/$30, cached $0.50
     if m.contains("gpt-5.5") {
         return Some(TokenPrice::new(5.00, 0.50, 30.00));
@@ -184,6 +188,13 @@ pub fn format_tokens(n: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grok_4_3_price() {
+        let p = price_for_model("grok-4.3").unwrap();
+        assert!((p.input_per_m - 1.25).abs() < 0.01);
+        assert!((p.output_per_m - 2.50).abs() < 0.01);
+    }
 
     #[test]
     fn grok_4_20_price() {

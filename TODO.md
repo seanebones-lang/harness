@@ -43,10 +43,10 @@ rename or note the limitation in UX copy.
 
 Maintainers: use **[`docs/PUBLIC_RELEASE.md`](../docs/PUBLIC_RELEASE.md)** for the full public checklist (legal, gates, manual smokes, quickstart rehearsal, go/no-go).
 
-Automated gates (verified in dev):
+Automated gates (verified in dev; **CI** runs the same on **Ubuntu, macOS, Windows**):
 
-- [x] `cargo test` — all tests pass — **currently 23** (root + `tests/*` crates)
-- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test --all` — workspace integration + doctests (no API keys)
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo build --profile release-lto`
 

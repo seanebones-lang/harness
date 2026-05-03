@@ -1,4 +1,4 @@
-# SEAN START HERE — Harness User Manual (April 2026)
+# SEAN START HERE — Harness User Manual (May 2026)
 
 This guide explains how to use Harness in plain English.
 
@@ -16,38 +16,28 @@ Harness is an AI coding assistant you run in your terminal. You type a request; 
 
 ## One-Time Setup (do this once)
 
-### Step 1 — Install
+**Canonical install paths (macOS, Linux, Windows, scripts, CI):** follow **[`README.md`](../README.md)** — Quick Start, Windows PowerShell block, and **Optional features by platform**.
 
-From inside the harness source directory:
+### Step 1 — Install (summary)
 
-```bash
-cargo build --profile release-lto
-install -m 755 target/release-lto/harness ~/.local/bin/harness
-```
-
-Add `~/.local/bin` to your PATH in `~/.zshrc`:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-source ~/.zshrc
-harness --version  # confirm it works
-```
+- **macOS / Linux:** see **[`README.md`](../README.md)** — manual `cargo build` + copy to `~/.local/bin`, **or** run [`scripts/install.sh`](../scripts/install.sh) from the repo (optional `HARNESS_INSTALL_DIR`).
+- **Windows:** same README — PowerShell copy/paste, or [`scripts/install.ps1`](../scripts/install.ps1).
 
 ### Step 2 — Set your API key
 
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."   # preferred (get at console.anthropic.com)
-export XAI_API_KEY="xai-..."            # fallback (console.x.ai)
-export OPENAI_API_KEY="sk-..."          # fallback (platform.openai.com)
-```
+**Unix shells:** `export ANTHROPIC_API_KEY="sk-ant-..."` (or `XAI_API_KEY` / `OPENAI_API_KEY`).
 
-Add to `~/.zshrc` to make permanent. Harness auto-detects which keys are set.
+**PowerShell:** `$env:ANTHROPIC_API_KEY = "sk-ant-..."`
 
-### Step 3 — Initialize
+### Step 3 — Initialize global config (recommended once)
+
+Matches **`README.md`**: run this so `~/.harness/` exists and defaults match your machine. Skip only if you rely entirely on env vars and already have config from an install script.
 
 ```bash
 harness init
 ```
+
+Install scripts may already create **`~/.harness/config.toml`** — running **`harness init`** again is safe if you want CLI-generated defaults.
 
 ---
 
@@ -77,7 +67,7 @@ Find all TODO comments and list them by file.
 
 ---
 
-## April 2026 Models
+## May 2026 Models
 
 Pick the right model for the job:
 
@@ -86,7 +76,8 @@ Pick the right model for the job:
 | `claude-sonnet-4-6` (default) | Most tasks — fast, cheap with caching |
 | `claude-opus-4-7` | Complex architecture, long tasks, adaptive thinking |
 | `claude-haiku-4-5` | Summaries, quick lookups — ultra-fast |
-| `grok-4.20-0309-reasoning` | Code reasoning, 2M context window |
+| `grok-4.3` | xAI flagship — general coding and agents ([xAI models](https://docs.x.ai/docs/models)) |
+| `grok-4.20-0309-reasoning` | Pinned snapshot if you need the older 2M-ctx SKU |
 | `grok-4-1-fast-reasoning` | Real-time low-latency tasks |
 | `gpt-5.5` | When you want OpenAI's latest |
 | `qwen3-coder:30b` | Fully local (no API key), 256K context |
@@ -95,9 +86,10 @@ Switch models:
 ```bash
 harness models                                 # list all available
 harness models --set anthropic:claude-opus-4-7 # set default for this project
+harness models --set xai:grok-4.3              # xAI flagship (needs XAI_API_KEY)
 ```
 
-Or mid-session: `/model claude-opus-4-7`
+Or mid-session: `/model claude-opus-4-7` or `/model grok-4.3`
 
 ---
 
