@@ -1,5 +1,7 @@
 # Harness — Remaining Work
 
+Canonical **user** docs: `README.md`, `SEAN START HERE/USER MANUAL.md`; **developer**: `CLAUDE.md`, `config/default.toml`.
+
 Older **Critical / Important** items (xAI `stream_options` + usage, multi-tool-call
 streaming tests, embedding retries, TUI `--resume`, ambient `ctrl_c` shutdown, web UI
 session persistence, session delete CLI, clippy cleanliness) are **implemented** in tree.
@@ -10,9 +12,9 @@ This file tracks follow-ups that are still worth doing.
 
 ## Polish
 
-### Documentation (`CLAUDE.md`)
+### Documentation (README / USER MANUAL / `CLAUDE.md`)
 
-Fine-tuning only (Running + Key types + sample `[browser]` TOML are updated). Optionally add screenshots or richer CDP troubleshooting.
+Screenshots or deeper CDP troubleshooting are optional polish.
 
 ### Architecture: generic `ambient` provider
 

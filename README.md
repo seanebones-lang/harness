@@ -28,6 +28,13 @@ harness
 
 That's it. Harness auto-detects which API keys are set and picks the best available provider.
 
+### Development snapshot
+
+- **`TODO.md`** — remaining work is mostly **Polish** (ambient abstraction, browser/ambient test coverage, session list timing). Older Critical/Important backlog items (xAI streaming usage metadata, multi-tool-call handling, embed retries, TUI `--resume`, ambient shutdown on Ctrl+C, web UI session continuity, CLI session delete, clippy cleanliness) are **implemented** on current `main`.
+- **Quality gates:** run `cargo test` (workspace tests, no keys), `cargo clippy --all-targets -- -D warnings`, and `cargo build --profile release-lto`. Manual provider smoke checks remain in **`TODO.md`**.
+
+See [`CLAUDE.md`](CLAUDE.md) for module-level detail and contributor hooks (`core.hooksPath`).
+
 ---
 
 ## April 2026 Model Lineup
@@ -215,6 +222,8 @@ harness cost by-model            # breakdown by model
 harness cost watch               # live tail (refresh every 5s)
 ```
 
+Streaming chat counts toward the ledger whenever the backend supplies usage (**xAI** requests `stream_options.include_usage`; Anthropic emits usage deltas similarly). Wallet math still depends on your provider’s streamed fields and local pricing tables.
+
 Set budget limits in `~/.harness/config.toml`:
 ```toml
 [budget]
@@ -276,6 +285,14 @@ TUI shows a red `[COMPUTER USE LIVE]` banner when active.
 harness serve --addr 127.0.0.1:8787
 # then open http://127.0.0.1:8787
 ```
+
+The bundled page keeps the chat **session ID in localStorage** across reloads and includes a **New session** control to start fresh.
+
+---
+
+## Browser tool (Chrome CDP, optional)
+
+Requires Chrome/Chromium launched with **`--remote-debugging-port`** (typically `9222`). Enable `[browser]` in config or pass **`--browser`** at startup; optionally set **`--browser-url`**. Registers a `browser` tool (navigate, screenshot, DOM actions). Full detail: **`harness-browser`** in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -340,6 +357,9 @@ enabled = true
 [native_tools]
 web_search = true               # provider-native web search
 
+[browser]
+enabled = false                 # or use CLI --browser ; needs Chrome remote debugging port
+
 [computer_use]
 enabled = false                 # DANGER when true
 
@@ -349,8 +369,8 @@ enabled = true
 [agent]
 system_prompt = "..."           # customize agent persona
 
-# Optional Phase E blocks — see `config/default.toml` (**commented** templates; do not
-# paste raw `[observability]` tables until those structs exist in harness `Config`).
+# Optional blocks — copy from `config/default.toml` verbatim. Active examples include `[router]`;
+# additional tables (`observability`, `swarm`, …) ship commented — uncomment matching entries only.
 ```
 
 ---
@@ -389,4 +409,4 @@ For a developer deep-dive see [`CLAUDE.md`](CLAUDE.md). User-facing migration no
 
 ## License
 
-MIT
+Proprietary — **All Rights Reserved**. See [`LICENSE`](LICENSE). No license is granted by the copyright notice alone; contact the copyright holder for permission to use or redistribute.
