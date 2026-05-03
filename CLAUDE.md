@@ -8,7 +8,7 @@ Rust coding agent. Multi-provider (Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GP
 cargo build                        # dev build
 cargo build --profile selfdev      # fast self-modification build
 cargo build --profile release-lto  # distribution build (thin LTO, stripped)
-cargo test                         # runs tests/smoke_test.rs (no API key needed)
+cargo test                         # workspace integration + crates (root + tests/* ; no API keys)
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
 

@@ -6,9 +6,11 @@ This guide explains how to use Harness in plain English.
 
 ## What Harness Does
 
-Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports multiple AI providers (Anthropic Claude, xAI Grok, OpenAI, local Ollama), has a full TUI with syntax highlighting, remembers past sessions semantically, and integrates with your language server.
+Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports multiple AI providers (Anthropic Claude, xAI Grok, OpenAI, local Ollama), has a full TUI with syntax highlighting, remembers past sessions semantically, integrates with your language server, and can orchestrate multiple linked repos via **`harness project`** or use an optional **`harness serve`** browser UI alongside the **`browser`** Chrome tool when enabled.
 
 **Default model: `claude-sonnet-4-6`** — 10x cheaper than base price on repeated context thanks to Anthropic prompt caching. Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
+
+**Operational truth vs older blog posts:** the canonical backlog lives in **`TODO.md`** (Polish-first today). **`README.md`** and this manual track current behavior (`main`).
 
 ---
 
@@ -279,6 +281,8 @@ monthly_usd = 50.00
 Status bar shows cost in real time. Turns yellow at 80%, red at 100%.
 Desktop notification fires at each threshold.
 
+**Streaming providers:** xAI chat streaming includes usage payloads when configured; Anthropic/OpenAI emit usage deltas the agent loop records. Figures still depend on what each API returns plus local pricing constants.
+
 The status bar also shows **prompt cache hit rate** — when using Claude, repeated context (system prompt, pinned files) is served at 10x discount automatically.
 
 ---
@@ -333,9 +337,12 @@ Or type `/undo` in TUI.
 
 ## Resume a Previous Session
 
+The same `--resume` flow works **in the interactive TUI** — Harness loads saved messages from the session database before drawing the chat pane.
+
 ```bash
 harness --resume <session-id>
-harness sessions    # find session IDs
+harness --resume abc12345    # short prefixes work when they uniquely match a session
+harness sessions             # locate IDs / prefixes
 ```
 
 ---
@@ -386,6 +393,31 @@ harness export <id>                  # print as Markdown
 harness export <id> --output out.md  # save to file
 harness delete <id>                  # delete a session
 ```
+
+---
+
+## Web workspace (`harness serve`)
+
+```bash
+harness serve --addr 127.0.0.1:8787
+# open http://127.0.0.1:8787 — static UI calling the local API
+```
+
+The page keeps chat context by persisting **`sessionId` in localStorage**, survives reload when “resume last session” is enabled in the sidebar, and provides **New session** to clear state intentionally.
+
+---
+
+## Browser tool (`browser`, Chrome CDP)
+
+Turn on `[browser]` in config or launch with **`--browser`** (configure **`--browser-url`** when Chrome listens somewhere other than the default debugging port).
+
+Requires Chromium/Chrome launched with **`--remote-debugging-port=9222`** (or whichever URL matches `[browser].url`). The agent gets a `browser` tool (navigate, screenshot, DOM helpers). See **`harness-browser`** in [`CLAUDE.md`](../CLAUDE.md).
+
+---
+
+## Linked repos (`harness project`)
+
+Harmonizes multiple checkouts inside Harness’s registry: dashboard, bulk sync/pull, safe push, scripted `exec`, `init`/`publish`/`clone`/`import`/`prune`, and short aliases (`harness proj ls`, …). Full command matrix: [`README.md`](../README.md) (Project lifecycle + quickstarts).
 
 ---
 
