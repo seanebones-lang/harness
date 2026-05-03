@@ -15,7 +15,7 @@
 //!
 //! [providers.xai]
 //! api_key = "xai-..."
-//! model = "grok-4.20-0309-reasoning"
+//! model = "grok-4.3"
 //!
 //! [providers.ollama]
 //! base_url = "http://localhost:11434"
@@ -210,7 +210,7 @@ impl ProviderRouter {
     /// | Priority | Default  | Fast                     | Heavy                  | Embed                   |
     /// |----------|----------|--------------------------|------------------------|-------------------------|
     /// | 1st      | anthropic (if ANTHROPIC_API_KEY) | anthropic:claude-haiku-4-5 | anthropic:claude-opus-4-7 | ollama:nomic-embed-text |
-    /// | 2nd      | xai (if XAI_API_KEY)    | xai:grok-4-1-fast-reasoning | xai:grok-4.20-0309-reasoning | ollama:nomic-embed-text |
+    /// | 2nd      | xai (if XAI_API_KEY)    | xai:grok-4-1-fast-reasoning | xai:grok-4.3 | ollama:nomic-embed-text |
     /// | 3rd      | ollama (local, always)  | ollama:qwen3-coder:30b | ollama:qwen3-coder:30b | ollama:nomic-embed-text |
     pub fn from_config(
         entries: &HashMap<String, ProviderEntry>,
@@ -250,7 +250,7 @@ impl ProviderRouter {
                 ProviderEntry {
                     name: Some("xai".into()),
                     api_key: std::env::var("XAI_API_KEY").ok(),
-                    model: Some("grok-4.20-0309-reasoning".into()),
+                    model: Some("grok-4.3".into()),
                     base_url: None,
                 },
             );

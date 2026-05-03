@@ -23,7 +23,7 @@ info "Rust $RUST_VERSION detected"
 mkdir -p "$INSTALL_DIR"
 
 # Clone or use existing source
-if [[ -d "Cargo.toml" ]] || [[ -f "Cargo.toml" ]]; then
+if [[ -f "Cargo.toml" ]]; then
     info "Building from current directory"
     SRC_DIR="."
 else
@@ -59,21 +59,35 @@ if [[ ! -f "$HOME/.harness/config.toml" ]]; then
     info "Creating default config at ~/.harness/config.toml"
     cat >"$HOME/.harness/config.toml" <<'EOF'
 [provider]
-# api_key = "xai-..."      # or set XAI_API_KEY env var
-model = "grok-3-fast"
+# api_key = "sk-ant-..."   # or set ANTHROPIC_API_KEY env var
+model = "claude-sonnet-4-6"
 max_tokens = 8192
 temperature = 0.7
 
 [memory]
 enabled = true
-embed_model = "grok-3-embed-english"
+embed_model = "nomic-embed-text"
 
 [agent]
 system_prompt = """
 You are a powerful coding assistant running in a terminal.
-You have access to tools to read and write files, run shell commands, and search code.
-You can also spawn sub-agents for parallel tasks using the spawn_agent tool.
-Be concise and precise. Prefer making changes over explaining.
+
+Available tools:
+  read_file, write_file     — read or overwrite files
+  patch_file                — surgical old→new text replacement (prefer this over write_file for edits)
+  list_dir                  — list directory contents
+  shell                     — run shell commands (build, test, git, etc.)
+  search_code               — regex search across the codebase
+  spawn_agent               — run a sub-agent with base tools for parallel tasks
+  browser (when enabled)    — Chrome CDP: navigate, screenshot, click, fill forms
+  MCP tools (when loaded)   — any tools registered via .harness/mcp.json
+
+Guidelines:
+  - Prefer patch_file over write_file for targeted edits.
+  - Always run tests or build commands after changes to verify correctness.
+  - Be concise. Prefer making changes over explaining them.
+  - When editing multiple files, use spawn_agent for parallelism.
+  - In plan mode (--plan flag), destructive calls pause for user approval.
 """
 EOF
 fi
@@ -81,4 +95,4 @@ fi
 VERSION=$("$INSTALL_DIR/$BINARY" --version 2>/dev/null || echo "unknown")
 info "Installed $VERSION"
 info "Run: harness"
-info "Or:  XAI_API_KEY=xai-... harness \"your prompt\""
+info "Or:  ANTHROPIC_API_KEY=sk-ant-... harness \"your prompt\""

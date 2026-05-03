@@ -25,7 +25,7 @@ impl XaiConfig {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
-            model: "grok-4.20-0309-reasoning".into(),
+            model: "grok-4.3".into(),
             max_tokens: 8192,
             temperature: 0.7,
             base_url: XAI_BASE_URL.into(),
@@ -167,8 +167,14 @@ impl Provider for XaiProvider {
 
     fn pricing(&self) -> Option<Pricing> {
         let m = self.config.model.to_lowercase();
-        // April 2026 Grok 4.x SKUs
-        if m.contains("grok-4.20") || m.contains("grok-4-20") {
+        // May 2026 Grok SKUs (see https://docs.x.ai/docs/models )
+        if m.contains("grok-4.3") {
+            Some(Pricing {
+                input_per_m_usd: 1.25,
+                cached_input_per_m_usd: 0.20,
+                output_per_m_usd: 2.50,
+            })
+        } else if m.contains("grok-4.20") || m.contains("grok-4-20") {
             // Grok 4.20: $2/$6, 90% cached discount → $0.20 cached
             Some(Pricing {
                 input_per_m_usd: 2.00,

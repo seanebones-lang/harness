@@ -66,7 +66,7 @@ struct Cli {
     #[arg(long)]
     config: Option<PathBuf>,
 
-    /// Model override (e.g. grok-3, grok-3-fast, grok-3-mini).
+    /// Model override (e.g. grok-4.3, grok-4.1-fast-reasoning, claude-opus-4-7).
     #[arg(long, short)]
     model: Option<String>,
 
@@ -136,7 +136,7 @@ enum Commands {
         /// Directory containing harness source (defaults to current dir).
         #[arg(long)]
         src: Option<PathBuf>,
-        /// Grok model to use (recommend grok-3 for self-dev).
+        /// Model for self-dev (default: same as main session model, e.g. claude-sonnet-4-6).
         #[arg(long)]
         model: Option<String>,
     },
@@ -500,7 +500,7 @@ async fn main() -> Result<()> {
     let has_ollama = cfg.providers.contains_key("ollama");
 
     if !has_anthropic && !has_xai && !has_openai && !has_ollama && cfg.providers.is_empty() {
-        eprintln!("harness: no API key found.\n\nSet one of:\n  ANTHROPIC_API_KEY (recommended — claude-sonnet-4-6)\n  XAI_API_KEY       (grok-4.20)\n  OPENAI_API_KEY    (gpt-5.5)\n\nOr run: harness doctor  for a guided setup.");
+        eprintln!("harness: no API key found.\n\nSet one of:\n  ANTHROPIC_API_KEY (recommended — claude-sonnet-4-6)\n  XAI_API_KEY       (grok-4.3)\n  OPENAI_API_KEY    (gpt-5.5)\n\nOr run: harness doctor  for a guided setup.");
         std::process::exit(1);
     }
 
@@ -511,7 +511,7 @@ async fn main() -> Result<()> {
             if has_anthropic {
                 "claude-sonnet-4-6".to_string()
             } else if has_xai {
-                "grok-4.20-0309-reasoning".to_string()
+                "grok-4.3".to_string()
             } else if has_openai {
                 "gpt-5.5".to_string()
             } else {
@@ -568,7 +568,7 @@ async fn main() -> Result<()> {
             cfg.memory
                 .embed_model
                 .clone()
-                .unwrap_or_else(|| "grok-3-embed-english".into()),
+                .unwrap_or_else(|| "nomic-embed-text".into()),
         )
     } else {
         None
@@ -1607,9 +1607,7 @@ fn list_sessions(store: &harness_memory::SessionStore) -> Result<()> {
 }
 
 fn run_init(project: bool, force: bool) -> Result<()> {
-    use std::io::{self, Write};
-
-    // ── Global config ──────────────────────────────────────────────────────────
+    // Match `scripts/install.sh`: Anthropic-oriented template, no secrets in file.
     let global_dir = dirs::home_dir()
         .context("cannot determine home directory")?
         .join(".harness");
@@ -1620,45 +1618,42 @@ fn run_init(project: bool, force: bool) -> Result<()> {
         println!("Global config already exists at {}", global_cfg.display());
         println!("Run `harness init --force` to overwrite it.");
     } else {
-        // Read API key from env, .env (already loaded by dotenvy), or prompt.
-        let api_key = std::env::var("XAI_API_KEY").unwrap_or_default();
-        let api_key = if api_key.is_empty() {
-            print!("Enter your xAI API key (from https://console.x.ai): ");
-            io::stdout().flush()?;
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            input.trim().to_string()
-        } else {
-            println!("Found XAI_API_KEY in environment — using it.");
-            api_key
-        };
-
-        let config_contents = format!(
-            r#"[provider]
-api_key = "{api_key}"
-model = "grok-3-fast"
+        let config_contents = r#"[provider]
+# api_key = "sk-ant-..."   # or set ANTHROPIC_API_KEY env var
+model = "claude-sonnet-4-6"
 max_tokens = 8192
 temperature = 0.7
 
 [memory]
 enabled = true
-embed_model = "grok-3-embed-english"
+embed_model = "nomic-embed-text"
 
 [agent]
 system_prompt = """
 You are a powerful coding assistant running in a terminal.
-You have access to tools to read and write files, run shell commands, search code, and patch files.
-You can spawn sub-agents for parallel tasks using spawn_agent.
-Browser automation is available when Chrome runs with --remote-debugging-port=9222.
-MCP tools are loaded automatically from .harness/mcp.json if present.
-Be concise and precise. Prefer making changes over explaining; show diffs when you edit files.
-Always verify your changes work by running relevant tests or build commands.
+
+Available tools:
+  read_file, write_file     — read or overwrite files
+  patch_file                — surgical old→new text replacement (prefer this over write_file for edits)
+  list_dir                  — list directory contents
+  shell                     — run shell commands (build, test, git, etc.)
+  search_code               — regex search across the codebase
+  spawn_agent               — run a sub-agent with base tools for parallel tasks
+  browser (when enabled)    — Chrome CDP: navigate, screenshot, click, fill forms
+  MCP tools (when loaded)   — any tools registered via .harness/mcp.json
+
+Guidelines:
+  - Prefer patch_file over write_file for targeted edits.
+  - Always run tests or build commands after changes to verify correctness.
+  - Be concise. Prefer making changes over explaining them.
+  - When editing multiple files, use spawn_agent for parallelism.
+  - In plan mode (--plan flag), destructive calls pause for user approval.
 """
-"#
-        );
+"#;
         std::fs::write(&global_cfg, config_contents)?;
         println!("Created global config at {}", global_cfg.display());
         println!("Edit it any time: {}", global_cfg.display());
+        println!("Set ANTHROPIC_API_KEY (or XAI_API_KEY / OPENAI_API_KEY) before running harness.");
     }
 
     // ── Project config ─────────────────────────────────────────────────────────
@@ -1829,7 +1824,11 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
         (
             "xai",
             &[
-                ("grok-4.20-0309-reasoning", "$2/$6   · 2M ctx · reasoning ★"),
+                ("grok-4.3", "$1.25/$2.50 · 1M ctx · flagship ★"),
+                (
+                    "grok-4.20-0309-reasoning",
+                    "$2/$6   · pinned 2M ctx snapshot",
+                ),
                 ("grok-4-1-fast-reasoning", "$0.20/$0.50 · fast"),
             ],
         ),
@@ -1888,7 +1887,7 @@ async fn handle_models_command(set: Option<String>, cfg: &config::Config) -> Res
     }
 
     // List all providers + models
-    println!("Available models (April 2026):");
+    println!("Available models (May 2026):");
     println!();
     for (provider, models) in catalogue {
         let env_key = match *provider {
@@ -1937,7 +1936,7 @@ async fn handle_doctor_command(cfg: &config::Config) {
             "Anthropic Claude 4.x",
             "claude-sonnet-4-6",
         ),
-        ("XAI_API_KEY", "xAI Grok 4.x", "grok-4.20-0309-reasoning"),
+        ("XAI_API_KEY", "xAI Grok 4.x", "grok-4.3"),
         ("OPENAI_API_KEY", "OpenAI GPT-5.x", "gpt-5.5"),
     ];
     println!("  API Keys:");

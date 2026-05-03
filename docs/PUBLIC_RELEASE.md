@@ -15,10 +15,12 @@ Run from the repo root:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all
 cargo build --profile release-lto
 ```
+
+CI runs these steps on **ubuntu-latest**, **macos-latest**, and **windows-latest**; keep local gates aligned before tagging. The same workflow includes an **`install-scripts`** job that builds via [`scripts/install.sh`](../scripts/install.sh) (Ubuntu + macOS) and [`scripts/install.ps1`](../scripts/install.ps1) (Windows).
 
 Confirm `harness --version` after install (or `target/release-lto/harness --version`).
 
@@ -39,7 +41,11 @@ Check at least one provider end-to-end:
 
 On a clean machine (or clean clone + new shell):
 
-- [ ] Follow **Quick Start** in [`README.md`](../README.md) only (no extra tribal knowledge).
+- [ ] **README Quick Start:** [`README.md`](../README.md) — **macOS/Linux bash**, **Windows PowerShell**, and the **one-liner / `scripts/install.sh`** / **`scripts/install.ps1`** options.
+- [ ] **Install scripts from a clone** (same idea as CI `install-scripts` job):
+  - **Unix:** `export HARNESS_INSTALL_DIR=/tmp/harness-rehearse-bin && mkdir -p "$HARNESS_INSTALL_DIR" && bash scripts/install.sh && "$HARNESS_INSTALL_DIR/harness" --version`
+  - **Windows (PowerShell):** `$env:HARNESS_INSTALL_DIR = "$env:TEMP\harness-rehearse-bin"; New-Item -ItemType Directory -Force -Path $env:HARNESS_INSTALL_DIR | Out-Null; pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1; & "$env:HARNESS_INSTALL_DIR\harness.exe" --version`
+- [ ] **`harness init`** once if you rely on generated global config (install scripts may already write `~/.harness/config.toml`).
 - [ ] `harness doctor` reports sensible defaults (keys may be missing until export).
 
 ## 5) Go / no-go
@@ -56,14 +62,14 @@ Record here when you run this checklist (update the table per release).
 
 | Check | Notes |
 | ----- | ----- |
-| Automated gates §2 | `cargo fmt`, `clippy -D warnings`, `test`, `release-lto` |
+| Automated gates §2 | `cargo fmt`, `clippy --all-features -D warnings`, `test --all`, `release-lto` |
 | `harness --version` | After install or `target/release-lto/harness` |
 | `harness doctor` | Keys/tooling summary |
 | One-shot prompt | e.g. `harness "Reply with exactly: OK"` |
 | `harness serve` + `/api/health` | JSON `{"status":"ok",...}` |
 | `harness sessions` / `harness export <id>` | Markdown output |
 | TUI `harness` | Manual — send a message, confirm streaming |
-| `gh auth` + `/pr`, `/issues` | Manual — requires GitHub CLI |
+| Install scripts | `scripts/install.sh` / `install.ps1` + `harness --version` |
 
 ### Snapshot for current tree (fill in when cutting a release)
 

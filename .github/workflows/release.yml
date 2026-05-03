@@ -1,4 +1,5 @@
 name: Release
+# Policy: tag only when `main` CI is green (`.github/workflows/ci.yml`) and docs checks in `docs/PUBLIC_RELEASE.md` are satisfied.
 
 on:
   push:
@@ -19,16 +20,20 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             artifact: harness-linux-x86_64
+            smoke: native
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-latest
             artifact: harness-linux-aarch64
             cross: true
+            smoke: verify
           - target: x86_64-apple-darwin
             runner: macos-latest
             artifact: harness-macos-x86_64
+            smoke: rosetta
           - target: aarch64-apple-darwin
             runner: macos-latest
             artifact: harness-macos-aarch64
+            smoke: native
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
             artifact: harness-windows-x86_64.exe
@@ -41,9 +46,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Pinned crate version (not `cross` git HEAD) so tag builds stay reproducible.
       - name: Install cross (for aarch64 Linux)
         if: matrix.cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --locked --version 0.2.5
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
@@ -67,6 +73,36 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           cp target/${{ matrix.target }}/release-lto/harness.exe ${{ matrix.artifact }}
+
+      - name: Smoke test binary (Unix — native)
+        if: runner.os != 'Windows' && matrix.smoke == 'native'
+        run: |
+          test -f "${{ matrix.artifact }}"
+          chmod +x "${{ matrix.artifact }}"
+          "./${{ matrix.artifact }}" --version
+          "./${{ matrix.artifact }}" --help >/dev/null
+
+      - name: Smoke test binary (Unix — Rosetta x86_64)
+        if: runner.os != 'Windows' && matrix.smoke == 'rosetta'
+        run: |
+          test -f "${{ matrix.artifact }}"
+          chmod +x "${{ matrix.artifact }}"
+          arch -x86_64 "./${{ matrix.artifact }}" --version
+          arch -x86_64 "./${{ matrix.artifact }}" --help >/dev/null
+
+      - name: Verify binary artifact (cross-built; cannot execute on host)
+        if: runner.os != 'Windows' && matrix.smoke == 'verify'
+        run: |
+          test -f "${{ matrix.artifact }}"
+          test -s "${{ matrix.artifact }}"
+          file "${{ matrix.artifact }}"
+
+      - name: Smoke test binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (!(Test-Path -LiteralPath '${{ matrix.artifact }}')) { throw 'artifact missing' }
+          & ".\${{ matrix.artifact }}" --version
+          & ".\${{ matrix.artifact }}" --help | Out-Null
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

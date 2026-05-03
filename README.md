@@ -1,4 +1,4 @@
-# Harness — Rust Coding Agent (April 2026)
+# Harness — Rust Coding Agent (May 2026)
 
 Harness is a terminal-based AI coding assistant. It reads files, edits code, runs shell commands, searches your codebase, manages sessions with semantic memory, and can spawn sub-agents for parallel tasks.
 
@@ -6,16 +6,17 @@ Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI �
 
 **Status:** Beta — fine for daily use; expect ongoing polish. Before tagging a release, run the gates in [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md). Latest go/no-go notes: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md).
 
----
+**Plain-language guide:** [`SEAN START HERE/USER MANUAL.md`](SEAN%20START%20HERE/USER%20MANUAL.md) — complements this README with the same first-run story.
 
 ## Prerequisites
 
-- **Rust** (stable, edition 2021) via [rustup](https://rustup.rs)
-- **Platform:** macOS and Linux are primary targets; Windows may work but is less exercised in CI
+- **Rust** (stable, edition 2021) via [rustup](https://rustup.rs) — on Windows, use the **MSVC** toolchain (Visual Studio C++ build tools) unless you know you need GNU.
+- **Git** — required to clone the repo (and **Git for Windows** is recommended on Windows so `sh.exe` is on `PATH` for the `shell` tool’s POSIX behavior).
+- **Platforms:** **macOS**, **Linux**, and **Windows** are all exercised in [CI](.github/workflows/ci.yml) (`fmt`, `clippy --all-features`, `test`, `build`). Optional features (voice, computer-use, desktop notifications) vary by OS — see **Optional features by platform** below.
 
 ---
 
-## Quick Start (3 commands)
+## Quick Start (macOS / Linux)
 
 ```bash
 # 1. Build and install (replace clone URL if you use a fork)
@@ -30,28 +31,62 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # preferred — unlocks prompt caching +
 export XAI_API_KEY="xai-..."            # fallback
 export OPENAI_API_KEY="sk-..."          # fallback
 
-# 3. Run from any project
+# 3. Run from any project (optional: run `harness init` once first — seeds ~/.harness/config.toml)
 cd /path/to/your/project
 harness
 ```
 
-That's it. Harness auto-detects which API keys are set and picks the best available provider.
+**Alternative — install script (macOS / Linux):** from the repo root after clone, you can use [`scripts/install.sh`](scripts/install.sh) (sets `HARNESS_INSTALL_DIR` if you want a non-default bin dir — see script header). Review any `curl | bash` one-liner before running.
+
+Prebuilt binaries for tagged releases may be attached as artifacts on [GitHub Releases](https://github.com/seanebones-lang/harness/releases) (see `.github/workflows/release.yml`). Prefer building from source or CI-verified `main` for the latest fixes.
+
+### Quick Start (Windows, PowerShell)
+
+From a directory where you want the source (or use an existing clone and `cd` into it):
+
+```powershell
+# Clone (skip if you already have the repo)
+git clone https://github.com/seanebones-lang/harness.git
+cd harness
+
+cargo build --profile release-lto
+New-Item -ItemType Directory -Force -Path "$HOME\.local\bin" | Out-Null
+Copy-Item -Force .\target\release-lto\harness.exe "$HOME\.local\bin\harness.exe"
+# Add %USERPROFILE%\.local\bin to your User PATH, then open a new terminal.
+
+$env:ANTHROPIC_API_KEY = "sk-ant-..."   # or XAI_API_KEY / OPENAI_API_KEY
+cd C:\path\to\your\project
+harness
+```
+
+Or run the installer script: `.\scripts\install.ps1` (from a clone) or download raw `install.ps1` from the repo and execute in PowerShell.
+
+### Quality gates (match CI)
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all
+cargo build --profile release-lto
+```
+
+That's it. Harness auto-detects which API keys are set and picks the best available provider. Run **`harness init`** once if you want a generated global config under `~/.harness/` (install scripts may already create `config.toml`).
 
 ### Development snapshot
 
-- **`TODO.md`** — remaining work is mostly **Polish** (ambient abstraction, browser/ambient test coverage, session list timing). Older Critical/Important backlog items (xAI streaming usage metadata, multi-tool-call handling, embed retries, TUI `--resume`, ambient shutdown on Ctrl+C, web UI session continuity, CLI session delete, clippy cleanliness) are **implemented** on current `main`.
-- **Quality gates:** run `cargo test` (workspace tests, no keys), `cargo clippy --all-targets -- -D warnings`, and `cargo build --profile release-lto`. Manual provider smoke checks remain in **`TODO.md`**.
+- **`TODO.md`** — remaining work is mostly **Polish** (ambient abstraction, browser/ambient test coverage, session list timing). Older Critical/Important backlog items are **implemented** on current `main`.
+- **CI:** Pull requests and `main` run **fmt**, **clippy `--all-features`**, **tests**, **build**, and **install-script smoke jobs** (`scripts/install.sh` on Ubuntu + macOS, `scripts/install.ps1` on Windows) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Tag **GitHub Releases** binaries are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml); ship only when `main` is green and [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) is satisfied.
 
 See [`CLAUDE.md`](CLAUDE.md) for module-level detail and contributor hooks (`core.hooksPath`).
 
 ---
 
-## April 2026 Model Lineup
+## May 2026 Model Lineup
 
 | Provider  | Default model                    | Fast model                   | Heavy model          |
 |-----------|----------------------------------|------------------------------|----------------------|
 | Anthropic | `claude-sonnet-4-6` ($3/$15/M)   | `claude-haiku-4-5` ($1/$5/M) | `claude-opus-4-7` ($5/$25/M, thinking) |
-| xAI       | `grok-4.20-0309-reasoning` ($2/$6/M) | `grok-4-1-fast-reasoning` ($0.20/$0.50/M) | same |
+| xAI       | `grok-4.3` ($1.25/$2.50/M) | `grok-4-1-fast-reasoning` ($0.20/$0.50/M) | same |
 | OpenAI    | `gpt-5.5` ($5/$30/M)             | `gpt-5.4-mini` ($0.75/$4.50/M) | same |
 | Ollama    | `qwen3-coder:30b` (local)        | same                         | same                 |
 
@@ -59,6 +94,7 @@ Switch models interactively:
 ```bash
 harness models                                 # list all models
 harness models --set anthropic:claude-opus-4-7 # switch to Opus for a project
+harness models --set xai:grok-4.3              # xAI default flagship
 ```
 
 ---
@@ -120,6 +156,20 @@ Full cheat sheet: [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md). Phase E highlights:
 | `/schema …`          | Strict JSON output schema (see docs)        |
 | `/obsidian save`     | Save reply to Obsidian (when configured)    |
 | `/help`              | Full command list                           |
+
+---
+
+## Optional features by platform
+
+| Feature | macOS | Linux | Windows | Notes |
+|--------|-------|-------|---------|--------|
+| **Core CLI / TUI** | Yes | Yes | Yes | Same `harness` binary; CI covers all three. |
+| **`shell` tool** | `sh -c` | `sh -c` | Git `sh`/`bash` if on `PATH`; else **`cmd.exe /C`** (limited POSIX) | Install **Git for Windows** and ensure `usr\bin` is on `PATH` for best results. |
+| **GitHub `/pr`, `/issues`, `harness pr`** | With `gh` | With `gh` | With `gh` | Run `gh auth login` once. |
+| **Desktop notifications** | Notification Center | **libnotify** (e.g. `libnotify-bin`) | Varies / may be limited | See [`config/default.toml`](config/default.toml). |
+| **Voice (`harness voice`, Ctrl+S)** | `sox` / `afrecord` + Whisper or `whisper-cli` | `sox rec` + backends | Not first-class | Prefer OpenAI Whisper API or local tooling you already use. |
+| **Computer use** | **`cliclick`** (`brew install cliclick`) | **`xdotool`** | **Not supported** | Opus 4.7+ only; dangerous — see [`config/default.toml`](config/default.toml). |
+| **VS Code extension** | Yes | Yes | **Unix socket** — use **WSL** or wait for a Windows transport | Default socket `~/.harness/daemon.sock`. |
 
 ---
 
@@ -255,7 +305,7 @@ harness sync pull                # pull + decrypt (on another machine)
 harness sync status              # show recent syncs
 ```
 
-Passphrase is stored in macOS Keychain (or `~/.harness/.sync-key` as fallback).
+Passphrase storage: **macOS** can use Keychain; **Linux and Windows** typically use the file fallback `~/.harness/.sync-key` (mode `0600` on Unix) — see sync code paths in the repo and [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -269,22 +319,19 @@ harness voice --realtime         # OpenAI Realtime API duplex (requires OPENAI_A
 
 In the TUI use **`Ctrl+S`** for push-to-talk style recording (see [`docs/MIGRATION.md`](docs/MIGRATION.md) if you still use Ctrl+V).
 
-Backends:
-- **OpenAI Whisper** (`OPENAI_API_KEY` set) — uses `gpt-4o-transcribe`
-- **Local** (`whisper-cli` on `$PATH`) — uses `whisper.cpp`
+OS capture backends and caveats: see **Optional features by platform**. Summarized: **OpenAI Whisper** (`OPENAI_API_KEY`) uses `gpt-4o-transcribe`; **local** `whisper-cli` uses whisper.cpp where installed.
 
 ---
 
-## Computer use (macOS, opt-in)
+## Computer use (opt-in, dangerous)
 
-Enable in `~/.harness/config.toml`:
+Enable in `~/.harness/config.toml` or `.harness/config.toml`:
 ```toml
 [computer_use]
 enabled = true   # DANGER: agent can control mouse/keyboard
 ```
 
-Requires `cliclick` (`brew install cliclick`). Only works with Claude Opus 4.7+.
-TUI shows a red `[COMPUTER USE LIVE]` banner when active.
+**Platforms:** **macOS** needs **`cliclick`**. **Linux** needs **`xdotool`**. **Windows** is not supported for computer use today. Requires **Claude Opus 4.7+**. The TUI shows `[COMPUTER USE LIVE]` when active. See [`config/default.toml`](config/default.toml) for comments.
 
 ---
 
@@ -322,7 +369,7 @@ Requires `harness` on `PATH` for auto-spawn of `harness daemon`. See [`apps/desk
 
 ## VS Code extension (optional)
 
-`extensions/vscode/` — side-panel chat and inline edit against the harness daemon (Unix socket). Install dependencies with `npm install`, then **Run Extension** from VS Code or package with `vsce`.
+`extensions/vscode/` — side-panel chat against the harness daemon over a **Unix domain socket** (`~/.harness/daemon.sock` by default). **Windows:** use **WSL** for a supported setup today, or run the TUI / `harness serve` natively. Install with `npm install`, then **Run Extension** or package with `vsce`.
 
 ---
 
@@ -420,9 +467,11 @@ For a developer deep-dive see [`CLAUDE.md`](CLAUDE.md). User-facing migration no
 
 | Symptom | What to try |
 |--------|--------------|
-| `command not found: harness` | Ensure `~/.local/bin` is on `PATH` (see Quick Start). Run `hash -r` or open a new shell. |
-| API / auth errors | `export ANTHROPIC_API_KEY=…` (or another provider key). Run `harness status` and `harness doctor`. |
-| `/pr`, `/issues`, `/ci` fail | Install and log in to GitHub CLI: `gh auth login`, then `gh auth status`. |
+| `command not found: harness` | **Unix:** add `~/.local/bin` to `PATH` (`export PATH="$HOME/.local/bin:$PATH"`). Run `hash -r` or open a new shell. **Windows:** add `%USERPROFILE%\.local\bin` to User **Path** and open a new terminal. |
+| API / auth errors | **Unix:** `export ANTHROPIC_API_KEY=…`. **Windows:** `$env:ANTHROPIC_API_KEY='…'`. Run `harness status` and `harness doctor`. |
+| `shell` tool behaves oddly on Windows | Install **Git for Windows** so `sh.exe` is on `PATH`; without it Harness falls back to `cmd.exe` (not POSIX). |
+| `/pr`, `/issues`, `/ci` fail | Install GitHub CLI on your OS: `gh auth login`, then `gh auth status`. |
+| Clippy fails locally but CI passes | Run the same command as CI: `cargo clippy --all-targets --all-features -- -D warnings`. |
 | Checkpoint / `/undo` says not a git repo | Run `git init` in the project root (Harness uses git for checkpoints). |
 | Web UI empty or connection errors | Start the server: `harness serve --addr 127.0.0.1:8787`, then open the URL it prints. |
 | Browser / CDP tool errors | Chrome must run with `--remote-debugging-port` matching `[browser].url` in config (see `config/default.toml`). |
@@ -435,7 +484,7 @@ Non-exhaustive list; details live in [`TODO.md`](TODO.md):
 
 - **Polish:** ambient provider abstraction, extra `harness-browser` tests, optional ambient consolidation tests.
 - **UX:** session titles from async auto-naming can lag the first `harness sessions` list right after save.
-- **`gh` features:** PR/issue/CI slash commands require the `gh` CLI and a logged-in account.
+- **`shell` on Windows:** prefers Git `sh`/`bash`; without them commands run via `cmd.exe` (not POSIX).
 
 ---
 

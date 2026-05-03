@@ -7,9 +7,12 @@
 //!
 //! # Usage
 //! ```rust,no_run
+//! # fn main() -> anyhow::Result<()> {
 //! use harness_term_graphics::{display_image, Backend};
 //! let backend = Backend::detect();
 //! display_image("screenshot.png", 80, 24, backend)?;
+//! # Ok(())
+//! # }
 //! ```
 
 use anyhow::{Context, Result};

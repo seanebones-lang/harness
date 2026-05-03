@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -42,12 +42,45 @@ jobs:
       - name: Test
         run: cargo test --all
 
-  # Lighter check for Windows (no full test suite — shell tool differs)
-  build-windows:
-    name: Build (windows-latest)
-    runs-on: windows-latest
+  install-scripts:
+    name: Install script (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            kind: unix
+          - os: macos-latest
+            kind: unix
+          - os: windows-latest
+            kind: windows
+
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run scripts/install.sh
+        if: matrix.kind == 'unix'
+        env:
+          HARNESS_INSTALL_DIR: ${{ runner.temp }}/harness-ci-bin
+        run: |
+          mkdir -p "$HARNESS_INSTALL_DIR"
+          bash scripts/install.sh
+          "$HARNESS_INSTALL_DIR/harness" --version
+          "$HARNESS_INSTALL_DIR/harness" --help >/dev/null
+
+      - name: Run scripts/install.ps1
+        if: matrix.kind == 'windows'
+        env:
+          HARNESS_INSTALL_DIR: ${{ runner.temp }}\harness-ci-bin
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:HARNESS_INSTALL_DIR | Out-Null
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1
+          & "$env:HARNESS_INSTALL_DIR\harness.exe" --version
+          & "$env:HARNESS_INSTALL_DIR\harness.exe" --help | Out-Null
