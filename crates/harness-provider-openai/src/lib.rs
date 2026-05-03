@@ -508,19 +508,26 @@ mod openai_sse_tests {
         bytes::Bytes::from(s)
     }
 
+    async fn collect(body: bytes::Bytes) -> Vec<Delta> {
+        let stream = futures::stream::once(async move { Ok::<_, reqwest::Error>(body) });
+        let parsed = parse_openai_sse(stream);
+        tokio::pin!(parsed);
+        let mut out = Vec::new();
+        while let Some(item) = parsed.next().await {
+            out.push(item.expect("delta"));
+        }
+        out
+    }
+
     #[tokio::test]
     async fn emits_all_parallel_tool_calls_before_done() {
         let body = sse_bytes(&[
             r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"tool_a","arguments":""}}]}}]}"#,
             r#"data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_b","function":{"name":"tool_b","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#,
         ]);
-        let stream = futures::stream::once(async move { Ok::<_, reqwest::Error>(body) });
-        let parsed = parse_openai_sse(stream);
-        tokio::pin!(parsed);
         let mut tools = Vec::new();
         let mut last_done = None;
-        while let Some(item) = parsed.next().await {
-            let d = item.expect("delta");
+        for d in collect(body).await {
             match d {
                 Delta::ToolCall(tc) => tools.push((tc.function.name, tc.id)),
                 Delta::Done { stop_reason } => last_done = Some(stop_reason),
@@ -535,5 +542,148 @@ mod openai_sse_tests {
             ]
         );
         assert_eq!(last_done, Some(StopReason::ToolUse));
+    }
+
+    #[tokio::test]
+    async fn three_parallel_tool_calls_emitted_in_index_order() {
+        // Send the indices out of order to confirm we sort by index.
+        let body = sse_bytes(&[
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":2,"id":"c","function":{"name":"t_c","arguments":"{}"}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","function":{"name":"t_a","arguments":"{}"}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"b","function":{"name":"t_b","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#,
+        ]);
+        let names: Vec<String> = collect(body)
+            .await
+            .into_iter()
+            .filter_map(|d| match d {
+                Delta::ToolCall(tc) => Some(tc.function.name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names, vec!["t_a", "t_b", "t_c"]);
+    }
+
+    #[tokio::test]
+    async fn streams_text_content_chunks_in_order() {
+        let body = sse_bytes(&[
+            r#"data: {"choices":[{"delta":{"content":"Hello"}}]}"#,
+            r#"data: {"choices":[{"delta":{"content":", world"}}]}"#,
+            r#"data: {"choices":[{"delta":{"content":"!"},"finish_reason":"stop"}]}"#,
+        ]);
+        let mut text = String::new();
+        let mut done = None;
+        for d in collect(body).await {
+            match d {
+                Delta::Text(t) => text.push_str(&t),
+                Delta::Done { stop_reason } => done = Some(stop_reason),
+                _ => {}
+            }
+        }
+        assert_eq!(text, "Hello, world!");
+        assert_eq!(done, Some(StopReason::EndTurn));
+    }
+
+    #[tokio::test]
+    async fn emits_usage_delta_when_present() {
+        let body = sse_bytes(&[
+            r#"data: {"choices":[{"delta":{"content":"hi"}}]}"#,
+            r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":42,"completion_tokens":7}}"#,
+        ]);
+        let mut usage = None;
+        for d in collect(body).await {
+            if let Delta::Usage {
+                input_tokens,
+                output_tokens,
+            } = d
+            {
+                usage = Some((input_tokens, output_tokens));
+            }
+        }
+        assert_eq!(usage, Some((42, 7)));
+    }
+
+    #[tokio::test]
+    async fn done_terminator_stops_stream_with_endturn() {
+        let body = sse_bytes(&[
+            r#"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
+            r#"data: [DONE]"#,
+            // Anything after [DONE] must be ignored.
+            r#"data: {"choices":[{"delta":{"content":"after"}}]}"#,
+        ]);
+        let collected = collect(body).await;
+        let text: String = collected
+            .iter()
+            .filter_map(|d| match d {
+                Delta::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "ok", "must not stream content after [DONE]");
+        assert!(matches!(
+            collected.last(),
+            Some(Delta::Done {
+                stop_reason: StopReason::EndTurn
+            })
+        ));
+    }
+
+    #[tokio::test]
+    async fn malformed_json_lines_are_skipped_not_panicked() {
+        let body = sse_bytes(&[
+            r#"data: {not valid json"#,
+            r#"data: {"choices":[{"delta":{"content":"survived"}}]}"#,
+            r#"data: also garbage"#,
+            r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        ]);
+        let collected = collect(body).await;
+        let text: String = collected
+            .iter()
+            .filter_map(|d| match d {
+                Delta::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "survived");
+        assert!(matches!(collected.last(), Some(Delta::Done { .. })));
+    }
+
+    #[tokio::test]
+    async fn multi_chunk_tool_arguments_concatenate() {
+        // OpenAI streams `function.arguments` in tiny pieces; they must concatenate.
+        let body = sse_bytes(&[
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"x","function":{"name":"do_thing","arguments":"{\"a\":"}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1,\"b\":"}}]}}]}"#,
+            r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"2}"}}]},"finish_reason":"tool_calls"}]}"#,
+        ]);
+        let calls: Vec<ToolCall> = collect(body)
+            .await
+            .into_iter()
+            .filter_map(|d| match d {
+                Delta::ToolCall(tc) => Some(tc),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].function.name, "do_thing");
+        assert_eq!(calls[0].function.arguments, r#"{"a":1,"b":2}"#);
+    }
+
+    #[tokio::test]
+    async fn empty_content_chunks_are_skipped() {
+        // OpenAI sometimes emits `delta.content = ""` keep-alives; do not surface them.
+        let body = sse_bytes(&[
+            r#"data: {"choices":[{"delta":{"content":""}}]}"#,
+            r#"data: {"choices":[{"delta":{"content":"real"}}]}"#,
+            r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+        ]);
+        let texts: Vec<String> = collect(body)
+            .await
+            .into_iter()
+            .filter_map(|d| match d {
+                Delta::Text(t) => Some(t),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, vec!["real".to_string()]);
     }
 }
