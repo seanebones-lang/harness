@@ -89,21 +89,33 @@ impl LspTransport {
     /// Read one LSP message. Skips notifications (no id).
     pub async fn read_response(&mut self) -> Result<Response> {
         loop {
-            let mut content_length: usize = 0;
+            let mut content_length: Option<usize> = None;
             loop {
                 let mut line = String::new();
-                self.stdout.read_line(&mut line).await?;
+                let n = self.stdout.read_line(&mut line).await?;
+                if n == 0 {
+                    anyhow::bail!("LSP: unexpected EOF while reading headers");
+                }
                 let line = line.trim();
                 if line.is_empty() {
-                    break;
+                    // Blank line ends the header block only after we have seen Content-Length.
+                    if content_length.is_some() {
+                        break;
+                    }
+                    // Skip stray leading newlines / empty lines before the first header.
+                    continue;
                 }
                 if let Some(rest) = line.strip_prefix("Content-Length: ") {
-                    content_length = rest.trim().parse()?;
+                    content_length = Some(rest.trim().parse()?);
                 }
             }
 
+            let content_length = content_length
+                .ok_or_else(|| anyhow::anyhow!("LSP: missing Content-Length header"))?;
+
+            // Some servers emit `Content-Length: 0` keep-alives or empty frames; skip them.
             if content_length == 0 {
-                anyhow::bail!("LSP: received message with zero content length");
+                continue;
             }
 
             let mut body = vec![0u8; content_length];

@@ -36,6 +36,16 @@ pub struct Config {
     /// Router configuration (fast/heavy/embed model routing, fallback order).
     #[serde(default)]
     pub router: harness_provider_router::RouterConfig,
+    /// Tool sandbox / filesystem jail (`[tools]` in config).
+    #[serde(default)]
+    pub tools: ToolsConfig,
+}
+
+/// Tools and sandbox settings.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct ToolsConfig {
+    /// Filesystem sandbox: `strict` (default), `relaxed`, or `off`.
+    pub sandbox: Option<String>,
 }
 
 /// Shell execution safety configuration.
@@ -50,6 +60,8 @@ pub struct ShellConfig {
     pub log_path: Option<PathBuf>,
     /// Set to true to disable command logging entirely.
     pub no_log: Option<bool>,
+    /// If set, only these command prefixes (e.g. `/usr/bin/git`) may appear as argv0 for absolute-path invocations.
+    pub cmd_allowlist: Option<Vec<String>>,
 }
 
 impl ShellConfig {

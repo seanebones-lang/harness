@@ -7,6 +7,7 @@ pub mod git;
 pub mod search;
 pub mod selfdev;
 pub mod shell;
+pub mod swarm_tool;
 pub mod test_runner;
 
 pub use agent::SpawnAgentTool;
@@ -18,4 +19,5 @@ pub use git::GitTool;
 pub use search::SearchCodeTool;
 pub use selfdev::{RebuildSelfTool, ReloadSelfTool};
 pub use shell::{ShellConfig, ShellTool};
+pub use swarm_tool::{SpawnSwarmTool, SwarmEnqueueRunner};
 pub use test_runner::TestRunnerTool;

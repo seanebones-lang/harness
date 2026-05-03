@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_mut)]
 //! OpenTelemetry observability for Harness.
 //!
 //! Instruments agent turns, tool calls, embed operations, and MCP calls
@@ -6,19 +5,23 @@
 //! - A local OTLP endpoint (e.g. Jaeger, Grafana Tempo)
 //! - `~/.harness/traces/` as JSON files for offline replay
 //!
+//! `Tracer` / `ObservabilityConfig` are the in-process API; `harness trace` CLI currently reads JSONL files only.
+//!
 //! Configure in `~/.harness/config.toml`:
 //! ```toml
 //! [observability]
 //! enabled = true
-//! otlp_endpoint = "http://localhost:4318"   # optional OTLP/HTTP export
-//! local_traces = true                        # write to ~/.harness/traces/
+//! otlp_experimental_endpoint = "http://localhost:4318"   # optional; simplified JSON exporter, not full OTLP
+//! local_traces = true                                     # write to ~/.harness/traces/
 //! ```
+#![allow(dead_code)]
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tracing::warn;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -26,8 +29,9 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 pub struct ObservabilityConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// OTLP/HTTP endpoint (e.g. http://localhost:4318).
-    pub otlp_endpoint: Option<String>,
+    /// Experimental OTLP/HTTP JSON export (non-spec trace IDs / timestamps). Alias: `otlp_endpoint`.
+    #[serde(default, alias = "otlp_endpoint")]
+    pub otlp_experimental_endpoint: Option<String>,
     /// Write traces to ~/.harness/traces/ as JSONL.
     #[serde(default = "default_true")]
     pub local_traces: bool,
@@ -111,7 +115,7 @@ impl SpanBuilder {
         span
     }
 
-    pub fn finish_err(mut self, err: &str) -> Span {
+    pub fn finish_err(self, err: &str) -> Span {
         let end_ts_us = now_us();
         let duration_ms = self.start.elapsed().as_millis() as u64;
         let span = Span {
@@ -179,11 +183,13 @@ impl Tracer {
         if self.config.local_traces {
             let _ = write_local_trace(&span);
         }
-        if let Some(ref endpoint) = self.config.otlp_endpoint {
+        if let Some(ref endpoint) = self.config.otlp_experimental_endpoint {
             let endpoint = endpoint.clone();
             let span_clone = span.clone();
             tokio::spawn(async move {
-                let _ = export_otlp(&span_clone, &endpoint).await;
+                if let Err(e) = export_otlp(&span_clone, &endpoint).await {
+                    warn!(endpoint = %endpoint, error = %e, "OTLP experimental export failed");
+                }
             });
         }
     }
@@ -205,7 +211,7 @@ fn write_local_trace(span: &Span) -> Result<()> {
 }
 
 async fn export_otlp(span: &Span, endpoint: &str) -> Result<()> {
-    // OTLP/HTTP JSON format (simplified)
+    // Hand-built JSON resembling OTLP/HTTP JSON; traceId/spanId are not OTLP hex lengths — collectors may reject.
     let payload = serde_json::json!({
         "resourceSpans": [{
             "resource": { "attributes": [{"key": "service.name", "value": {"stringValue": "harness"}}] },
@@ -216,6 +222,7 @@ async fn export_otlp(span: &Span, endpoint: &str) -> Result<()> {
                     "spanId": span.span_id,
                     "parentSpanId": span.parent_span_id,
                     "name": span.name,
+                    // Stored times are microseconds since UNIX epoch; OTLP expects nanoseconds.
                     "startTimeUnixNano": span.start_ts_us * 1000,
                     "endTimeUnixNano": span.end_ts_us * 1000,
                     "attributes": span.attributes.iter().map(|(k, v)| {
@@ -227,8 +234,14 @@ async fn export_otlp(span: &Span, endpoint: &str) -> Result<()> {
     });
 
     let client = reqwest::Client::new();
-    let url = format!("{endpoint}/v1/traces");
-    let _ = client.post(&url).json(&payload).send().await;
+    let base = endpoint.trim_end_matches('/');
+    let url = format!("{base}/v1/traces");
+    let resp = client.post(&url).json(&payload).send().await?;
+    let status = resp.status();
+    let msg = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!("HTTP {}: {}", status, msg);
+    }
     Ok(())
 }
 

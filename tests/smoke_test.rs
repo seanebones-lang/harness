@@ -7,9 +7,15 @@ use harness_provider_core::{
     ChatRequest, Message, Role, ToolCall, ToolCallFunction, ToolDefinition,
 };
 use harness_tools::registry::Tool;
-use harness_tools::tools::{PatchFileTool, ReadFileTool, SearchCodeTool, ShellTool, WriteFileTool};
-use harness_tools::{ToolExecutor, ToolRegistry};
+use harness_tools::tools::{
+    PatchFileTool, ReadFileTool, SearchCodeTool, ShellConfig, ShellTool, WriteFileTool,
+};
+use harness_tools::{SandboxMode, ToolExecutor, ToolRegistry, WorkspaceRoot};
 use tempfile::tempdir;
+
+fn offsandbox(dir: &std::path::Path) -> std::sync::Arc<WorkspaceRoot> {
+    std::sync::Arc::new(WorkspaceRoot::new(dir.to_path_buf(), SandboxMode::Off).unwrap())
+}
 
 // ── Session / store ───────────────────────────────────────────────────────────
 
@@ -174,9 +180,14 @@ async fn read_write_file_tools() {
     let dir = tempdir().unwrap();
     let file_path = dir.path().join("test.txt");
 
+    let ws = offsandbox(dir.path());
     let mut registry = ToolRegistry::new();
-    registry.register(WriteFileTool);
-    registry.register(ReadFileTool);
+    registry.register(WriteFileTool {
+        workspace: ws.clone(),
+    });
+    registry.register(ReadFileTool {
+        workspace: ws.clone(),
+    });
     let executor = ToolExecutor::new(registry);
 
     // Write
@@ -219,8 +230,10 @@ async fn read_write_file_tools() {
 
 #[tokio::test]
 async fn shell_tool_basic() {
+    let dir = tempdir().unwrap();
+    let ws = offsandbox(dir.path());
     let mut registry = ToolRegistry::new();
-    registry.register(ShellTool::default());
+    registry.register(ShellTool::new(ShellConfig::default(), ws));
     let executor = ToolExecutor::new(registry);
 
     let call = ToolCall {
@@ -237,8 +250,10 @@ async fn shell_tool_basic() {
 
 #[tokio::test]
 async fn shell_tool_timeout() {
+    let dir = tempdir().unwrap();
+    let ws = offsandbox(dir.path());
     let mut registry = ToolRegistry::new();
-    registry.register(ShellTool::default());
+    registry.register(ShellTool::new(ShellConfig::default(), ws));
     let executor = ToolExecutor::new(registry);
 
     /// Long-enough command for each platform's shell interpreter.
@@ -300,8 +315,11 @@ async fn patch_file_tool() {
     let path = dir.path().join("code.rs");
     std::fs::write(&path, "fn foo() {\n    let x = 1;\n    x\n}\n").unwrap();
 
+    let ws = offsandbox(dir.path());
     let mut registry = ToolRegistry::new();
-    registry.register(PatchFileTool);
+    registry.register(PatchFileTool {
+        workspace: ws.clone(),
+    });
     let executor = ToolExecutor::new(registry);
 
     // Successful patch

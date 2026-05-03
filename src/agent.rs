@@ -11,7 +11,7 @@ use harness_provider_xai::tool_calls_to_message;
 use harness_tools::ToolExecutor;
 use tracing::debug;
 
-use crate::events::{AgentEvent, EventTx};
+use crate::events::{try_emit, AgentEvent, EventTx};
 
 pub const DEFAULT_SYSTEM: &str = "\
 You are a powerful coding assistant running in a terminal.
@@ -26,6 +26,7 @@ Available tools:
   test_runner               — run project tests with structured pass/fail output
   search_code               — regex search across the codebase
   spawn_agent               — run a sub-agent with base tools for parallel tasks
+  spawn_swarm               — queue parallel background tasks (harness swarm list / result)
   find_definition           — LSP go-to-definition across the codebase
   find_references           — LSP find all references to a symbol
   rename_symbol             — LSP safe rename across files
@@ -142,9 +143,7 @@ pub async fn drive_agent_full(
     response_schema: Option<harness_provider_core::ResponseSchema>,
 ) -> Result<()> {
     let emit = |event: AgentEvent| {
-        if let Some(t) = tx {
-            let _ = t.send(event);
-        }
+        try_emit(tx, event);
     };
 
     // Auto-checkpoint: stash working tree once per turn before destructive tools.

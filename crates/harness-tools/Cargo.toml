@@ -15,6 +15,7 @@ walkdir = { workspace = true }
 ignore = { workspace = true }
 similar = { workspace = true }
 regex = { workspace = true }
+path-clean = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }

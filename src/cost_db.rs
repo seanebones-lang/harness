@@ -8,9 +8,10 @@
 //! - Budget thresholds with TUI warnings and desktop notifications
 
 use anyhow::{Context, Result};
+use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// A single usage record.
 #[derive(Debug, Clone)]
@@ -48,7 +49,7 @@ impl CostDb {
     }
 
     fn migrate(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS usage (
@@ -73,7 +74,7 @@ impl CostDb {
 
     /// Record one turn's usage.
     pub fn record(&self, row: &UsageRow) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO usage (session_id, project, provider, model, ts, in_tok, cached_in, out_tok, native_calls, usd)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -87,7 +88,7 @@ impl CostDb {
 
     /// Total cost in USD for a given time window (seconds since epoch).
     pub fn total_usd_since(&self, since_ts: i64) -> Result<f64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let usd: f64 = conn.query_row(
             "SELECT COALESCE(SUM(usd), 0.0) FROM usage WHERE ts >= ?1",
             params![since_ts],
@@ -98,7 +99,7 @@ impl CostDb {
 
     /// Cost per model since `ts`.
     pub fn by_model_since(&self, since_ts: i64) -> Result<Vec<(String, f64)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT model, SUM(usd) as total FROM usage WHERE ts >= ?1
              GROUP BY model ORDER BY total DESC",
@@ -111,7 +112,7 @@ impl CostDb {
 
     /// Cost per project since `ts`.
     pub fn by_project_since(&self, since_ts: i64) -> Result<Vec<(String, f64)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT project, SUM(usd) as total FROM usage WHERE ts >= ?1
              GROUP BY project ORDER BY total DESC",
@@ -124,7 +125,7 @@ impl CostDb {
 
     /// Most recent N rows, newest first.
     pub fn recent(&self, limit: u32) -> Result<Vec<UsageRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT session_id, project, provider, model, ts, in_tok, cached_in, out_tok, native_calls, usd
              FROM usage ORDER BY ts DESC LIMIT ?1"

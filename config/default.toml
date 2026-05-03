@@ -29,6 +29,7 @@ Available tools:
   shell                     — run shell commands (build, test, git, etc.)
   search_code               — regex search across the codebase
   spawn_agent               — run a sub-agent with base tools for parallel tasks
+  spawn_swarm               — queue parallel background tasks (swarm list / result)
   browser (when enabled)    — Chrome CDP: navigate, screenshot, click, fill forms
   MCP tools (when loaded)   — any tools registered via .harness/mcp.json
 
@@ -50,6 +51,16 @@ embed_model = "nomic-embed-text"
 
 # Override the SQLite path for the memory store.
 # db_path = "~/.harness/memory.db"
+
+[tools]
+# Filesystem sandbox for read_file / write_file / patch_file / list_dir / apply_patch.
+# strict = paths must stay under the workspace root (default).
+# relaxed = warn but allow paths outside the root. off = disable checks.
+sandbox = "strict"
+
+# [shell]
+# Optional allowlist for argv0 when the command starts with an absolute path.
+# cmd_allowlist = ["/usr/bin/git", "/usr/bin/cargo"]
 
 [session]
 # Path to the SQLite sessions database.
@@ -123,7 +134,7 @@ embed_model = "nomic-embed-text"
 # [observability]
 # enabled = true
 # traces_dir = "~/.harness/traces"
-# otlp_endpoint = ""   # e.g. "http://localhost:4318/v1/traces"
+# otlp_experimental_endpoint = ""   # base URL e.g. "http://localhost:4318" → POST .../v1/traces (experimental JSON; legacy: otlp_endpoint)
 
 # [swarm]
 # max_concurrency = 4

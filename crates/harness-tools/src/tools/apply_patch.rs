@@ -8,10 +8,15 @@
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
 use serde_json::{json, Value};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::registry::Tool;
+use crate::workspace_root::WorkspaceRoot;
 
-pub struct ApplyPatchTool;
+pub struct ApplyPatchTool {
+    pub workspace: Arc<WorkspaceRoot>,
+}
 
 #[async_trait]
 impl Tool for ApplyPatchTool {
@@ -46,9 +51,20 @@ impl Tool for ApplyPatchTool {
             return Ok("No changes found in patch.".to_string());
         }
 
+        let changes: Vec<(PathBuf, bool, String)> = changes
+            .into_iter()
+            .map(|(path_s, new_content, is_deletion)| {
+                if path_s.is_empty() || path_s == "/dev/null" {
+                    anyhow::bail!("patch has no resolvable file path (---/+++ headers)");
+                }
+                let path = self.workspace.resolve(&path_s)?;
+                Ok((path, is_deletion, new_content))
+            })
+            .collect::<anyhow::Result<_>>()?;
+
         // Read originals for rollback.
-        let mut originals: Vec<(String, Option<String>)> = Vec::new();
-        for (path, _) in &changes {
+        let mut originals: Vec<(PathBuf, Option<String>)> = Vec::new();
+        for (path, _, _) in &changes {
             let original = tokio::fs::read_to_string(path).await.ok();
             originals.push((path.clone(), original));
         }
@@ -57,11 +73,27 @@ impl Tool for ApplyPatchTool {
         let mut results: Vec<String> = Vec::new();
         let mut failed = false;
 
-        for (path, new_content) in &changes {
-            match tokio::fs::write(path, new_content).await {
-                Ok(_) => results.push(format!("✓ {path}")),
+        use std::io::ErrorKind;
+
+        for (path, is_deletion, new_content) in &changes {
+            let res = if *is_deletion {
+                match tokio::fs::remove_file(path).await {
+                    Ok(()) => Ok(format!("✓ deleted {}", path.display())),
+                    Err(e) if e.kind() == ErrorKind::NotFound => {
+                        Ok(format!("✓ {} (already absent)", path.display()))
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                match tokio::fs::write(path, new_content).await {
+                    Ok(()) => Ok(format!("✓ {}", path.display())),
+                    Err(e) => Err(e),
+                }
+            };
+            match res {
+                Ok(s) => results.push(s),
                 Err(e) => {
-                    results.push(format!("✗ {path}: {e}"));
+                    results.push(format!("✗ {}: {e}", path.display()));
                     failed = true;
                     break;
                 }
@@ -102,15 +134,18 @@ impl Tool for ApplyPatchTool {
 //   @@ -L,C +L,C @@
 //   [context / - removed / + added lines]
 //
-// Returns a list of (file_path, new_file_content) pairs.
+// Returns a list of (file_path, new_file_content, is_deletion) triples.
+// `is_deletion` is true when the `+++` header is `/dev/null` (file removal).
 
-fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String)>> {
-    let mut result: Vec<(String, String)> = Vec::new();
+fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String, bool)>> {
+    let mut result: Vec<(String, String, bool)> = Vec::new();
     let mut lines: std::iter::Peekable<std::str::Lines> = patch.lines().peekable();
 
     while let Some(line) = lines.peek() {
         if line.starts_with("--- ") {
-            let _ = lines.next();
+            let minus_line = lines
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("truncated after --- line"))?;
             let plus_line = lines
                 .next()
                 .ok_or_else(|| anyhow::anyhow!("expected +++ line after ---"))?;
@@ -118,8 +153,10 @@ fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String)>> {
                 anyhow::bail!("expected +++ line, got: {plus_line}");
             }
 
-            // Strip "a/" or "b/" prefix from paths.
-            let path = strip_diff_prefix(plus_line.trim_start_matches("+++ ").trim());
+            let minus_path = strip_diff_prefix(minus_line.trim_start_matches("--- ").trim());
+            let plus_path = strip_diff_prefix(plus_line.trim_start_matches("+++ ").trim());
+            let is_deletion = plus_path == "/dev/null";
+            let path = if is_deletion { minus_path } else { plus_path };
 
             // Read current file content (may not exist for new files).
             let original = std::fs::read_to_string(path).unwrap_or_default();
@@ -191,7 +228,7 @@ fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String)>> {
                 new_content
             };
 
-            result.push((path.to_string(), new_content));
+            result.push((path.to_string(), new_content, is_deletion));
         } else {
             lines.next();
         }

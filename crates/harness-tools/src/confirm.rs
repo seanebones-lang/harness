@@ -1,11 +1,13 @@
 //! Plan/approve mode: a gate that pauses destructive tool calls for user confirmation.
 //!
-//! The `ConfirmGate` wraps an unbounded sender. Before executing a write_file,
+//! The `ConfirmGate` wraps a bounded sender. Before executing a write_file,
 //! patch_file, or shell call, the executor sends a `ConfirmRequest` down the channel.
 //! The UI holds the receiver, shows a preview, and responds via the oneshot channel
 //! embedded in the request.
 
 use tokio::sync::{mpsc, oneshot};
+
+const CONFIRM_CHANNEL_CAP: usize = 256;
 
 /// A single confirmation request sent from the executor to the UI.
 pub struct ConfirmRequest {
@@ -19,7 +21,7 @@ pub struct ConfirmRequest {
 
 /// Sender half — held by `ToolExecutor`.
 #[derive(Clone)]
-pub struct ConfirmGate(pub mpsc::UnboundedSender<ConfirmRequest>);
+pub struct ConfirmGate(pub mpsc::Sender<ConfirmRequest>);
 
 impl ConfirmGate {
     /// Request confirmation for a destructive action.
@@ -31,15 +33,20 @@ impl ConfirmGate {
             preview,
             reply: tx,
         };
-        if self.0.send(req).is_err() {
-            return true; // channel closed → default to allow (non-TUI fallback)
+        match self.0.try_send(req) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                tracing::warn!("confirm channel full; defaulting to deny");
+                return false;
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => return true,
         }
         rx.await.unwrap_or(true)
     }
 }
 
 /// Create a linked (gate, receiver) pair for TUI integration.
-pub fn channel() -> (ConfirmGate, mpsc::UnboundedReceiver<ConfirmRequest>) {
-    let (tx, rx) = mpsc::unbounded_channel();
+pub fn channel() -> (ConfirmGate, mpsc::Receiver<ConfirmRequest>) {
+    let (tx, rx) = mpsc::channel(CONFIRM_CHANNEL_CAP);
     (ConfirmGate(tx), rx)
 }

@@ -7,9 +7,10 @@
 //!
 //! Enable with `[collab]` config block.
 
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -107,14 +108,14 @@ impl CollabSession {
 
 /// Get or create a session in the registry.
 pub fn get_or_create_session(registry: &CollabRegistry, session_id: &str) {
-    let mut reg = registry.lock().unwrap();
+    let mut reg = registry.lock();
     reg.entry(session_id.to_string())
         .or_insert_with(|| CollabSession::new(session_id));
 }
 
 /// Broadcast an event to all users in a session.
 pub fn broadcast_to_session(registry: &CollabRegistry, session_id: &str, event: CollabEvent) {
-    let reg = registry.lock().unwrap();
+    let reg = registry.lock();
     if let Some(session) = reg.get(session_id) {
         session.broadcast(event);
     }
@@ -122,7 +123,7 @@ pub fn broadcast_to_session(registry: &CollabRegistry, session_id: &str, event: 
 
 /// List active sessions.
 pub fn list_sessions(registry: &CollabRegistry) -> Vec<(String, usize)> {
-    let reg = registry.lock().unwrap();
+    let reg = registry.lock();
     reg.values()
         .map(|s| (s.session_id.clone(), s.users.len()))
         .collect()

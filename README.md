@@ -113,7 +113,8 @@ harness --think 10000            # enable extended thinking with 10k token budge
 harness status                   # show config, API key, recent sessions
 harness doctor                   # health checks (keys, daemon, MCP paths, …)
 harness completions zsh          # print completions → save to your shell's completion dir
-harness swarm list               # parallel sub-agent tasks
+harness swarm run "your prompt"     # queue background agent work (--count, --model)
+harness swarm list                  # swarm task registry (see `harness swarm --help`)
 harness swarm status <task-id>   # one task
 harness swarm result <task-id>   # output when done
 harness trace                    # list spans from last local trace (needs observability)

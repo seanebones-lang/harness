@@ -2,11 +2,15 @@ use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
 use serde_json::{json, Value};
 use similar::{ChangeTag, TextDiff};
+use std::sync::Arc;
 use walkdir::WalkDir;
 
 use crate::registry::Tool;
+use crate::workspace_root::WorkspaceRoot;
 
-pub struct ReadFileTool;
+pub struct ReadFileTool {
+    pub workspace: Arc<WorkspaceRoot>,
+}
 
 #[async_trait]
 impl Tool for ReadFileTool {
@@ -27,10 +31,11 @@ impl Tool for ReadFileTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let path = args["path"]
+        let path_raw = args["path"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing path"))?;
-        let content = tokio::fs::read_to_string(path).await?;
+        let path = self.workspace.resolve(path_raw)?;
+        let content = tokio::fs::read_to_string(&path).await?;
 
         let start = args["start_line"].as_u64().map(|n| n as usize).unwrap_or(1);
         let end = args["end_line"].as_u64().map(|n| n as usize);
@@ -50,7 +55,9 @@ impl Tool for ReadFileTool {
     }
 }
 
-pub struct WriteFileTool;
+pub struct WriteFileTool {
+    pub workspace: Arc<WorkspaceRoot>,
+}
 
 #[async_trait]
 impl Tool for WriteFileTool {
@@ -70,18 +77,23 @@ impl Tool for WriteFileTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let path = args["path"]
+        let path_raw = args["path"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing path"))?;
         let content = args["content"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing content"))?;
 
-        if let Some(parent) = std::path::Path::new(path).parent() {
+        let path = self.workspace.resolve(path_raw)?;
+        if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(path, content).await?;
-        Ok(format!("Wrote {} bytes to {path}", content.len()))
+        tokio::fs::write(&path, content).await?;
+        Ok(format!(
+            "Wrote {} bytes to {}",
+            content.len(),
+            path.display()
+        ))
     }
 }
 
@@ -93,7 +105,9 @@ impl Tool for WriteFileTool {
 ///
 /// Why not just use WriteFileTool? Diffs are far more token-efficient for
 /// targeted edits in large files, and they make the agent's intent explicit.
-pub struct PatchFileTool;
+pub struct PatchFileTool {
+    pub workspace: Arc<WorkspaceRoot>,
+}
 
 #[async_trait]
 impl Tool for PatchFileTool {
@@ -130,9 +144,11 @@ impl Tool for PatchFileTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let path = args["path"]
+        let path_raw = args["path"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing path"))?;
+        let path = self.workspace.resolve(path_raw)?;
+        let path_disp = path.display().to_string();
         let old = args["old_content"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing old_content"))?;
@@ -141,9 +157,9 @@ impl Tool for PatchFileTool {
             .ok_or_else(|| anyhow::anyhow!("missing new_content"))?;
         let dry_run = args["dry_run"].as_bool().unwrap_or(false);
 
-        let original = tokio::fs::read_to_string(path)
+        let original = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| anyhow::anyhow!("read {path}: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("read {path_disp}: {e}"))?;
 
         // Count occurrences to guard against ambiguous matches.
         let count = original.matches(old).count();
@@ -156,13 +172,13 @@ impl Tool for PatchFileTool {
                 .header("old_content (provided)", "file content")
                 .to_string();
             return Ok(format!(
-                "patch_file: old_content not found in {path}.\n\
+                "patch_file: old_content not found in {path_disp}.\n\
                  Diff of provided old_content vs file:\n{hint}"
             ));
         }
         if count > 1 {
             return Ok(format!(
-                "patch_file: old_content appears {count} times in {path} — \
+                "patch_file: old_content appears {count} times in {path_disp} — \
                  add more context lines to make it unique."
             ));
         }
@@ -184,18 +200,21 @@ impl Tool for PatchFileTool {
         let trimmed = trim_context(&diff_lines, 3);
 
         if dry_run {
-            return Ok(format!("--- dry run: {path} ---\n{}", trimmed.join("")));
+            return Ok(format!(
+                "--- dry run: {path_disp} ---\n{}",
+                trimmed.join("")
+            ));
         }
 
-        tokio::fs::write(path, &patched)
+        tokio::fs::write(&path, &patched)
             .await
-            .map_err(|e| anyhow::anyhow!("write {path}: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("write {path_disp}: {e}"))?;
 
         let added: usize = diff_lines.iter().filter(|l| l.starts_with('+')).count();
         let removed: usize = diff_lines.iter().filter(|l| l.starts_with('-')).count();
 
         Ok(format!(
-            "Patched {path}: +{added} -{removed} lines.\n{}",
+            "Patched {path_disp}: +{added} -{removed} lines.\n{}",
             trimmed.join("")
         ))
     }
@@ -238,7 +257,9 @@ fn trim_context(lines: &[String], ctx: usize) -> Vec<String> {
     out
 }
 
-pub struct ListDirTool;
+pub struct ListDirTool {
+    pub workspace: Arc<WorkspaceRoot>,
+}
 
 #[async_trait]
 impl Tool for ListDirTool {
@@ -259,19 +280,26 @@ impl Tool for ListDirTool {
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
-        let path = args["path"]
+        let path_raw = args["path"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing path"))?;
+        let path = self.workspace.resolve(path_raw)?;
+        let path_s = path.display().to_string();
         let recursive = args["recursive"].as_bool().unwrap_or(false);
         let max_depth = args["max_depth"].as_u64().unwrap_or(3) as usize;
 
         let depth = if recursive { max_depth } else { 1 };
 
-        let mut entries: Vec<String> = WalkDir::new(path)
+        let mut entries: Vec<String> = WalkDir::new(&path)
             .max_depth(depth)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().to_str().map(|p| p != path).unwrap_or(false))
+            .filter(|e| {
+                e.path()
+                    .to_str()
+                    .map(|p| p != path_s.as_str())
+                    .unwrap_or(false)
+            })
             .map(|e| {
                 let suffix = if e.file_type().is_dir() { "/" } else { "" };
                 format!("{}{suffix}", e.path().display())

@@ -538,7 +538,7 @@ dependencies = [
  "rustc-hash 1.1.0",
  "shlex",
  "syn",
- "which",
+ "which 4.4.2",
 ]
 
 [[package]]
@@ -1929,6 +1929,7 @@ dependencies = [
  "harness-memory",
  "harness-provider-anthropic",
  "harness-provider-core",
+ "harness-provider-mlx",
  "harness-provider-ollama",
  "harness-provider-openai",
  "harness-provider-router",
@@ -1940,6 +1941,7 @@ dependencies = [
  "lru 0.18.0",
  "mimalloc",
  "notify-rust",
+ "parking_lot",
  "ratatui",
  "regex",
  "reqwest",
@@ -1996,6 +1998,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "dirs",
+ "futures",
  "harness-provider-core",
  "harness-tools",
  "serde",
@@ -2059,6 +2062,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "harness-provider-mlx"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "harness-provider-core",
+ "harness-provider-openai",
+ "which 6.0.3",
+]
+
+[[package]]
 name = "harness-provider-ollama"
 version = "0.1.0"
 dependencies = [
@@ -2102,6 +2115,7 @@ dependencies = [
  "async-trait",
  "harness-provider-anthropic",
  "harness-provider-core",
+ "harness-provider-mlx",
  "harness-provider-ollama",
  "harness-provider-openai",
  "harness-provider-xai",
@@ -2148,6 +2162,7 @@ dependencies = [
  "dirs",
  "harness-provider-core",
  "ignore",
+ "path-clean",
  "regex",
  "serde",
  "serde_json",
@@ -3639,6 +3654,12 @@ name = "pastey"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5a797f0e07bdf071d15742978fc3128ec6c22891c31a3a931513263904c982a"
+
+[[package]]
+name = "path-clean"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17359afc20d7ab31fdb42bb844c8b3bb1dabd7dcf7e68428492da7f16966fcef"
 
 [[package]]
 name = "pbkdf2"
@@ -6034,6 +6055,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "which"
+version = "6.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
+dependencies = [
+ "either",
+ "home",
+ "rustix 0.38.44",
+ "winsafe",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6485,6 +6518,12 @@ checksum = "2ee1708bef14716a11bae175f579062d4554d95be2c6829f518df847b7b3fdd0"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen"
