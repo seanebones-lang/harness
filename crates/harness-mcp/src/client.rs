@@ -16,8 +16,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tracing::{debug, warn};
 
@@ -93,11 +92,17 @@ pub struct ServerCapabilities {
 
 // ── Client ────────────────────────────────────────────────────────────────────
 
+/// Boxed async writer used as the transport stdin. Trait-object so the same
+/// `IoShared` can wrap a real child's stdin or a `tokio::io::duplex` half in tests.
+type BoxedWrite = Box<dyn AsyncWrite + Send + Unpin>;
+
 struct IoShared {
-    stdin: Mutex<ChildStdin>,
+    stdin: Mutex<BoxedWrite>,
     next_id: AtomicU64,
     pending: Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>,
-    _child: Child,
+    /// Anything held purely for its `Drop` side-effect: the child process for real
+    /// spawns, `()` for in-process tests. Never read.
+    _keepalive: Box<dyn std::any::Any + Send + Sync>,
 }
 
 #[derive(Clone)]
@@ -116,8 +121,8 @@ pub struct McpClient {
     sampling_provider: Arc<Mutex<Option<ArcProvider>>>,
 }
 
-async fn mcp_reader_loop(
-    mut stdout: BufReader<ChildStdout>,
+async fn mcp_reader_loop<R: AsyncBufRead + Send + Unpin>(
+    mut stdout: R,
     io: Arc<IoShared>,
     ctx: Arc<ReaderContext>,
 ) {
@@ -244,16 +249,47 @@ impl McpClient {
             .with_context(|| format!("spawning MCP server `{}`", cfg.command))?;
 
         let stdin = child.stdin.take().context("no stdin")?;
-        let stdout = BufReader::new(child.stdout.take().context("no stdout")?);
+        let stdout = child.stdout.take().context("no stdout")?;
 
+        Self::from_streams(
+            stdout,
+            stdin,
+            child,
+            name.to_string(),
+            progress_tx,
+            sampling_provider,
+        )
+        .await
+    }
+
+    /// Construct a client over arbitrary async streams. Used internally by `spawn_with_opts`
+    /// and (under `#[cfg(test)]`) by in-process unit tests that swap a real subprocess for
+    /// `tokio::io::duplex` halves.
+    ///
+    /// `keepalive` is held until the client is dropped; pass `child` for spawned servers,
+    /// `()` for tests.
+    pub(crate) async fn from_streams<R, W, K>(
+        stdout: R,
+        stdin: W,
+        keepalive: K,
+        name: String,
+        progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
+        sampling_provider: Option<ArcProvider>,
+    ) -> Result<Self>
+    where
+        R: AsyncRead + Send + Unpin + 'static,
+        W: AsyncWrite + Send + Unpin + 'static,
+        K: Send + Sync + 'static,
+    {
+        let stdout = BufReader::new(stdout);
         let io = Arc::new(IoShared {
-            stdin: Mutex::new(stdin),
+            stdin: Mutex::new(Box::new(stdin)),
             next_id: AtomicU64::new(1),
             pending: Mutex::new(HashMap::new()),
-            _child: child,
+            _keepalive: Box::new(keepalive),
         });
         let ctx = Arc::new(ReaderContext {
-            server_name: name.to_string(),
+            server_name: name.clone(),
             progress_tx,
         });
         let io_reader = io.clone();
@@ -264,7 +300,7 @@ impl McpClient {
 
         let client = McpClient {
             io,
-            server_name: name.to_string(),
+            server_name: name,
             capabilities: Arc::new(Mutex::new(ServerCapabilities::default())),
             sampling_provider: Arc::new(Mutex::new(sampling_provider)),
         };
@@ -604,6 +640,429 @@ fn extract_mcp_text_content(content_val: Option<&Value>) -> String {
             }
         }
         Some(v) => v.to_string(),
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::io::DuplexStream;
+    use tokio::sync::mpsc::unbounded_channel;
+
+    /// Drive the standard `initialize` + `notifications/initialized` handshake, then return.
+    /// Caller is responsible for any further dispatch on `(reader, writer)`.
+    async fn do_handshake(
+        reader: &mut BufReader<DuplexStream>,
+        writer: &mut DuplexStream,
+        capabilities: Value,
+    ) {
+        let mut line = String::new();
+        // initialize
+        let n = reader.read_line(&mut line).await.unwrap();
+        assert!(n > 0, "client failed to send initialize");
+        let init: Value = serde_json::from_str(line.trim()).expect("initialize is valid JSON");
+        assert_eq!(init["method"], "initialize");
+        let resp = json!({
+            "jsonrpc": "2.0",
+            "id": init["id"].clone(),
+            "result": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": capabilities,
+            }
+        });
+        let s = serde_json::to_string(&resp).unwrap();
+        writer.write_all(s.as_bytes()).await.unwrap();
+        writer.write_all(b"\n").await.unwrap();
+        writer.flush().await.unwrap();
+
+        // notifications/initialized (fire-and-forget; no response)
+        line.clear();
+        let n = reader.read_line(&mut line).await.unwrap();
+        assert!(n > 0, "client failed to send notifications/initialized");
+        let init_notif: Value = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(init_notif["method"], "notifications/initialized");
+    }
+
+    fn make_pipes() -> (DuplexStream, DuplexStream, DuplexStream, DuplexStream) {
+        let (client_w, server_r) = tokio::io::duplex(8192);
+        let (server_w, client_r) = tokio::io::duplex(8192);
+        (client_w, client_r, server_r, server_w)
+    }
+
+    #[tokio::test]
+    async fn initialize_handshake_completes_and_parses_capabilities() {
+        let (client_w, client_r, server_r, mut server_w) = make_pipes();
+        let mut reader = BufReader::new(server_r);
+
+        let server = tokio::spawn(async move {
+            do_handshake(
+                &mut reader,
+                &mut server_w,
+                json!({
+                    "resources": {"listChanged": true},
+                    "sampling": {},
+                    "logging": {},
+                }),
+            )
+            .await;
+        });
+
+        let client = McpClient::from_streams(client_r, client_w, (), "test".into(), None, None)
+            .await
+            .expect("client construct");
+        server.await.expect("server task");
+
+        let caps = client.capabilities.lock().await.clone();
+        assert_eq!(caps.protocol_version, "2025-03-26");
+        assert!(caps.has_resources, "resources cap should be advertised");
+        assert!(caps.has_sampling, "sampling cap should be advertised");
+        assert!(caps.has_logging, "logging cap should be advertised");
+        assert!(!caps.has_prompts, "prompts cap not advertised in this test");
+    }
+
+    /// The most important regression test for the `3fa6d51` MCP refactor: a single
+    /// MCP client must support multiple concurrent in-flight RPCs and demux replies
+    /// by `id` regardless of arrival order. Pre-3fa6d51 the client held a mutex
+    /// across `read_line().await`, which serialised every RPC. This test would have
+    /// hung on the second concurrent call under the old code.
+    #[tokio::test]
+    async fn concurrent_rpcs_demux_correctly_when_replies_arrive_out_of_order() {
+        let (client_w, client_r, server_r, mut server_w) = make_pipes();
+        let mut reader = BufReader::new(server_r);
+
+        let server = tokio::spawn(async move {
+            do_handshake(&mut reader, &mut server_w, json!({})).await;
+
+            // Collect 5 concurrent requests, then reply in REVERSE order so the client
+            // must demux by id, not by arrival order.
+            let mut pending = Vec::new();
+            for _ in 0..5 {
+                let mut line = String::new();
+                let n = reader.read_line(&mut line).await.unwrap();
+                assert!(n > 0);
+                let msg: Value = serde_json::from_str(line.trim()).unwrap();
+                let id = msg["id"].as_u64().unwrap();
+                let arg = msg["params"]["arg"].as_str().unwrap_or("").to_string();
+                pending.push((id, arg));
+            }
+            // Reverse the response order, with small delays between each.
+            pending.reverse();
+            for (id, arg) in pending {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+                let resp = json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": { "echo": arg, "id": id }
+                });
+                let s = serde_json::to_string(&resp).unwrap();
+                server_w.write_all(s.as_bytes()).await.unwrap();
+                server_w.write_all(b"\n").await.unwrap();
+                server_w.flush().await.unwrap();
+            }
+        });
+
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "concurrent-test".into(), None, None)
+                .await
+                .expect("client construct");
+
+        // Fire 5 concurrent calls; collect results.
+        let mut handles = Vec::new();
+        for i in 0..5u32 {
+            let c = client.clone();
+            handles.push(tokio::spawn(async move {
+                let arg = format!("call-{i}");
+                let result = c
+                    .call("echo", json!({"arg": arg.clone()}))
+                    .await
+                    .expect("call should succeed");
+                (arg, result)
+            }));
+        }
+
+        let timeout = tokio::time::timeout(
+            Duration::from_secs(5),
+            futures::future::join_all(handles),
+        )
+        .await
+        .expect("all 5 concurrent calls must complete inside 5s — would hang under serialised RPC");
+
+        for h in timeout {
+            let (sent_arg, result) = h.expect("task panicked");
+            let echoed = result["echo"].as_str().unwrap();
+            assert_eq!(echoed, sent_arg, "result must match the call's argument");
+        }
+
+        server.await.expect("server task");
+    }
+
+    #[tokio::test]
+    async fn json_rpc_error_response_propagates_message() {
+        let (client_w, client_r, server_r, mut server_w) = make_pipes();
+        let mut reader = BufReader::new(server_r);
+
+        let server = tokio::spawn(async move {
+            do_handshake(&mut reader, &mut server_w, json!({})).await;
+
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            let msg: Value = serde_json::from_str(line.trim()).unwrap();
+            let resp = json!({
+                "jsonrpc": "2.0",
+                "id": msg["id"].clone(),
+                "error": { "code": -32601, "message": "method not found: bogus" }
+            });
+            let s = serde_json::to_string(&resp).unwrap();
+            server_w.write_all(s.as_bytes()).await.unwrap();
+            server_w.write_all(b"\n").await.unwrap();
+            server_w.flush().await.unwrap();
+        });
+
+        let client = McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None)
+            .await
+            .unwrap();
+
+        let err = client
+            .call("bogus", json!({}))
+            .await
+            .expect_err("server returned JSON-RPC error; client must propagate");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("method not found: bogus"),
+            "error must surface server message, got: {msg}"
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn server_close_fails_pending_calls_cleanly() {
+        let (client_w, client_r, server_r, mut server_w) = make_pipes();
+        let mut reader = BufReader::new(server_r);
+
+        let server = tokio::spawn(async move {
+            do_handshake(&mut reader, &mut server_w, json!({})).await;
+            // Read one request, then drop the writer (server closes stdout) without responding.
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            drop(server_w);
+            drop(reader);
+        });
+
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "close-test".into(), None, None)
+                .await
+                .unwrap();
+
+        let res = tokio::time::timeout(
+            Duration::from_secs(5),
+            client.call("never_replied", json!({})),
+        )
+        .await
+        .expect("client must surface error inside 5s when server closes");
+        let err = res.expect_err("must be Err when server hangs up mid-RPC");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("closed") || msg.contains("transport"),
+            "error must mention transport closure, got: {msg}"
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn progress_notifications_forwarded_to_channel() {
+        let (client_w, client_r, server_r, mut server_w) = make_pipes();
+        let mut reader = BufReader::new(server_r);
+
+        let (tx, mut rx) = unbounded_channel::<ProgressEvent>();
+
+        let server = tokio::spawn(async move {
+            do_handshake(&mut reader, &mut server_w, json!({})).await;
+
+            // Wait for the tools/call request, then emit two progress notifications and a final result.
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            let msg: Value = serde_json::from_str(line.trim()).unwrap();
+            let id = msg["id"].clone();
+            let token = msg["params"]["_meta"]["progressToken"]
+                .as_str()
+                .unwrap()
+                .to_string();
+
+            // Two progress notifications first.
+            for p in [0.25, 0.75] {
+                let notif = json!({
+                    "jsonrpc": "2.0",
+                    "method": "notifications/progress",
+                    "params": { "progressToken": token, "progress": p, "total": 1.0 }
+                });
+                let s = serde_json::to_string(&notif).unwrap();
+                server_w.write_all(s.as_bytes()).await.unwrap();
+                server_w.write_all(b"\n").await.unwrap();
+                server_w.flush().await.unwrap();
+            }
+
+            // Then the final tool result.
+            let resp = json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{"type": "text", "text": "done"}] }
+            });
+            let s = serde_json::to_string(&resp).unwrap();
+            server_w.write_all(s.as_bytes()).await.unwrap();
+            server_w.write_all(b"\n").await.unwrap();
+            server_w.flush().await.unwrap();
+        });
+
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "progress-test".into(),
+            Some(tx),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let result = client
+            .call_tool("any_tool", json!({}))
+            .await
+            .expect("call_tool should succeed");
+        assert_eq!(result, "done");
+
+        // Drain progress events with a short timeout.
+        let mut got = Vec::new();
+        while let Ok(Some(ev)) = tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+            got.push(ev);
+        }
+        assert_eq!(got.len(), 2, "expected 2 progress events, got {got:?}");
+        assert_eq!(got[0].server, "progress-test");
+        assert_eq!(got[0].progress, 0.25);
+        assert_eq!(got[1].progress, 0.75);
+        assert_eq!(got[0].total, Some(1.0));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sampling_request_without_provider_returns_clear_error() {
+        let (client_w, client_r, _server_r, mut server_w) = make_pipes();
+        let mut reader = BufReader::new(_server_r);
+
+        let server = tokio::spawn(async move {
+            do_handshake(&mut reader, &mut server_w, json!({})).await;
+        });
+
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "sample-test".into(),
+            None,
+            None, // no sampling provider attached
+        )
+        .await
+        .unwrap();
+        server.await.unwrap();
+
+        let params = json!({
+            "messages": [
+                {"role": "user", "content": {"type": "text", "text": "hello"}}
+            ]
+        });
+        let err = client
+            .handle_sampling_request(&params, |_| true)
+            .await
+            .expect_err("missing provider must return an explanatory error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("attached LLM provider")
+                || msg.contains("attach_sampling_provider")
+                || msg.contains("spawn_with_opts"),
+            "error must guide caller to attach a provider, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sampling_request_denied_by_approval_callback_returns_text_response() {
+        let (client_w, client_r, server_r, mut server_w) = make_pipes();
+        let mut reader = BufReader::new(server_r);
+
+        let server = tokio::spawn(async move {
+            do_handshake(&mut reader, &mut server_w, json!({})).await;
+        });
+
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "deny-test".into(), None, None)
+                .await
+                .unwrap();
+        server.await.unwrap();
+
+        let params = json!({
+            "messages": [
+                {"role": "user", "content": {"type": "text", "text": "secret prompt"}}
+            ]
+        });
+        // Approval rejects → fast-path returns synthesized denial WITHOUT touching provider.
+        let resp = client
+            .handle_sampling_request(&params, |_| false)
+            .await
+            .expect("denial path must not require provider");
+        assert_eq!(resp["role"], "assistant");
+        assert!(resp["content"]["text"].as_str().unwrap().contains("denied"));
+        assert_eq!(resp["stopReason"], "endTurn");
+    }
+
+    #[tokio::test]
+    async fn list_tools_round_trip() {
+        let (client_w, client_r, server_r, mut server_w) = make_pipes();
+        let mut reader = BufReader::new(server_r);
+
+        let server = tokio::spawn(async move {
+            do_handshake(&mut reader, &mut server_w, json!({})).await;
+
+            let mut line = String::new();
+            reader.read_line(&mut line).await.unwrap();
+            let msg: Value = serde_json::from_str(line.trim()).unwrap();
+            assert_eq!(msg["method"], "tools/list");
+            let resp = json!({
+                "jsonrpc": "2.0",
+                "id": msg["id"].clone(),
+                "result": {
+                    "tools": [
+                        {
+                            "name": "echo",
+                            "description": "Echo input",
+                            "inputSchema": { "type": "object" }
+                        },
+                        {
+                            "name": "add",
+                            "inputSchema": { "type": "object" }
+                        }
+                    ]
+                }
+            });
+            let s = serde_json::to_string(&resp).unwrap();
+            server_w.write_all(s.as_bytes()).await.unwrap();
+            server_w.write_all(b"\n").await.unwrap();
+            server_w.flush().await.unwrap();
+        });
+
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "tools-test".into(), None, None)
+                .await
+                .unwrap();
+
+        let tools = client.list_tools().await.expect("list_tools");
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].name, "echo");
+        assert_eq!(tools[0].description.as_deref(), Some("Echo input"));
+        assert_eq!(tools[1].name, "add");
+        assert!(tools[1].description.is_none());
+
+        server.await.unwrap();
     }
 }
 

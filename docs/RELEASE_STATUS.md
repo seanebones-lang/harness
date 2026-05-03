@@ -4,19 +4,40 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
-**2026-05-03 — Cross-platform beta hardening pass**
+**2026-05-03 — Phase-2 continuation: remaining CLI handlers extracted from `main.rs`**
 
 | Gate | Result |
 |------|--------|
 | `cargo fmt --all -- --check` | Pass |
 | `cargo clippy --all-targets --all-features -- -D warnings` | Pass |
-| `cargo test --all` (incl. doctests) | Pass |
-| `cargo build --profile release-lto` | Pass |
-| Code | Windows `shell` tool: prefer `sh.exe`/`bash.exe` on `PATH`; `cmd.exe` fallback; timeout smoke test uses PowerShell on Windows |
-| CI config | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — full test matrix + **`install-scripts`** (`scripts/install.sh` on Ubuntu + macOS, `install.ps1` on Windows) |
-| Release | [`.github/workflows/release.yml`](../.github/workflows/release.yml) — per-target **`--version` / `--help`** smokes where the host can execute; **`file`** check for cross-built Linux aarch64; **`cross` pinned** (`0.2.5`) |
+| `cargo test --all` | Pass — **90 tests** (+1 `prompt` unit test); prior session ended at 89 |
 
-**Still manual before calling it “stable”:** interactive TUI on each OS you care about; `gh auth login` + `/pr` where you use GitHub; confirm `harness serve` in browser after a clean install.
+| Change | Detail |
+|--------|--------|
+| `src/main.rs` | **823 LOC** (was ~1,539 after first project extraction; ~716 LOC moved to `cli/commands/` this round) |
+| New modules | `cli/commands/{prompt,sessions,init,status,models,doctor,self_dev}.rs` — `sessions` / `export` / `delete` / `init` / `status` / `models` / `doctor` / `self-dev` (+ shared `build_prompt_with_image`) |
+| Early `Project` path | Still returns before provider setup (unchanged); `match` retains `Project` arm for exhaustiveness |
+
+**Still manual before calling it "stable":** interactive TUI on each OS you care about; `gh auth login` + `/pr` where you use GitHub; confirm `harness serve` in browser after a clean install.
+
+---
+
+**2026-05-03 — Phase-2 god-file split + MCP concurrency-test slice (earlier same day)**
+
+| Gate | Result |
+|------|--------|
+| `cargo fmt --all -- --check` | Pass |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Pass |
+| `cargo test --all` (incl. doctests) | Pass — **89 tests** (running total before the CLI-handler continuation above) |
+| `cargo build --profile release-lto` | Pass |
+| New tests (that slice) | **+8** MCP in-process; **+4** TUI render; **+9** TUI events; **+7** project-command helpers |
+| God-file decomposition | **`src/main.rs`** 2,203 → **1,539 LOC**; **`src/tui/mod.rs`** 2,789 → **2,065 LOC**; `src/tui/{render,events}.rs`, `src/cli/commands/project.rs`; MCP `from_streams` refactor |
+| CI config | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — supply-chain, MSRV, multi-OS matrix, [`coverage.yml`](../.github/workflows/coverage.yml), `deny.toml` |
+| Release | [`.github/workflows/release.yml`](../.github/workflows/release.yml) — version/help smokes, cross pinned `0.2.5` |
+
+**`3fa6d51` audit remediation closed (now also verified by tests):** OpenAI multi-tool SSE flush (regression-tested in `crates/harness-provider-openai`), **MCP dedicated stdout reader (regression-tested in `crates/harness-mcp`)**, MCP sampling paths tested, `WorkspaceRoot` jail boundary-tested, `src/cli/commands/project.rs` + `src/tui/{render,events}.rs` extracted, LSP framing hardened.
+
+**Next iteration (Phase 2 residuals):** `src/main.rs` is **823 LOC** — further splits optional (e.g. cost/swarm match arms, `run_once` wrappers); **`src/tui/mod.rs`** → `state/input/slash`; coverage ≥60%; proptest/fuzz; `#![deny(missing_docs)]` on public crates.
 
 ---
 
