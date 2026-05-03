@@ -1,13 +1,15 @@
 //! HTTP server mode: `harness serve`.
 //!
 //! Endpoints:
-//!   GET  /api/health          → {"status":"ok","model":"..."}
+//!   GET  /api/health          → {"status":"ok","model","provider_model","key_env","config_path"}
 //!   GET  /api/sessions        → [{id, name, updated_at}]
 //!   GET  /api/projects        → [{name, path, remote, default_branch, updated}]
 //!   POST /api/projects/:id/action → project action result JSON
 //!   GET  /api/projects/:id/files  → file paths for context picker
 //!   POST /api/chat            → SSE stream of AgentEvents (JSON)
 //!   GET  /api/sessions/:id    → full session JSON
+//!   GET  /api/setup/state      → sanitized setup form defaults (no keys)
+//!   POST /api/setup/persist    → write config.toml + hot-reload (TCP loopback peers only)
 //!
 //! Body for POST /api/chat:
 //!   { "prompt": "...", "session_id": "..." (optional) }
@@ -21,6 +23,7 @@
 //!   data: {"type":"error","message":"..."}
 
 use anyhow::Result;
+use axum::extract::ConnectInfo;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -36,9 +39,11 @@ use harness_memory::{MemoryStore, Session, SessionStore};
 use harness_provider_core::{ArcProvider, Message};
 use harness_tools::ToolExecutor;
 use serde::{Deserialize, Serialize};
-use std::path::Path as FsPath;
+use std::net::SocketAddr;
+use std::path::{Path as FsPath, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
@@ -49,15 +54,24 @@ use crate::projects;
 
 // ── Shared server state ───────────────────────────────────────────────────────
 
-#[derive(Clone)]
-pub struct ServerState {
+/// Hot-reloaded fields (persist from dashboard writes `config.toml`, then swaps these).
+pub struct ServeRuntimeState {
     pub provider: ArcProvider,
-    pub session_store: Arc<SessionStore>,
-    pub memory_store: Option<Arc<MemoryStore>>,
-    pub embed_model: Option<String>,
     pub tools: ToolExecutor,
     pub model: String,
     pub system_prompt: String,
+    pub config: crate::config::Config,
+}
+
+#[derive(Clone)]
+pub struct ServerState {
+    pub inner: Arc<RwLock<ServeRuntimeState>>,
+    pub session_store: Arc<SessionStore>,
+    pub memory_store: Option<Arc<MemoryStore>>,
+    pub embed_model: Option<String>,
+    pub browser_enabled: bool,
+    pub browser_url: String,
+    pub config_active_path: Arc<PathBuf>,
 }
 
 // ── Request / response types ──────────────────────────────────────────────────
@@ -76,9 +90,46 @@ struct SessionSummary {
 }
 
 #[derive(Serialize)]
+struct HealthKeyHints {
+    /// `ANTHROPIC_API_KEY` non-empty on the **`harness serve` process** (browser cannot read your shell).
+    anthropic_env: bool,
+    xai_env: bool,
+    openai_env: bool,
+}
+
+#[derive(Serialize)]
 struct HealthResponse {
     status: &'static str,
+    /// Session default model label (`--model` or `~/.harness/config.toml`).
     model: String,
+    /// Model identifier reported by the constructed provider backend.
+    provider_model: String,
+    #[serde(rename = "key_env")]
+    keys: HealthKeyHints,
+    /// Expanded path to the active Harness config file for this workspace.
+    config_path: String,
+}
+
+#[derive(Serialize)]
+struct SetupStateResponse {
+    primary: String,
+    model: String,
+    has_anthropic_key: bool,
+    has_xai_key: bool,
+    has_openai_key: bool,
+    config_path: String,
+}
+
+#[derive(Serialize)]
+struct PersistSetupResponse {
+    ok: bool,
+    message: String,
+}
+
+fn nonempty_env(var: &'static str) -> bool {
+    std::env::var(var)
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +172,8 @@ pub fn router(state: ServerState) -> Router {
     Router::new()
         .route("/", get(ui))
         .route("/api/health", get(health))
+        .route("/api/setup/state", get(setup_state))
+        .route("/api/setup/persist", post(persist_setup))
         .route("/api/sessions", get(list_sessions))
         .route("/api/projects", get(list_projects))
         .route("/api/projects/:id/action", post(project_action))
@@ -130,12 +183,144 @@ pub fn router(state: ServerState) -> Router {
         .with_state(Arc::new(state))
 }
 
-pub async fn serve(state: ServerState, addr: std::net::SocketAddr) -> Result<()> {
+pub async fn serve(state: ServerState, addr: SocketAddr) -> Result<()> {
     let app = router(state);
     info!(%addr, "harness server listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
+}
+
+fn config_key_nonempty(cfg: &crate::config::Config, name: &str) -> bool {
+    cfg.providers
+        .get(name)
+        .and_then(|e| e.api_key.as_ref())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+}
+
+async fn setup_state(State(state): State<Arc<ServerState>>) -> Json<SetupStateResponse> {
+    let g = state.inner.read().await;
+    let cfg = &g.config;
+    let primary = cfg
+        .router
+        .default
+        .clone()
+        .unwrap_or_else(|| "anthropic".to_string());
+    Json(SetupStateResponse {
+        primary,
+        model: g.model.clone(),
+        has_anthropic_key: config_key_nonempty(cfg, "anthropic")
+            || nonempty_env("ANTHROPIC_API_KEY"),
+        has_xai_key: config_key_nonempty(cfg, "xai")
+            || !cfg
+                .provider
+                .api_key
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .is_empty()
+            || nonempty_env("XAI_API_KEY"),
+        has_openai_key: config_key_nonempty(cfg, "openai") || nonempty_env("OPENAI_API_KEY"),
+        config_path: state.config_active_path.display().to_string(),
+    })
+}
+
+async fn persist_setup(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<ServerState>>,
+    Json(patch): Json<crate::config::WebSetupPersist>,
+) -> Result<Json<PersistSetupResponse>, (StatusCode, Json<PersistSetupResponse>)> {
+    if !addr.ip().is_loopback() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(PersistSetupResponse {
+                ok: false,
+                message:
+                    "POST /api/setup/persist is restricted to localhost for security (reload from 127.0.0.1)."
+                        .to_string(),
+            }),
+        ));
+    }
+
+    let path = crate::config::active_config_toml_path();
+    let mut cfg = if path.exists() {
+        crate::config::load(Some(path.as_path()))
+            .map_err(|e| bad_persist(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    } else {
+        crate::config::load(None)
+            .map_err(|e| bad_persist(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    };
+
+    crate::config::apply_web_setup_patch(&mut cfg, &patch)
+        .map_err(|e| bad_persist(StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    let candidate_provider =
+        crate::provider_build::build_arc_provider(&cfg, None).map_err(|e| {
+            bad_persist(
+                StatusCode::BAD_REQUEST,
+                format!("invalid provider configuration: {e}"),
+            )
+        })?;
+
+    let Some(model_val) = cfg.provider.model.clone() else {
+        return Err(bad_persist(
+            StatusCode::BAD_REQUEST,
+            "model missing after persist".into(),
+        ));
+    };
+    let sys = cfg
+        .agent
+        .system_prompt
+        .clone()
+        .unwrap_or_else(|| agent::DEFAULT_SYSTEM.to_string());
+
+    let mem = state.memory_store.as_ref().map(|m| (**m).clone());
+    let candidate_tools = crate::cli::build_tools(
+        candidate_provider.clone(),
+        model_val.clone(),
+        &cfg,
+        state.browser_enabled,
+        &state.browser_url,
+        mem,
+        state.embed_model.clone(),
+    )
+    .await;
+
+    crate::config::write_config_toml(path.as_path(), &cfg).map_err(|e| {
+        bad_persist(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed writing config: {e}"),
+        )
+    })?;
+
+    {
+        let mut g = state.inner.write().await;
+        g.provider = candidate_provider;
+        g.tools = candidate_tools;
+        g.model = model_val;
+        g.system_prompt = sys;
+        g.config = cfg;
+    }
+
+    Ok(Json(PersistSetupResponse {
+        ok: true,
+        message: "Saved to config.toml and hot-reloaded the server runtime.".into(),
+    }))
+}
+
+fn bad_persist(code: StatusCode, msg: String) -> (StatusCode, Json<PersistSetupResponse>) {
+    (
+        code,
+        Json(PersistSetupResponse {
+            ok: false,
+            message: msg,
+        }),
+    )
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -145,9 +330,17 @@ async fn ui() -> Html<&'static str> {
 }
 
 async fn health(State(state): State<Arc<ServerState>>) -> Json<HealthResponse> {
+    let g = state.inner.read().await;
     Json(HealthResponse {
         status: "ok",
-        model: state.model.clone(),
+        model: g.model.clone(),
+        provider_model: g.provider.model().to_string(),
+        keys: HealthKeyHints {
+            anthropic_env: nonempty_env("ANTHROPIC_API_KEY"),
+            xai_env: nonempty_env("XAI_API_KEY"),
+            openai_env: nonempty_env("OPENAI_API_KEY"),
+        },
+        config_path: state.config_active_path.display().to_string(),
     })
 }
 
@@ -327,6 +520,8 @@ async fn chat(
 ) -> Sse<BoxSseStream> {
     let (tx, rx) = agent_event_channel();
 
+    let rt = state.inner.read().await;
+
     // Resolve or create session
     let mut session = match req.session_id.as_deref() {
         Some(id) => match state.session_store.find(id) {
@@ -334,16 +529,17 @@ async fn chat(
             Ok(None) => return error_sse(format!("session not found: {id}")),
             Err(e) => return error_sse(e),
         },
-        None => Session::new(&state.model),
+        None => Session::new(&rt.model),
     };
 
     session.push(Message::user(&req.prompt));
 
-    let provider = state.provider.clone();
-    let tools = state.tools.clone();
+    let provider = rt.provider.clone();
+    let tools = rt.tools.clone();
+    let sys = rt.system_prompt.clone();
+    drop(rt);
     let mem = state.memory_store.as_ref().map(|m| (**m).clone());
     let em = state.embed_model.clone();
-    let sys = state.system_prompt.clone();
     let store = state.session_store.clone();
     let mem_store = state.memory_store.as_ref().map(|m| (**m).clone());
     let em2 = state.embed_model.clone();
@@ -629,14 +825,22 @@ mod tests {
         let session_db = session_dir.path().join("sessions.db");
         let session_store = Arc::new(SessionStore::open(&session_db).expect("open session db"));
 
-        let state = ServerState {
+        let inner = ServeRuntimeState {
             provider: Arc::new(provider),
-            session_store: session_store.clone(),
-            memory_store: None,
-            embed_model: None,
             tools: ToolExecutor::new(ToolRegistry::new()),
             model: "test-model".to_string(),
             system_prompt: "You are a test assistant.".to_string(),
+            config: crate::config::Config::default(),
+        };
+
+        let state = ServerState {
+            inner: Arc::new(tokio::sync::RwLock::new(inner)),
+            session_store: session_store.clone(),
+            memory_store: None,
+            embed_model: None,
+            browser_enabled: false,
+            browser_url: String::new(),
+            config_active_path: Arc::new(PathBuf::from("/tmp/harness-test-config.toml")),
         };
 
         let app = router(state);
@@ -645,7 +849,11 @@ mod tests {
             .expect("bind test listener");
         let addr = listener.local_addr().expect("listener addr");
         let handle = tokio::spawn(async move {
-            let _ = axum::serve(listener, app).await;
+            let _ = axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await;
         });
 
         (format!("http://{addr}"), handle, session_store, session_dir)
@@ -681,6 +889,18 @@ mod tests {
         let payload: serde_json::Value = health.json().await.expect("health json");
         assert_eq!(payload["status"], "ok");
         assert_eq!(payload["model"], "test-model");
+        assert_eq!(payload["provider_model"], "qwen3-coder:30b");
+        assert!(
+            payload
+                .get("config_path")
+                .and_then(|v| v.as_str())
+                .is_some(),
+            "health should include config_path"
+        );
+        assert!(
+            payload.get("key_env").is_some(),
+            "health should include key_env map"
+        );
 
         handle.abort();
         let _ = handle.await;

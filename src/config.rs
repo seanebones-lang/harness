@@ -264,3 +264,106 @@ pub fn load(path: Option<&Path>) -> Result<Config> {
 
     Ok(Config::default())
 }
+
+/// Path Harness would load first (project `.harness/` wins), or where a new file should be created.
+pub fn active_config_toml_path() -> PathBuf {
+    let local = PathBuf::from(".harness/config.toml");
+    if local.exists() {
+        return local;
+    }
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness")
+        .join("config.toml")
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct WebSetupPersist {
+    pub primary: String,
+    pub model: String,
+    #[serde(default)]
+    pub anthropic_api_key: Option<String>,
+    #[serde(default)]
+    pub xai_api_key: Option<String>,
+    #[serde(default)]
+    pub openai_api_key: Option<String>,
+}
+
+/// Merge dashboard form into `cfg` (does not write disk).
+pub fn apply_web_setup_patch(cfg: &mut Config, patch: &WebSetupPersist) -> anyhow::Result<()> {
+    let p = patch.primary.to_lowercase();
+    if !matches!(p.as_str(), "anthropic" | "xai" | "openai") {
+        anyhow::bail!("primary must be anthropic, xai, or openai");
+    }
+    let model = patch.model.trim();
+    if model.is_empty() {
+        anyhow::bail!("model is required");
+    }
+
+    cfg.router.default = Some(p.clone());
+    // Drop stale fast/heavy route strings (often pin old SKUs like grok-3-fast).
+    cfg.router.fast_model = None;
+    cfg.router.heavy_model = None;
+
+    cfg.provider.model = Some(model.to_string());
+
+    if let Some(ref k) = patch.anthropic_api_key {
+        if !k.trim().is_empty() {
+            cfg.providers
+                .entry("anthropic".to_string())
+                .or_default()
+                .api_key = Some(k.trim().to_string());
+        }
+    }
+    if let Some(ref k) = patch.xai_api_key {
+        if !k.trim().is_empty() {
+            cfg.providers.entry("xai".to_string()).or_default().api_key =
+                Some(k.trim().to_string());
+        }
+    }
+    if let Some(ref k) = patch.openai_api_key {
+        if !k.trim().is_empty() {
+            cfg.providers
+                .entry("openai".to_string())
+                .or_default()
+                .api_key = Some(k.trim().to_string());
+        }
+    }
+
+    let e = cfg.providers.entry(p.clone()).or_default();
+    e.model = Some(model.to_string());
+
+    cfg.provider.api_key = match p.as_str() {
+        "anthropic" => cfg
+            .providers
+            .get("anthropic")
+            .and_then(|x| x.api_key.clone()),
+        "xai" => cfg.providers.get("xai").and_then(|x| x.api_key.clone()),
+        "openai" => cfg.providers.get("openai").and_then(|x| x.api_key.clone()),
+        _ => None,
+    };
+
+    Ok(())
+}
+
+pub fn write_config_toml(path: &Path, cfg: &Config) -> anyhow::Result<()> {
+    let text = toml::to_string_pretty(cfg)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let fname = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("config.toml");
+    let nano = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let tmp = path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!(".{fname}.{nano}.write_tmp"));
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
