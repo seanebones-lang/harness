@@ -6,7 +6,9 @@ Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI �
 
 **Status:** Beta — fine for daily use; expect ongoing polish. Before tagging a release, run the gates in [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md). Latest go/no-go notes: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md).
 
-**Plain-language guide:** [`SEAN START HERE/USER MANUAL.md`](SEAN%20START%20HERE/USER%20MANUAL.md) — complements this README with the same first-run story.
+**Plain-language guide:** [`Start Here/USER MANUAL.md`](Start%20Here/USER%20MANUAL.md) — complements this README with the same first-run story.
+
+**Full installation (every OS, FAQ, troubleshooting):** [`docs/INSTALL.md`](docs/INSTALL.md)
 
 ## Prerequisites
 

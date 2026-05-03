@@ -1,6 +1,6 @@
 # Harness — Remaining Work
 
-Canonical **user** docs: `README.md`, `SEAN START HERE/USER MANUAL.md`; **developer**: `CLAUDE.md`, `config/default.toml`.
+Canonical **user** docs: `README.md`, `Start Here/USER MANUAL.md`; **developer**: `CLAUDE.md`, `config/default.toml`.
 
 Older **Critical / Important** items (xAI `stream_options` + usage, multi-tool-call
 streaming tests, embedding retries, TUI `--resume`, ambient `ctrl_c` shutdown, web UI
