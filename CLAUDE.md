@@ -11,6 +11,10 @@ cargo build --profile release-lto  # distribution build (thin LTO, stripped)
 cargo test                         # runs tests/smoke_test.rs (no API key needed)
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
+
+# Optional: [.githooks/commit-msg](.githooks/commit-msg) drops `Co-authored-by`, `Co-developed-by`,
+# and `Made-with:` trailer lines locally (avoid polluting attribution when IDE aids compose messages).
+git config core.hooksPath .githooks
 ```
 
 ## Running

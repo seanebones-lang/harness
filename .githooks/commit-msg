@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Strip tooling footers injected with commits (co-author attribution, vendor “made with” tags).
+perl -i -ne 'print unless /^(Co-authored-by|Co-developed-by|Made-with)\s*:/i' "$1"
+exit 0
