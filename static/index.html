@@ -359,10 +359,69 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
     color: var(--muted);
     font-size: 11px;
   }
 
+  .setup-lead {
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 1.55;
+    margin-bottom: 12px;
+  }
+  #setup-overlay code {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1px 5px;
+    background: rgba(0, 0, 0, 0.2);
+  }
+  .setup-form {
+    margin: 12px 0 14px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(0, 0, 0, 0.18);
+  }
+  .setup-form-row {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 8px 12px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .setup-form-row:last-of-type { margin-bottom: 0; }
+  .setup-form label { color: var(--dim); font-size: 12px; }
+  .setup-form input, .setup-form select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel-soft);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 7px 8px;
+    box-sizing: border-box;
+  }
+  .setup-form .setup-banner {
+    grid-column: 1 / -1;
+    margin: -4px 0 10px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .setup-form-submit-row {
+    grid-template-columns: 1fr;
+  }
+  .setup-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .setup-msg { font-size: 12px; min-height: 1.35em; color: var(--warn); margin-top: 8px; }
+  #setup-save { border-color: var(--accent); color: var(--accent); font-weight: 600; }
   .app {
     flex: 1;
     display: grid;
@@ -796,6 +855,7 @@
     <button id="toggle-left" title="Show/hide left sidebar (Ctrl+B)">Toggle left</button>
     <button id="toggle-right" title="Show/hide right sidebar (Ctrl+\)">Toggle right</button>
     <button id="open-tour" title="Show onboarding tour">Tour</button>
+    <button id="open-setup" title="API keys &amp; models — localhost save persists to config.toml">Setup</button>
     <button id="open-help" title="Show keyboard shortcuts (?)">Help</button>
   </div>
   <label class="toggle-label" title="Automatically resume last active session">
@@ -806,7 +866,7 @@
     <input id="auto-refresh" type="checkbox" checked>
     Auto refresh
   </label>
-  <span id="status" class="status">connecting…</span>
+  <span id="status" class="status" role="status">connecting…</span>
 </header>
 
 <div id="offline-banner" class="offline-banner">
@@ -922,10 +982,83 @@
 
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
+<div id="setup-overlay" class="help-overlay" aria-hidden="true">
+  <div class="help-card" role="dialog" aria-modal="true" aria-label="Server setup">
+    <div class="help-title">API keys &amp; model</div>
+    <p class="setup-lead">
+      Primary provider keys can be stored in config or shell env vars (which the serve process inherits).
+      On <strong>127.0.0.1</strong> you may save secrets into the active <code>config.toml</code> from this browser;
+      post is blocked for remote peers.
+    </p>
+    <div class="setup-form">
+      <p class="setup-banner">
+        May&nbsp;2026 catalog: Anthropic&nbsp;<code>claude-sonnet-4-6</code>,
+        xAI&nbsp;<code>grok-4.3</code>, OpenAI&nbsp;<code>gpt-5.5</code> (defaults).
+        Clearing fast/heavy router pins avoids stale SKU strings (e.g. older Grok-3-era routes).
+      </p>
+      <form id="setup-persist-form">
+        <div class="setup-form-row">
+          <label for="setup-primary">Primary provider</label>
+          <select id="setup-primary" autocomplete="off">
+            <option value="anthropic">Anthropic</option>
+            <option value="xai">xAI</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </div>
+        <div class="setup-form-row">
+          <label for="setup-model-preset">Model</label>
+          <select id="setup-model-preset" autocomplete="off"></select>
+        </div>
+        <div class="setup-form-row" id="setup-model-custom-row" style="display: none;">
+          <label for="setup-model-custom">Custom id</label>
+          <input type="text" id="setup-model-custom" autocomplete="off" spellcheck="false" placeholder="exact provider model slug">
+        </div>
+        <div class="setup-form-row">
+          <label for="setup-key-anthropic"><code>ANTHROPIC_API_KEY</code></label>
+          <input type="password" id="setup-key-anthropic" autocomplete="off" placeholder="">
+        </div>
+        <div class="setup-form-row">
+          <label for="setup-key-xai"><code>XAI_API_KEY</code></label>
+          <input type="password" id="setup-key-xai" autocomplete="off" placeholder="">
+        </div>
+        <div class="setup-form-row">
+          <label for="setup-key-openai"><code>OPENAI_API_KEY</code></label>
+          <input type="password" id="setup-key-openai" autocomplete="off" placeholder="">
+        </div>
+        <div class="setup-form-row setup-form-submit-row">
+          <div class="setup-form-actions">
+            <button type="submit" id="setup-save">Save to config &amp; hot-reload</button>
+            <span style="font-size:11px;color:var(--muted)">Blank key fields leave existing secrets unchanged.</span>
+          </div>
+        </div>
+      </form>
+      <div id="setup-persist-msg" class="setup-msg" aria-live="polite"></div>
+    </div>
+    <div class="help-grid">
+      <div class="k">Model in header</div>
+      <div id="setup-summary-model">&mdash;</div>
+      <div class="k">Backend model id</div>
+      <div id="setup-summary-provider">&mdash;</div>
+      <div class="k">Standard env vars</div>
+      <div id="setup-summary-env">&mdash;</div>
+      <div class="k">Config file</div>
+      <div id="setup-summary-config">&mdash;</div>
+      <div class="k">Typical CLI</div>
+      <div><code style="white-space:normal;word-break:break-all;">ANTHROPIC_API_KEY=&hellip; harness serve --addr 127.0.0.1:8787</code><br><code style="white-space:normal;word-break:break-all;">ANTHROPIC_API_KEY=&hellip; harness serve --model claude-sonnet-4-6</code><br><code>harness doctor</code></div>
+    </div>
+    <div class="help-footer">
+      <span>Shows only non-secret env booleans detected on the serve process plus model labels.</span>
+      <button type="button" id="refresh-setup-health">Reload from server</button>
+      <button type="button" id="close-setup">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="help-overlay" class="help-overlay" aria-hidden="true">
   <div class="help-card" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts and help">
     <div class="help-title">Quick help & shortcuts</div>
     <div class="help-grid">
+      <div class="k">Setup</div><div>Open <strong>Setup</strong> to edit provider, May&nbsp;2026 model presets, and API keys on localhost.</div>
       <div class="k">Cmd/Ctrl+K</div><div>Open command palette</div>
       <div class="k">Ctrl+B</div><div>Toggle left sidebar</div>
       <div class="k">Ctrl+\</div><div>Toggle right sidebar</div>
@@ -940,7 +1073,7 @@
       <div class="k">@file context</div><div>Use Files picker or click project to insert @path mention</div>
     </div>
     <div class="help-footer">
-      <span>Tip: right now, command palette also learns your recent actions.</span>
+      <span>Use <strong>Setup</strong> for provider + model presets + localhost key persist.</span>
       <button id="close-help">Close</button>
     </div>
   </div>
@@ -1020,8 +1153,39 @@
   const toastsEl = document.getElementById("toasts");
   const helpOverlay = document.getElementById("help-overlay");
   const closeHelpBtn = document.getElementById("close-help");
+  const openSetupBtn = document.getElementById("open-setup");
+  const setupOverlay = document.getElementById("setup-overlay");
+  const closeSetupBtn = document.getElementById("close-setup");
+  const refreshSetupHealthBtn = document.getElementById("refresh-setup-health");
+  const setupPrimarySelect = document.getElementById("setup-primary");
+  const setupModelPreset = document.getElementById("setup-model-preset");
+  const setupModelCustomRow = document.getElementById("setup-model-custom-row");
+  const setupModelCustomInput = document.getElementById("setup-model-custom");
+  const setupPersistForm = document.getElementById("setup-persist-form");
+  const setupPersistMsg = document.getElementById("setup-persist-msg");
+  const setupKeyAnthropic = document.getElementById("setup-key-anthropic");
+  const setupKeyXai = document.getElementById("setup-key-xai");
+  const setupKeyOpenai = document.getElementById("setup-key-openai");
 
-  let resumeLastSession = localStorage.getItem(RESUME_LAST_KEY) !== "false";
+  /** @type {Record<string, [string, string][]>} */
+  const SETUP_MODEL_PRESETS = {
+    anthropic: [
+      ["claude-sonnet-4-6", "Sonnet (default flagship)"],
+      ["claude-opus-4-7", "Opus (heavy)"],
+      ["claude-haiku-4-5", "Haiku (fast)"],
+    ],
+    xai: [
+      ["grok-4.3", "Grok flagship"],
+      ["grok-4.20-0309-reasoning", "Reasoning pinned"],
+      ["grok-4.1-fast-reasoning", "Fast reasoning"],
+    ],
+    openai: [
+      ["gpt-5.5", "GPT-5.5 flagship"],
+      ["gpt-5.4", "GPT-5.4"],
+      ["gpt-5.4-mini", "GPT-5.4 mini"],
+      ["o4-mini", "o4-mini"],
+    ],
+  };
   let autoRefreshEnabled = localStorage.getItem(AUTO_REFRESH_KEY) !== "false";
   let sessionId = resumeLastSession ? localStorage.getItem(SESSION_KEY) : null;
   let sessions = [];
@@ -1055,6 +1219,8 @@
   let offlineMode = false;
   let selectedProjectName = localStorage.getItem(SELECTED_PROJECT_KEY);
   let helpOpen = false;
+  let lastHealth = null;
+  let setupOpen = false;
   let autoRefreshTimer = null;
   let tourIndex = 0;
   let tourOpen = false;
@@ -1113,6 +1279,7 @@
   }
 
   function openTour(reset = false) {
+    closeSetup();
     if (reset) tourIndex = 0;
     tourOpen = true;
     tourOverlay.classList.add("visible");
@@ -1128,7 +1295,14 @@
     if (markSeen) localStorage.setItem(TOUR_SEEN_KEY, "true");
   }
 
+  function closeSetup() {
+    setupOpen = false;
+    setupOverlay.classList.remove("visible");
+    setupOverlay.setAttribute("aria-hidden", "true");
+  }
+
   function openHelp() {
+    closeSetup();
     helpOpen = true;
     helpOverlay.classList.add("visible");
     helpOverlay.setAttribute("aria-hidden", "false");
@@ -1138,6 +1312,155 @@
     helpOpen = false;
     helpOverlay.classList.remove("visible");
     helpOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  function configureSetupModelsForPrimary(primary, currentSlug) {
+    const list = SETUP_MODEL_PRESETS[primary] || SETUP_MODEL_PRESETS.anthropic;
+    const ids = new Set(list.map((x) => x[0]));
+    setupModelPreset.innerHTML = "";
+    for (const [id, cap] of list) {
+      const o = document.createElement("option");
+      o.value = id;
+      o.textContent = `${id} — ${cap}`;
+      setupModelPreset.appendChild(o);
+    }
+    const c = document.createElement("option");
+    c.value = "__custom";
+    c.textContent = "Custom…";
+    setupModelPreset.appendChild(c);
+
+    const slug = (currentSlug || "").trim();
+    if (slug && ids.has(slug)) {
+      setupModelPreset.value = slug;
+      setupModelCustomRow.style.display = "none";
+      setupModelCustomInput.value = "";
+    } else if (slug) {
+      setupModelPreset.value = "__custom";
+      setupModelCustomRow.style.display = "grid";
+      setupModelCustomInput.value = slug;
+    } else if (list.length) {
+      setupModelPreset.value = list[0][0];
+      setupModelCustomRow.style.display = "none";
+      setupModelCustomInput.value = "";
+    } else {
+      setupModelPreset.value = "__custom";
+      setupModelCustomRow.style.display = "grid";
+    }
+  }
+
+  function readSetupChosenModel() {
+    if (setupModelPreset.value === "__custom") return setupModelCustomInput.value.trim();
+    return setupModelPreset.value.trim();
+  }
+
+  function applySetupKeyPlaceholders(st) {
+    if (!st) return;
+    setupKeyAnthropic.placeholder = st.has_anthropic_key ? "leave blank = keep current" : "sk-ant-api…";
+    setupKeyXai.placeholder = st.has_xai_key ? "leave blank = keep current" : "xai-…";
+    setupKeyOpenai.placeholder = st.has_openai_key ? "leave blank = keep current" : "sk-…";
+  }
+
+  async function fetchSetupStateIntoForm() {
+    try {
+      const r = await fetchWithTimeout("/api/setup/state", {}, 8000);
+      if (!r.ok) return;
+      const st = await r.json();
+      let p = (st.primary || "anthropic").toLowerCase();
+      if (p !== "xai" && p !== "openai") p = "anthropic";
+      setupPrimarySelect.value = p;
+      configureSetupModelsForPrimary(p, st.model || "");
+      applySetupKeyPlaceholders(st);
+    } catch (_) {}
+  }
+    return lastHealth && lastHealth.model ? lastHealth.model : "model";
+  }
+
+  function statusLineReadyWithSession() {
+    const mid = backendModelSnippet();
+    if (!sessionId) return `ready · ${mid}`;
+    return `ready · ${mid} · sess ${sessionId.slice(0, 8)}`;
+  }
+
+  function updateStatusTooltip() {
+    if (!lastHealth || !lastHealth.config_path) {
+      status.title = "";
+      return;
+    }
+    const ke = lastHealth.key_env || {};
+    const bits = [];
+    if (ke.anthropic_env) bits.push("ANTHROPIC_API_KEY");
+    if (ke.xai_env) bits.push("XAI_API_KEY");
+    if (ke.openai_env) bits.push("OPENAI_API_KEY");
+    status.title =
+      `Model "${lastHealth.model}" · backend "${lastHealth.provider_model}"\n` +
+      `Active config path: ${lastHealth.config_path}\n` +
+      `Serve process reports env:\n${bits.length ? "  • " + bits.join("\n  • ") : "  • (none set in env — keys may live only in providers.* in config.toml)"}\n\n` +
+      `Opening Setup loads /api/setup/state; saving on 127.0.0.1 POSTs keys into config.toml with hot reload.`;
+  }
+
+  function applyHealthPayload(h) {
+    lastHealth = h;
+    updateStatusTooltip();
+    if (setupOpen) refreshSetupPanel();
+  }
+
+  function refreshSetupPanel() {
+    const m = document.getElementById("setup-summary-model");
+    const pr = document.getElementById("setup-summary-provider");
+    const envEl = document.getElementById("setup-summary-env");
+    const cf = document.getElementById("setup-summary-config");
+    if (!lastHealth) {
+      const pending = "(connect to server, then Reload)";
+      m.textContent = pending;
+      pr.textContent = pending;
+      envEl.textContent = pending;
+      cf.textContent = pending;
+      return;
+    }
+    m.textContent = lastHealth.model || "?";
+    pr.textContent = lastHealth.provider_model || "?";
+    const ke = lastHealth.key_env || {};
+    const a = ke.anthropic_env ? "seen" : "not seen";
+    const x = ke.xai_env ? "seen" : "not seen";
+    const o = ke.openai_env ? "seen" : "not seen";
+    envEl.innerHTML =
+      `<code>ANTHROPIC_API_KEY</code> ${a}; ` +
+      `<code>XAI_API_KEY</code> ${x}; ` +
+      `<code>OPENAI_API_KEY</code> ${o}<br>` +
+      `<span style="color:var(--muted)">Secrets only in config.toml are not enumerated here.</span>`;
+    cf.textContent = lastHealth.config_path || "(unknown)";
+  }
+
+  async function openSetupPanel() {
+    closeHelp();
+    setupOpen = true;
+    setupOverlay.classList.add("visible");
+    setupOverlay.setAttribute("aria-hidden", "false");
+    setupPersistMsg.textContent = "";
+    setupPersistMsg.style.color = "";
+    setupKeyAnthropic.value = "";
+    setupKeyXai.value = "";
+    setupKeyOpenai.value = "";
+    refreshSetupPanel();
+    try {
+      const r = await fetchWithTimeout("/api/health", {}, 8000);
+      if (r.ok) {
+        applyHealthPayload(await r.json());
+        applyReadyStatusBar();
+      } else if (!lastHealth) {
+        refreshSetupPanel();
+      }
+    } catch (_) {
+      refreshSetupPanel();
+    }
+    await fetchSetupStateIntoForm();
+  }
+
+  /** After health refreshes while online: rebuild status line incl. session hint. */
+  function applyReadyStatusBar() {
+    if (offlineMode) return;
+    setStatus(statusLineReadyWithSession(), true);
+    updateStatusTooltip();
   }
 
   function isTypingTarget(node) {
@@ -1173,6 +1496,7 @@
   function setStatus(text, connected) {
     status.textContent = text;
     status.className = "status" + (connected ? " connected" : "");
+    if (!connected) status.removeAttribute("title");
   }
 
   function setOfflineState(isOffline, message = "") {
@@ -1468,7 +1792,7 @@
         addMsg(roleClass(m.role), renderMarkdown(text));
       }
       chat.scrollTop = chat.scrollHeight;
-      setStatus(`ready · session ${sessionId.slice(0, 8)}`, true);
+      setStatus(statusLineReadyWithSession(), true);
       renderSessions();
       addEvent(`<strong>session loaded</strong><br>${escapeHtml((data.name || data.id).toString())}`);
     } catch (err) {
@@ -1841,6 +2165,7 @@
   }
 
   function openPalette() {
+    closeSetup();
     paletteOpen = true;
     paletteOverlay.classList.add("visible");
     paletteOverlay.setAttribute("aria-hidden", "false");
@@ -1901,7 +2226,7 @@
       { id: "run_selected_tests", kind: "action", title: "Run tests for selected project", meta: "Uses sidebar selected project + test command", run: () => runSelectedProjectTest() },
       { id: "toggle_left", kind: "action", title: "Toggle left sidebar", meta: "Show/hide sessions/projects pane", run: () => toggleLeftBtn.click() },
       { id: "toggle_right", kind: "action", title: "Show/hide right sidebar", meta: "Show/hide activity pane", run: () => toggleRightBtn.click() },
-      { id: "open_tour", kind: "action", title: "Open onboarding tour", meta: "Restart first-run guided tour", run: () => openTour(true) }
+      { id: "open_setup", kind: "action", title: "Setup: API keys & models", meta: "Persist to config on localhost; May 2026 presets", run: () => { openSetupPanel(); } },
     ];
     const sessionItems = sessions.map((s) => ({
       kind: "session",
@@ -2054,18 +2379,19 @@
   async function checkHealth() {
     try {
       const r = await fetchWithTimeout("/api/health", {}, 8000);
-      if (r.ok) {
-        const health = await r.json();
-        setOfflineState(false);
-        healthBackoffMs = 2500;
-        setStatus(`ready · ${health.model || "model"}`, true);
-        updateSendControls();
-        return;
-      }
-      throw new Error(`health status ${r.status}`);
+      if (!r.ok) throw new Error(`health status ${r.status}`);
+      const health = await r.json();
+      applyHealthPayload(health);
+      setOfflineState(false);
+      healthBackoffMs = 2500;
+      applyReadyStatusBar();
+      updateSendControls();
+      return;
     } catch (_) {
       stopGenerating();
       updateSendControls();
+      lastHealth = null;
+      status.removeAttribute("title");
       setOfflineState(true, `Server unreachable. Retrying in ${Math.round(healthBackoffMs / 1000)}s…`);
       setStatus("server unreachable", false);
       if (healthTimer) {
@@ -2184,7 +2510,7 @@
       updateSendControls();
       const el = document.getElementById(assistantId);
       if (el) el.classList.remove("cursor");
-      setStatus(sessionId ? `ready · session ${sessionId.slice(0, 8)}` : "ready", true);
+      setStatus(statusLineReadyWithSession(), true);
       await fetchSessions();
       prompt.focus();
     }
@@ -2263,6 +2589,10 @@
       } else {
         openPalette();
       }
+      return;
+    }
+    if (setupOpen && e.key === "Escape") {
+      closeSetup();
       return;
     }
     if (helpOpen && e.key === "Escape") {
@@ -2393,8 +2723,71 @@
 
   openHelpBtn.addEventListener("click", openHelp);
   closeHelpBtn.addEventListener("click", closeHelp);
+  openSetupBtn.addEventListener("click", () => { openSetupPanel(); });
+  closeSetupBtn.addEventListener("click", closeSetup);
+  refreshSetupHealthBtn.addEventListener("click", () => { openSetupPanel(); });
+  setupPrimarySelect.addEventListener("change", () => {
+    configureSetupModelsForPrimary(setupPrimarySelect.value, readSetupChosenModel());
+  });
+  setupModelPreset.addEventListener("change", () => {
+    if (setupModelPreset.value === "__custom") {
+      setupModelCustomRow.style.display = "grid";
+    } else {
+      setupModelCustomRow.style.display = "none";
+      setupModelCustomInput.value = "";
+    }
+  });
+  setupPersistForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setupPersistMsg.style.color = "";
+    setupPersistMsg.textContent = "Saving…";
+    const model = readSetupChosenModel();
+    if (!model) {
+      setupPersistMsg.style.color = "var(--bad)";
+      setupPersistMsg.textContent = "Pick or enter a model id.";
+      return;
+    }
+    const body = { primary: setupPrimarySelect.value, model };
+    const ka = setupKeyAnthropic.value.trim();
+    const kx = setupKeyXai.value.trim();
+    const ko = setupKeyOpenai.value.trim();
+    if (ka) body.anthropic_api_key = ka;
+    if (kx) body.xai_api_key = kx;
+    if (ko) body.openai_api_key = ko;
+    try {
+      const r = await fetchWithTimeout("/api/setup/persist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }, 20000);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) {
+        setupPersistMsg.style.color = "var(--bad)";
+        setupPersistMsg.textContent = (j && j.message) || `Save failed (${r.status})`;
+        return;
+      }
+      setupPersistMsg.style.color = "var(--good)";
+      setupPersistMsg.textContent = j.message || "Saved.";
+      setupKeyAnthropic.value = "";
+      setupKeyXai.value = "";
+      setupKeyOpenai.value = "";
+      try {
+        const h = await fetchWithTimeout("/api/health", {}, 8000);
+        if (h.ok) applyHealthPayload(await h.json());
+      } catch (_) {}
+      await fetchSetupStateIntoForm();
+      refreshSetupPanel();
+      applyReadyStatusBar();
+    } catch (err) {
+      setupPersistMsg.style.color = "var(--bad)";
+      setupPersistMsg.textContent = err && err.message ? String(err.message) : String(err);
+    }
+  });
   helpOverlay.addEventListener("click", (e) => {
     if (e.target === helpOverlay) closeHelp();
+  });
+  setupOverlay.addEventListener("click", (e) => {
+    if (e.target === setupOverlay) closeSetup();
   });
   openTourBtn.addEventListener("click", () => openTour(true));
   tourSkipBtn.addEventListener("click", () => closeTour(true));
@@ -2438,7 +2831,7 @@
     persistSessionId();
     clearChatAndActivity();
     renderSessions();
-    setStatus("new session — ready", true);
+    setStatus(`new session — ready · ${backendModelSnippet()}`, true);
     addMsg("system", "New session started.");
     prompt.focus();
   });

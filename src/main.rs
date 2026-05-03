@@ -15,6 +15,7 @@ mod memory_project;
 mod notifications;
 mod observability;
 mod projects;
+mod provider_build;
 mod server;
 mod swarm;
 mod sync;
@@ -30,8 +31,6 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use harness_provider_core::ArcProvider;
-use harness_provider_router::ProviderRouter;
-use harness_provider_xai::{XaiConfig, XaiProvider};
 use harness_tools::registry::Tool;
 use harness_tools::tools::GhTool;
 use std::sync::Arc;
@@ -91,6 +90,7 @@ async fn main() -> Result<()> {
 
     let model = cli
         .model
+        .clone()
         .or_else(|| cfg.provider.model.clone())
         .unwrap_or_else(|| {
             if has_anthropic {
@@ -104,29 +104,7 @@ async fn main() -> Result<()> {
             }
         });
 
-    let provider: ArcProvider = if !cfg.providers.is_empty() || has_anthropic || has_openai {
-        // Smart router: builds from env vars + config
-        let router = ProviderRouter::from_config(&cfg.providers, &cfg.router)
-            .context("failed to build provider router")?;
-        router.into_arc()
-    } else if has_xai {
-        let api_key = cfg
-            .provider
-            .api_key
-            .clone()
-            .or_else(|| std::env::var("XAI_API_KEY").ok())
-            .unwrap();
-        let xai_cfg = XaiConfig::new(&api_key)
-            .with_model(&model)
-            .with_max_tokens(cfg.provider.max_tokens.unwrap_or(8192))
-            .with_temperature(cfg.provider.temperature.unwrap_or(0.7));
-        std::sync::Arc::new(XaiProvider::new(xai_cfg)?)
-    } else {
-        // Fallback to router (handles Ollama etc.)
-        let router = ProviderRouter::from_config(&cfg.providers, &cfg.router)
-            .context("failed to build provider router")?;
-        router.into_arc()
-    };
+    let provider: ArcProvider = provider_build::build_arc_provider(&cfg, cli.model.as_deref())?;
 
     let session_store = harness_memory::SessionStore::open(
         cfg.session
@@ -248,17 +226,26 @@ async fn main() -> Result<()> {
 
         Some(Commands::Serve { addr }) => {
             let addr: std::net::SocketAddr = addr.parse().context("invalid address")?;
-            let state = server::ServerState {
+            let cfg_for_serve = cfg.clone();
+            let inner = server::ServeRuntimeState {
                 provider,
+                tools,
+                model: model.clone(),
+                system_prompt: cfg_for_serve
+                    .agent
+                    .system_prompt
+                    .clone()
+                    .unwrap_or_else(|| agent::DEFAULT_SYSTEM.to_string()),
+                config: cfg_for_serve,
+            };
+            let state = server::ServerState {
+                inner: Arc::new(tokio::sync::RwLock::new(inner)),
                 session_store: Arc::new(session_store),
                 memory_store: memory_store.map(Arc::new),
                 embed_model,
-                tools,
-                model,
-                system_prompt: cfg
-                    .agent
-                    .system_prompt
-                    .unwrap_or_else(|| agent::DEFAULT_SYSTEM.to_string()),
+                browser_enabled,
+                browser_url,
+                config_active_path: Arc::new(config::active_config_toml_path()),
             };
             server::serve(state, addr).await?;
         }
