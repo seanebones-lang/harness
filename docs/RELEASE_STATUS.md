@@ -4,13 +4,26 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-05-03 — Post-push verification sweep (`main` @ `3cffa5a`)**
+
+| Gate | Result |
+|------|--------|
+| `cargo fmt --all -- --check` | Pass |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Pass |
+| `cargo test --all` (incl. doctests) | Pass — **91 tests** summed across crates (prior log row cited 90 before recount) |
+| `cargo build --profile release-lto` | Pass (~60s local dev machine; distro thin-LTO slice) |
+
+| Notes | **CI parity:** `.github/workflows/ci.yml` still runs **`cargo audit`** / **`cargo deny`**, MSRV (**1.76** `cargo check --workspace --all-targets`), **`cargo build --all-targets`**, and **`cargo test --all`** on **ubuntu / macos / windows** — run those locally when mirroring CI. |
+
+---
+
 **2026-05-03 — Phase-2 continuation: remaining CLI handlers extracted from `main.rs`**
 
 | Gate | Result |
 |------|--------|
 | `cargo fmt --all -- --check` | Pass |
 | `cargo clippy --all-targets --all-features -- -D warnings` | Pass |
-| `cargo test --all` | Pass — **90 tests** (+1 `prompt` unit test); prior session ended at 89 |
+| `cargo test --all` | Pass — **91 tests** (workspace total incl. doctest stanzas; prior notes used 89→90 progression) |
 
 | Change | Detail |
 |--------|--------|
@@ -37,7 +50,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 **`3fa6d51` audit remediation closed (now also verified by tests):** OpenAI multi-tool SSE flush (regression-tested in `crates/harness-provider-openai`), **MCP dedicated stdout reader (regression-tested in `crates/harness-mcp`)**, MCP sampling paths tested, `WorkspaceRoot` jail boundary-tested, `src/cli/commands/project.rs` + `src/tui/{render,events}.rs` extracted, LSP framing hardened.
 
-**Next iteration (Phase 2 residuals):** `src/main.rs` is **823 LOC** — further splits optional (e.g. cost/swarm match arms, `run_once` wrappers); **`src/tui/mod.rs`** → `state/input/slash`; coverage ≥60%; proptest/fuzz; `#![deny(missing_docs)]` on public crates.
+**Next iteration (Phase 2 residuals):** `src/main.rs` stays **823 LOC** — optional further splits (e.g. cost/swarm match arms, `run_once` wrappers); **`src/tui`** now includes **`state` / `input` / `slash` / `render` / `events` / `driver`** (**`mod.rs` ~152 LOC**); coverage ≥60%; proptest/fuzz; `#![deny(missing_docs)]` on public crates.
 
 ---
 
