@@ -8,8 +8,9 @@ session persistence, session delete CLI, clippy cleanliness) are **implemented**
 
 This file tracks follow-ups that are still worth doing.
 
----
+Release readiness: **[`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md)** · latest verdict: **[`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md)**
 
+---
 ## Polish
 
 ### Documentation (README / USER MANUAL / `CLAUDE.md`)
@@ -39,6 +40,8 @@ Titles may lag the first list after save because naming is async; optional re-qu
 rename or note the limitation in UX copy.
 
 ## Testing checklist before release
+
+Maintainers: use **[`docs/PUBLIC_RELEASE.md`](../docs/PUBLIC_RELEASE.md)** for the full public checklist (legal, gates, manual smokes, quickstart rehearsal, go/no-go).
 
 Automated gates (verified in dev):
 
