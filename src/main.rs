@@ -40,7 +40,6 @@ use harness_tools::tools::{
     SpawnAgentTool, TestRunnerTool, WriteFileTool,
 };
 use harness_tools::{ToolExecutor, ToolRegistry};
-use harness_voice;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -1013,7 +1012,7 @@ async fn main() -> Result<()> {
                     if rows.is_empty() {
                         println!("No usage data yet.");
                     } else {
-                        println!("{:<35} {}", "Model", "Cost");
+                        println!("{:<35} Cost", "Model");
                         println!("{}", "-".repeat(45));
                         for (model, usd) in rows {
                             println!("{:<35} {}", model, format_usd(usd));
@@ -1025,7 +1024,7 @@ async fn main() -> Result<()> {
                     if rows.is_empty() {
                         println!("No usage data yet.");
                     } else {
-                        println!("{:<35} {}", "Project", "Cost");
+                        println!("{:<35} Cost", "Project");
                         println!("{}", "-".repeat(45));
                         for (project, usd) in rows {
                             let display = if project.is_empty() {
@@ -2233,12 +2232,8 @@ fn handle_project_command(action: &ProjectAction) -> Result<()> {
                     }
                     Err(err) => {
                         println!(
-                            "{:<20} {:<18} {:<17} {:<16} {}",
-                            p.name,
-                            "-",
-                            "-",
-                            "-",
-                            format!("error: {err}")
+                            "{:<20} {:<18} {:<17} {:<16} error: {}",
+                            p.name, "-", "-", "-", err
                         );
                     }
                 }
@@ -2436,7 +2431,7 @@ fn handle_project_command(action: &ProjectAction) -> Result<()> {
             repo,
             remote,
             public,
-            private,
+            private: _,
             push,
         } => {
             let entry = store.find(target).with_context(|| {
@@ -2452,8 +2447,6 @@ fn handle_project_command(action: &ProjectAction) -> Result<()> {
                 .arg(remote);
             if *public {
                 cmd.arg("--public");
-            } else if *private {
-                cmd.arg("--private");
             } else {
                 cmd.arg("--private");
             }

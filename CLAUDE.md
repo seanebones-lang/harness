@@ -31,6 +31,13 @@ ANTHROPIC_API_KEY=sk-ant-... harness "refactor src/agent.rs to use a state machi
 # Resume a session
 harness --resume abc12345 "continue where we left off"
 
+# Export session transcript to Markdown
+harness export abc12345
+harness export abc12345 --output session.md
+
+# Browser tool against Chrome DevTools Protocol (requires Chrome with debugging port — see `[browser]` in config/default.toml or use --browser flag)
+ANTHROPIC_API_KEY=sk-ant-... harness --browser "navigate to example.com and take a screenshot"
+
 # HTTP server
 harness serve --addr 127.0.0.1:8787
 
@@ -194,6 +201,17 @@ Built-in tools:
 - `GhTool` — `gh` CLI wrapper (pr_list, pr_view, pr_diff, pr_checks, pr_comment, issue_list, run_view, run_logs)
 - `ComputerUseTool` — Anthropic computer-use-2025-01-24 spec (screenshot, mouse, keyboard) — only registered when `[computer_use] enabled = true`
 
+### `harness-browser`
+
+Chrome/Chromium automation over **Chrome DevTools Protocol**.
+
+| Type | Description |
+|------|-------------|
+| `BrowserSession` | Connects to a running browser (`BrowserSession::connect(url)`); finds pages/targets (`find_or_open_target`). |
+| `BrowserTool` | Provider-facing `Tool` (`name: "browser"`); exposes CDP actions via an `action` enum (navigate, screenshot, click, …). Lazily connects `BrowserSession` on first use. |
+
+Requirements: Chrome (or Chromium) launched with `--remote-debugging-port=9222` (see `config/default.toml` `[browser]`). Configure the CDP endpoint in `[browser].url` or CLI `--browser-url` (defaults in `Cli` mirror local dev setups).
+
 ### `harness-voice`
 
 `record_and_transcribe()` — captures audio via `sox rec` / `afrecord`, transcribes via OpenAI Whisper API or local `whisper-cli`. `WhisperBackend::detect()` picks the best available backend.
@@ -340,6 +358,10 @@ on_budget = true
 web_search = false
 code_execution = false
 x_search = false
+
+[browser]
+enabled = false                    # CDP browser tool — also toggled via `harness --browser`
+url = "http://127.0.0.1:9222"      # Chrome when started with --remote-debugging-port=9222
 
 [computer_use]
 enabled = false   # DANGER: only with claude-opus-4-7+
