@@ -1,4 +1,4 @@
-# SEAN START HERE — Harness User Manual (May 2026)
+# Start Here — Harness User Manual (May 2026)
 
 This guide explains how to use Harness in plain English.
 
@@ -20,7 +20,9 @@ Harness is an AI coding assistant you run in your terminal. You type a request; 
 
 ### Step 1 — Install (summary)
 
-- **macOS / Linux:** see **[`README.md`](../README.md)** — manual `cargo build` + copy to `~/.local/bin`, **or** run [`scripts/install.sh`](../scripts/install.sh) from the repo (optional `HARNESS_INSTALL_DIR`).
+**Complete guides (step-by-step, FAQ, troubleshooting per OS):** **[`docs/INSTALL.md`](../docs/INSTALL.md)** — macOS, Linux, Windows, WSL2.
+
+- **macOS / Linux:** **[`README.md`](../README.md)** quick start — manual `cargo build` + copy to `~/.local/bin`, **or** run [`scripts/install.sh`](../scripts/install.sh) from the repo (optional `HARNESS_INSTALL_DIR`).
 - **Windows:** same README — PowerShell copy/paste, or [`scripts/install.ps1`](../scripts/install.ps1).
 
 ### Step 2 — Set your API key
