@@ -56,7 +56,7 @@ impl ProjectStore {
 
     pub fn list_sorted(&self) -> Vec<ProjectEntry> {
         let mut projects = self.projects.clone();
-        projects.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        projects.sort_by_key(|a| a.name.to_lowercase());
         projects
     }
 

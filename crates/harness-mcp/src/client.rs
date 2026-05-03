@@ -443,10 +443,10 @@ impl McpClient {
         let messages = params["messages"].as_array().cloned().unwrap_or_default();
         let prompt_preview: Vec<String> = messages
             .iter()
-            .filter_map(|m| {
+            .map(|m| {
                 let role = m["role"].as_str().unwrap_or("?");
                 let text = m["content"]["text"].as_str().unwrap_or("(non-text)");
-                Some(format!("[{role}]: {text}"))
+                format!("[{role}]: {text}")
             })
             .collect();
         let preview = prompt_preview.join("\n");

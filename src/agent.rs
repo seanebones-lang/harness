@@ -69,6 +69,7 @@ pub async fn drive_agent(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn drive_agent_with_options(
     provider: &ArcProvider,
     tools: &ToolExecutor,
@@ -96,6 +97,7 @@ pub async fn drive_agent_with_options(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn drive_agent_with_schema(
     provider: &ArcProvider,
     tools: &ToolExecutor,

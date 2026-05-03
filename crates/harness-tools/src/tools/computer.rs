@@ -204,10 +204,11 @@ async fn get_cursor_position() -> Result<String> {
 
 async fn mouse_move(x: i32, y: i32) -> Result<String> {
     if cfg!(target_os = "macos") {
-        if let Ok(_) = Command::new("cliclick")
+        if Command::new("cliclick")
             .arg(format!("m:{x},{y}"))
             .status()
             .await
+            .is_ok()
         {
             return Ok(format!("Mouse moved to {x},{y}"));
         }
@@ -236,10 +237,11 @@ async fn mouse_click(x: i32, y: i32, button: &str) -> Result<String> {
             "middle" => "mc",
             _ => "c",
         };
-        if let Ok(_) = Command::new("cliclick")
+        if Command::new("cliclick")
             .arg(format!("{cliclick_btn}:{x},{y}"))
             .status()
             .await
+            .is_ok()
         {
             return Ok(format!("{button} click at {x},{y}"));
         }
@@ -269,10 +271,11 @@ async fn mouse_click(x: i32, y: i32, button: &str) -> Result<String> {
 
 async fn mouse_double_click(x: i32, y: i32) -> Result<String> {
     if cfg!(target_os = "macos") {
-        if let Ok(_) = Command::new("cliclick")
+        if Command::new("cliclick")
             .arg(format!("dc:{x},{y}"))
             .status()
             .await
+            .is_ok()
         {
             return Ok(format!("Double click at {x},{y}"));
         }
@@ -305,10 +308,11 @@ async fn mouse_double_click(x: i32, y: i32) -> Result<String> {
 
 async fn type_text(text: &str) -> Result<String> {
     if cfg!(target_os = "macos") {
-        if let Ok(_) = Command::new("cliclick")
+        if Command::new("cliclick")
             .arg(format!("t:{text}"))
             .status()
             .await
+            .is_ok()
         {
             let preview: String = text.chars().take(40).collect();
             return Ok(format!("Typed: {preview}"));
@@ -341,10 +345,11 @@ async fn press_key(key: &str) -> Result<String> {
         let script =
             format!("tell application \"System Events\" to keystroke \"{key}\" using {{}}",);
         // For simple keys, try cliclick
-        if let Ok(_) = Command::new("cliclick")
+        if Command::new("cliclick")
             .arg(format!("kp:{key}"))
             .status()
             .await
+            .is_ok()
         {
             return Ok(format!("Key pressed: {key}"));
         }
@@ -361,7 +366,7 @@ async fn press_key(key: &str) -> Result<String> {
         .map(|s| s.success())
         .unwrap_or(false)
     {
-        let xdo_key = key.replace("ctrl+", "ctrl+").replace("cmd+", "super+");
+        let xdo_key = key.replace("cmd+", "super+");
         Command::new("xdotool")
             .args(["key", &xdo_key])
             .status()
@@ -386,10 +391,11 @@ async fn scroll(x: i32, y: i32, direction: &str, amount: i32) -> Result<String> 
             .arg(format!("m:{x},{y}"))
             .status()
             .await;
-        if let Ok(_) = Command::new("cliclick")
+        if Command::new("cliclick")
             .arg(format!("w:{dx},{dy}"))
             .status()
             .await
+            .is_ok()
         {
             return Ok(format!("Scrolled {direction} {amount}x at {x},{y}"));
         }

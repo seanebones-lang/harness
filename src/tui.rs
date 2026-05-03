@@ -450,10 +450,7 @@ impl AppState {
     fn move_word_left(&mut self) {
         let s = &self.input[..self.cursor_pos];
         let trimmed = s.trim_end();
-        let new_pos = trimmed
-            .rfind(|c: char| c == ' ' || c == '/' || c == '.')
-            .map(|i| i + 1)
-            .unwrap_or(0);
+        let new_pos = trimmed.rfind([' ', '/', '.']).map(|i| i + 1).unwrap_or(0);
         self.cursor_pos = new_pos;
     }
 
@@ -462,7 +459,7 @@ impl AppState {
         let trimmed = s.trim_start();
         let skip = s.len() - trimmed.len();
         let word_end = trimmed
-            .find(|c: char| c == ' ' || c == '/' || c == '.')
+            .find([' ', '/', '.'])
             .map(|i| i + skip + 1)
             .unwrap_or(s.len());
         self.cursor_pos += word_end;
@@ -869,11 +866,8 @@ async fn event_loop(
         }
 
         // Drain agent events
-        loop {
-            match agent_rx.try_recv() {
-                Ok(ev) => apply_agent_event(&state, ev),
-                Err(_) => break,
-            }
+        while let Ok(ev) = agent_rx.try_recv() {
+            apply_agent_event(&state, ev);
         }
 
         // Poll for confirmation requests
@@ -973,10 +967,8 @@ async fn event_loop(
                 // Search mode intercept
                 {
                     let search = state.lock().unwrap().search_mode;
-                    if search {
-                        if handle_search_key(&state, key) {
-                            continue;
-                        }
+                    if search && handle_search_key(&state, key) {
+                        continue;
                     }
                 }
 

@@ -106,7 +106,7 @@ impl CollabSession {
 }
 
 /// Get or create a session in the registry.
-pub fn get_or_create_session(registry: &CollabRegistry, session_id: &str) -> () {
+pub fn get_or_create_session(registry: &CollabRegistry, session_id: &str) {
     let mut reg = registry.lock().unwrap();
     reg.entry(session_id.to_string())
         .or_insert_with(|| CollabSession::new(session_id));

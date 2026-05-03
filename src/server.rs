@@ -225,10 +225,21 @@ async fn project_action(
             }
         }
         "status" => {
-            let branch = current_git_branch(&project.path).unwrap_or_else(|| "(detached HEAD)".to_string());
-            let upstream = git_output(&project.path, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]).ok();
+            let branch =
+                current_git_branch(&project.path).unwrap_or_else(|| "(detached HEAD)".to_string());
+            let upstream = git_output(
+                &project.path,
+                &[
+                    "rev-parse",
+                    "--abbrev-ref",
+                    "--symbolic-full-name",
+                    "@{upstream}",
+                ],
+            )
+            .ok();
             let remote_url = git_output(&project.path, &["remote", "get-url", "origin"]).ok();
-            let changes = collect_change_counts(&project.path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let changes = collect_change_counts(&project.path)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (ahead, behind) = if upstream.is_some() {
                 git_ahead_behind(&project.path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             } else {
@@ -445,7 +456,12 @@ async fn run_git_in_project(path: &FsPath, args: &[&str]) -> anyhow::Result<Stri
     let cmd_display = format!("git {}", args.join(" "));
     let output = timeout(PROJECT_GIT_TIMEOUT, cmd.output())
         .await
-        .map_err(|_| anyhow::anyhow!("{cmd_display} timed out after {}s", PROJECT_GIT_TIMEOUT.as_secs()))??;
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "{cmd_display} timed out after {}s",
+                PROJECT_GIT_TIMEOUT.as_secs()
+            )
+        })??;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git {} failed: {}", args.join(" "), stderr.trim());
@@ -461,7 +477,12 @@ async fn run_shell_in_project(path: &FsPath, command: &str) -> anyhow::Result<St
         .kill_on_drop(true);
     let output = timeout(PROJECT_TEST_TIMEOUT, cmd.output())
         .await
-        .map_err(|_| anyhow::anyhow!("command timed out after {}s: {command}", PROJECT_TEST_TIMEOUT.as_secs()))??;
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "command timed out after {}s: {command}",
+                PROJECT_TEST_TIMEOUT.as_secs()
+            )
+        })??;
     let mut text = String::new();
     text.push_str(&String::from_utf8_lossy(&output.stdout));
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -487,14 +508,15 @@ fn current_git_branch(path: &FsPath) -> Option<String> {
         return None;
     }
     let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if branch.is_empty() { None } else { Some(branch) }
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch)
+    }
 }
 
 fn git_output(path: &FsPath, args: &[&str]) -> anyhow::Result<String> {
-    let output = Command::new("git")
-        .current_dir(path)
-        .args(args)
-        .output()?;
+    let output = Command::new("git").current_dir(path).args(args).output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git {} failed: {}", args.join(" "), stderr.trim());
@@ -503,7 +525,10 @@ fn git_output(path: &FsPath, args: &[&str]) -> anyhow::Result<String> {
 }
 
 fn git_ahead_behind(path: &FsPath) -> anyhow::Result<(u64, u64)> {
-    let out = git_output(path, &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])?;
+    let out = git_output(
+        path,
+        &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+    )?;
     let mut parts = out.split_whitespace();
     let ahead = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
     let behind = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
@@ -593,9 +618,14 @@ mod tests {
     use harness_tools::ToolRegistry;
     use tempfile::{tempdir, TempDir};
 
-    async fn spawn_test_server() -> (String, tokio::task::JoinHandle<()>, Arc<SessionStore>, TempDir) {
-        let provider = OllamaProvider::new(OllamaConfig::new("qwen3-coder:30b"))
-            .expect("build test provider");
+    async fn spawn_test_server() -> (
+        String,
+        tokio::task::JoinHandle<()>,
+        Arc<SessionStore>,
+        TempDir,
+    ) {
+        let provider =
+            OllamaProvider::new(OllamaConfig::new("qwen3-coder:30b")).expect("build test provider");
         let session_dir = tempdir().expect("temp session dir");
         let session_db = session_dir.path().join("sessions.db");
         let session_store = Arc::new(SessionStore::open(&session_db).expect("open session db"));
@@ -632,7 +662,11 @@ mod tests {
             .send()
             .await
             .expect("GET / should succeed");
-        assert!(ui.status().is_success(), "unexpected / status: {}", ui.status());
+        assert!(
+            ui.status().is_success(),
+            "unexpected / status: {}",
+            ui.status()
+        );
         let html = ui.text().await.expect("read html");
         assert!(
             html.contains("id=\"prompt\""),

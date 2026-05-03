@@ -155,6 +155,9 @@ enum EditOp {
     Insert(usize),
 }
 
+/// In-progress hunk: context/change lines plus (orig_start, new_start).
+type PendingHunk = (Vec<(char, String)>, usize, usize);
+
 fn diff_to_edits(a: &[&str], b: &[&str], dp: &[Vec<usize>]) -> Vec<EditOp> {
     let mut ops = Vec::new();
     let mut i = a.len();
@@ -183,7 +186,7 @@ fn group_edits_into_hunks(
     context: usize,
 ) -> Vec<DiffHunk> {
     let mut hunks = Vec::new();
-    let mut current_hunk: Option<(Vec<(char, String)>, usize, usize)> = None;
+    let mut current_hunk: Option<PendingHunk> = None;
     let mut last_change_idx = 0usize;
 
     for (edit_idx, edit) in edits.iter().enumerate() {
@@ -217,8 +220,8 @@ fn group_edits_into_hunks(
                 if current_hunk.is_none() {
                     let start = (*oi).saturating_sub(context);
                     let mut lines = Vec::new();
-                    for ctx in start..*oi {
-                        lines.push((' ', orig[ctx].to_string()));
+                    for line in orig.iter().copied().take(*oi).skip(start) {
+                        lines.push((' ', line.to_string()));
                     }
                     current_hunk = Some((lines, start, start));
                 }
@@ -235,10 +238,9 @@ fn group_edits_into_hunks(
                         0
                     };
                     let mut lines = Vec::new();
-                    for ctx in start_orig..*ni {
-                        if ctx < new.len() {
-                            lines.push((' ', new[ctx].to_string()));
-                        }
+                    let end = (*ni).min(new.len());
+                    for line in new.iter().copied().take(end).skip(start_orig) {
+                        lines.push((' ', line.to_string()));
                     }
                     current_hunk = Some((lines, start_orig, start_orig));
                 }

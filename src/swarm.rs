@@ -207,7 +207,7 @@ pub fn print_status() -> Result<()> {
         println!("No swarm tasks yet.");
         return Ok(());
     }
-    println!("{:<12} {:<10} {}", "ID", "Status", "Prompt");
+    println!("{:<12} {:<10} Prompt", "ID", "Status");
     println!("{}", "-".repeat(70));
     for t in &tasks {
         let p = if t.prompt.len() > 50 {
