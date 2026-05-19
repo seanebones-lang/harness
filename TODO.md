@@ -1,59 +1,93 @@
-# Harness — Remaining Work
+# Harness — Open Tasks
 
-Canonical **user** docs: `README.md`, `Start Here/USER MANUAL.md`; **developer**: `CLAUDE.md`, `config/default.toml`.
+**New here?** Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) — it explains the codebase, how to run tests, and how to open a PR. The items below are good places to pick up work.
 
-Older **Critical / Important** items (xAI `stream_options` + usage, multi-tool-call
-streaming tests, embedding retries, TUI `--resume`, ambient `ctrl_c` shutdown, web UI
-session persistence, session delete CLI, clippy cleanliness) are **implemented** in tree.
+Canonical user docs: [`README.md`](README.md), [`Start Here/USER MANUAL.md`](Start%20Here/USER%20MANUAL.md).  
+Developer detail: [`CLAUDE.md`](CLAUDE.md), [`config/default.toml`](config/default.toml).
 
-This file tracks follow-ups that are still worth doing.
+Implemented and closed: xAI `stream_options` + usage, multi-tool-call streaming tests, embedding retries, TUI `--resume`, ambient `ctrl_c` shutdown, web UI session persistence, session delete CLI, clippy cleanliness.
 
-Release readiness: **[`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md)** · latest verdict: **[`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md)**
+Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md)
 
 ---
-## Polish
 
-### Documentation (README / USER MANUAL / `CLAUDE.md`)
+## Good first contributions
 
-Screenshots or deeper CDP troubleshooting are optional polish.
+### Unit tests — `harness-browser` (`crates/harness-browser/`)
 
-### Architecture: generic `ambient` provider
+Three targeted tests, no API key needed:
 
-**File:** `src/ambient.rs`
+- No-Chrome error path: connect with nothing listening on the CDP port → clean error, no panic.
+- Unknown `action` passed to `BrowserTool::execute` → returns `Err`, not `unreachable!`.
+- CDP request/response JSON round-trip: mock the socket, assert serialization is stable.
 
-`spawn()` and `consolidate()` take `XaiProvider` directly. Prefer
-`P: Provider + Clone + 'static` so non-xAI backends can reuse ambient consolidation.
+### Unit tests — `ambient.rs` consolidation (`src/ambient.rs` or `tests/smoke_test.rs`)
 
-### Testing gaps
+Spin up a mock `MemoryStore` with ≥ 5 entries, trigger consolidation, assert merged / `__consolidated__` entries are written correctly.
 
-**`harness-browser`** (`crates/harness-browser/`): unit tests for no-Chrome error path,
-unknown `BrowserTool::execute` action, CDP JSON round-trip.
+### Session-list title lag (`src/main.rs` → `list_sessions()`)
 
-**`ambient.rs`** (`src/ambient.rs` or `tests/smoke_test.rs`): consolidation with a mock
-`MemoryStore` (e.g. ≥ 5 entries) and checks on merged / `__consolidated__` entries.
+Session names are generated async; titles can be missing on the first `harness sessions` call right after save. Options: re-query after rename completes, or add a note in UX copy. Small, contained change.
 
-### `harness sessions` vs async auto-naming
+---
 
-**File:** `src/main.rs` (`list_sessions()`)
+## Architecture
 
-Titles may lag the first list after save because naming is async; optional re-query after
-rename or note the limitation in UX copy.
+### Generic `ambient` provider (`src/ambient.rs`)
 
-## Testing checklist before release
+`spawn()` and `consolidate()` take `XaiProvider` directly. Replace with `P: Provider + Clone + 'static` so any backend (Anthropic, Ollama, …) can drive ambient consolidation. See the `Provider` trait in `crates/harness-provider-core/`. Medium-sized generics change with a clear interface contract.
 
-Maintainers: use **[`docs/PUBLIC_RELEASE.md`](../docs/PUBLIC_RELEASE.md)** for the full public checklist (legal, gates, manual smokes, quickstart rehearsal, go/no-go).
+### Coverage and property testing
 
-Automated gates (verified in dev; **CI** runs the same on **Ubuntu, macOS, Windows**):
+Current coverage target: ≥ 60 % on library crates. Proptest / fuzzing targets:
+
+- MCP message framing (`crates/harness-mcp/`)
+- LSP framing (`crates/harness-lsp/`)
+- Provider SSE parsing (`crates/harness-provider-openai/`, `crates/harness-provider-xai/`)
+
+### `#![deny(missing_docs)]` on public crates
+
+`harness-provider-core` and `harness-tools` are the public API surface. Doc comments + `missing_docs` help downstream consumers and IDEs. Pair with `cargo doc --open` to verify output.
+
+---
+
+## New providers
+
+See [`CLAUDE.md`](CLAUDE.md) → *Adding a new provider* for the three-step pattern. Interesting targets: **Mistral**, **Cohere**, **Google Gemini**, **AWS Bedrock**.
+
+## New tools
+
+See [`CLAUDE.md`](CLAUDE.md) → *Adding a new tool*. Ideas: `GitTool` (structured git ops), `DatabaseTool` (SQLite/Postgres → markdown tables), `NotebookTool` (Jupyter `.ipynb`), `DockerTool` (container list/exec/logs).
+
+## Platform coverage
+
+- **Windows:** shell tool falls back to `cmd.exe` when Git for Windows is absent; a PowerShell native path would improve the experience.
+- **VS Code extension** (`extensions/vscode/`): currently Unix socket only; a named-pipe or TCP fallback makes it first-class on Windows.
+- **Tauri desktop app** (`apps/desktop/`): Windows/Linux packaging, tray-icon polish, auto-update.
+
+## Documentation polish
+
+- Screenshots and a CDP troubleshooting guide for the browser tool
+- Cookbook of real-world prompts / session transcripts
+- Translations of `Start Here/USER MANUAL.md`
+
+---
+
+## Release checklist (maintainers)
+
+Automated gates — **CI runs these on Ubuntu, macOS, Windows**:
 
 - [x] `cargo test --all` — workspace integration + doctests (no API keys)
 - [x] `cargo clippy --all-targets --all-features -- -D warnings`
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo build --profile release-lto`
 
-Manual (needs API keys / local GUI):
+Manual smoke (needs API keys / local GUI):
 
 - [ ] `XAI_API_KEY=... harness "list files in ."` — one-shot works
 - [ ] `XAI_API_KEY=... harness` — TUI, token counts in status bar
 - [ ] `XAI_API_KEY=... harness serve` + `http://127.0.0.1:8787` — web UI chat
-- [ ] `harness export <id>` — Markdown OK in a viewer
-- [ ] `harness sessions` — lists sessions (including auto-named when ready)
+- [ ] `harness export <id>` — Markdown readable in a viewer
+- [ ] `harness sessions` — lists sessions including auto-named titles
+
+Full checklist: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md).

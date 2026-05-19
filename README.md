@@ -79,7 +79,7 @@ That's it. Harness auto-detects which API keys are set and picks the best availa
 - **`TODO.md`** — remaining work is mostly **Polish** (ambient abstraction, browser/ambient test coverage, session list timing). Older Critical/Important backlog items are **implemented** on current `main`.
 - **CI:** Pull requests and `main` run **fmt**, **clippy `--all-features`**, **tests**, **build**, and **install-script smoke jobs** (`scripts/install.sh` on Ubuntu + macOS, `scripts/install.ps1` on Windows) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Tag **GitHub Releases** binaries are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml); ship only when `main` is green and [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) is satisfied.
 
-See [`CLAUDE.md`](CLAUDE.md) for module-level detail and contributor hooks (`core.hooksPath`).
+See [`CLAUDE.md`](CLAUDE.md) for module-level detail and contributor hooks (`core.hooksPath`). **Want to help?** See [`CONTRIBUTING.md`](CONTRIBUTING.md) for a guided tour of the open task list.
 
 ---
 
@@ -488,6 +488,19 @@ Non-exhaustive list; details live in [`TODO.md`](TODO.md):
 - **Polish:** ambient provider abstraction, extra `harness-browser` tests, optional ambient consolidation tests.
 - **UX:** session titles from async auto-naming can lag the first `harness sessions` list right after save.
 - **`shell` on Windows:** prefers Git `sh`/`bash`; without them commands run via `cmd.exe` (not POSIX).
+
+---
+
+## Contributing
+
+Contributions are welcome — bug fixes, new tests, new providers, new tools, and documentation improvements. See **[`CONTRIBUTING.md`](CONTRIBUTING.md)** for:
+
+- Where to start (good first issues, test gaps, architecture work)
+- How to add a new provider or tool
+- Code style and CI requirements
+- How to open a pull request
+
+The [`TODO.md`](TODO.md) backlog is also a good place to browse for well-scoped tasks.
 
 ---
 
