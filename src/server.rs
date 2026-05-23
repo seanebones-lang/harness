@@ -201,10 +201,14 @@ pub fn router(state: ServerState) -> Router {
 }
 
 async fn require_auth(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<ServerState>>,
     req: Request<axum::body::Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    if !crate::rate_limit::allow(addr.ip()) {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
     let token = req
         .headers()
         .get(AUTHORIZATION)
@@ -227,6 +231,13 @@ fn extract_bearer(headers: &axum::http::HeaderMap, body_token: Option<&str>) -> 
 }
 
 pub async fn serve(state: ServerState, addr: SocketAddr) -> Result<()> {
+    if !addr.ip().is_loopback() {
+        tracing::warn!(
+            %addr,
+            "harness serve bound to non-loopback address — bearer auth is required; \
+             agent tools can execute shell commands (see docs/THREAT_MODEL.md)"
+        );
+    }
     let app = router(state);
     info!(%addr, "harness server listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;

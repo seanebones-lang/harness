@@ -1,13 +1,11 @@
 use crate::confirm::ConfirmGate;
+use crate::policy::tool_requires_confirmation;
 use crate::registry::Tool as _;
 use crate::registry::ToolRegistry;
 use crate::tools::TestRunnerTool;
 use harness_provider_core::ToolCall;
 use std::collections::HashSet;
 use tracing::{debug, warn};
-
-/// Tools that require explicit confirmation in plan mode.
-const DESTRUCTIVE_TOOLS: &[&str] = &["write_file", "patch_file", "shell", "apply_patch"];
 
 /// Tools that modify files (trigger autoformat + optional autotest).
 const FILE_WRITE_TOOLS: &[&str] = &["write_file", "patch_file", "apply_patch"];
@@ -75,7 +73,10 @@ impl ToolExecutor {
     }
 
     fn needs_confirmation(&self, tool: &str, args: &serde_json::Value) -> bool {
-        if DESTRUCTIVE_TOOLS.contains(&tool) || self.mcp_tool_names.contains(tool) {
+        if self.mcp_tool_names.contains(tool) {
+            return true;
+        }
+        if tool_requires_confirmation(tool, args) {
             return true;
         }
         let preview = Self::first_arg_preview(args);

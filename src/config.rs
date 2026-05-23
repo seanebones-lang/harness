@@ -225,6 +225,8 @@ pub struct BrowserConfig {
 pub struct McpConfigSection {
     /// Path to mcp.json (defaults to .harness/mcp.json or ~/.harness/mcp.json).
     pub config_path: Option<PathBuf>,
+    /// When set, only MCP servers whose `command` (or basename) is listed are spawned.
+    pub command_allowlist: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]

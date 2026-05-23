@@ -83,6 +83,8 @@ sandbox = "strict"
 # Path to your MCP server configuration.
 # Harness also checks .harness/mcp.json and ~/.harness/mcp.json automatically.
 # config_path = ".harness/mcp.json"
+# Optional: restrict which MCP server binaries may be spawned (basename or full path).
+# command_allowlist = ["npx", "node", "python3", "uvx"]
 
 [budget]
 # Spending limits — Harness warns at 80% and blocks at 100%.

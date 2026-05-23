@@ -115,9 +115,10 @@ All items below were remediated in the 2026-05-22 session. Kept for audit trail.
 | P1-7–P1-8 | ✅ | Config 0600; sync UUID passphrase |
 | P1-9 | ✅ | Computer-use input validation |
 | P1-10–P1-13 | ✅ | Tool loop cap; native_tools; `--think`; approval plan mode |
-| P1-11 | ⚠️ Open | **AGT-07** — checkpoint list vs executor drift |
+| P1-11 | ✅ | **AGT-07** — shared `policy` module; git mutating ops included |
 | P1-14 | ⚠️ Open | **AGT-06** — `tool_calls_to_message` in provider-core |
-| P1-2 (partial) | ⚠️ Open | **SEC-15** — MCP binary allowlist not implemented |
+| P1-2 (partial) | ✅ | **SEC-15** — `[mcp].command_allowlist` |
+| SEC-14 | ✅ | Rate limit 60/min/IP; non-loopback bind warning |
 
 ---
 
@@ -138,9 +139,6 @@ All items below were remediated in the 2026-05-22 session. Kept for audit trail.
 | **E-01** | Collab: wire server **or** delete module |
 | **E-02** | Bridges: CLI entry **or** remove |
 | **E-03** | Diff review: wire TUI **or** remove |
-| **SEC-14** | HTTP rate limiting; non-loopback bind hardening |
-| **SEC-15** | MCP server binary allowlist |
-| **AGT-07** | Align checkpoint + destructive tool lists |
 | **REL-05** | `release-lto` build before tag |
 
 ### 🟡 Medium
