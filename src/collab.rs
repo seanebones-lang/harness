@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-//! **Status:** EXPERIMENTAL — not wired to `server.rs` or the TUI. Module retained for future work.
+//! Collaborative multi-user sessions over WebSocket when `[collab].enabled = true`.
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -97,6 +97,28 @@ impl CollabSession {
         self.broadcast(CollabEvent::UserLeft {
             user_id: user_id.to_string(),
         });
+    }
+}
+
+/// Join a session and return a broadcast receiver for live events.
+pub fn join_session(
+    registry: &CollabRegistry,
+    session_id: &str,
+    user_id: &str,
+) -> broadcast::Receiver<CollabEvent> {
+    let mut reg = registry.lock();
+    let session = reg
+        .entry(session_id.to_string())
+        .or_insert_with(|| CollabSession::new(session_id));
+    session.user_joined(user_id);
+    session.subscribe()
+}
+
+/// Leave a session and notify peers.
+pub fn leave_session(registry: &CollabRegistry, session_id: &str, user_id: &str) {
+    let mut reg = registry.lock();
+    if let Some(session) = reg.get_mut(session_id) {
+        session.user_left(user_id);
     }
 }
 

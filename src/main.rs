@@ -44,6 +44,7 @@ use cli::{
     handle_project_command, list_sessions, run_init, run_self_dev, run_status,
 };
 use cli::{CheckpointAction, Cli, Commands, CostAction, SwarmAction, SyncAction};
+use cli::args::BridgeAction;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -60,6 +61,7 @@ async fn main() -> Result<()> {
     fmt().with_env_filter(filter).with_target(false).init();
 
     let cfg = config::load(cli.config.as_deref())?;
+    swarm::configure(&cfg.swarm);
 
     if let Some(Commands::Project { action }) = &cli.command {
         handle_project_command(action)?;
@@ -265,6 +267,11 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| agent::DEFAULT_SYSTEM.to_string()),
                 config: cfg_for_serve,
             };
+            let collab_registry = if cfg.collab.enabled {
+                Some(crate::collab::new_registry())
+            } else {
+                None
+            };
             let state = server::ServerState {
                 inner: Arc::new(tokio::sync::RwLock::new(inner)),
                 session_store: Arc::new(session_store),
@@ -274,6 +281,7 @@ async fn main() -> Result<()> {
                 browser_url,
                 config_active_path: Arc::new(config::active_config_toml_path()),
                 auth_token,
+                collab: collab_registry,
             };
             server::serve(state, addr).await?;
         }
@@ -603,6 +611,68 @@ async fn main() -> Result<()> {
                     Some(t) => println!("{}", t.result.as_deref().unwrap_or("(no result)")),
                     None => println!("Task {id} not found."),
                 },
+                SwarmAction::Cancel { id } => {
+                    if swarm::cancel_task(&id)? {
+                        println!("Cancelled task {id}.");
+                    } else {
+                        println!("Task {id} not found or already finished.");
+                    }
+                }
+                SwarmAction::Wait { id, timeout_secs } => {
+                    use std::time::Duration;
+                    match swarm::wait_task(&id, Some(Duration::from_secs(timeout_secs))).await? {
+                        Some(t) => println!("{} [{}]", t.id, t.status.as_str()),
+                        None => println!("Task {id} not found."),
+                    }
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Bridge { action }) => {
+            use BridgeAction::*;
+            match action {
+                Obsidian { title, content } => {
+                    let body = if content == "-" {
+                        use std::io::Read;
+                        let mut s = String::new();
+                        std::io::stdin().read_to_string(&mut s)?;
+                        s
+                    } else {
+                        content
+                    };
+                    bridges::obsidian_write(&cfg.bridges.obsidian, &title, &body).await?;
+                    println!("Obsidian note queued: {title}");
+                }
+                Notes { title, content } => {
+                    bridges::notes_write(&cfg.bridges.notes, &title, &content).await?;
+                    println!("Apple Note created: {title}");
+                }
+                CalendarList { date } => {
+                    let events = bridges::calendar_query(&cfg.bridges.calendar, &date).await?;
+                    if events.is_empty() {
+                        println!("No events on {date}.");
+                    } else {
+                        for e in events {
+                            println!("{e}");
+                        }
+                    }
+                }
+                CalendarCreate { title, start, end } => {
+                    bridges::calendar_create_event(&cfg.bridges.calendar, &title, &start, &end)
+                        .await?;
+                    println!("Calendar event created: {title}");
+                }
+                GithubProject => {
+                    let items = bridges::github_project_list(&cfg.bridges.github_projects).await?;
+                    if items.is_empty() {
+                        println!("No project items (or bridge disabled / misconfigured).");
+                    } else {
+                        for item in items {
+                            println!("{item}");
+                        }
+                    }
+                }
             }
             return Ok(());
         }

@@ -39,6 +39,15 @@ pub struct Config {
     /// Tool sandbox / filesystem jail (`[tools]` in config).
     #[serde(default)]
     pub tools: ToolsConfig,
+    /// Parallel swarm settings (`[swarm]`).
+    #[serde(default)]
+    pub swarm: crate::swarm::SwarmConfig,
+    /// Collaborative sessions (`[collab]`).
+    #[serde(default)]
+    pub collab: crate::collab::CollabConfig,
+    /// External app bridges (`[bridges]`).
+    #[serde(default)]
+    pub bridges: crate::bridges::BridgesConfig,
 }
 
 /// Tools and sandbox settings.

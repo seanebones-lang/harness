@@ -15,7 +15,10 @@
 | **Providers** | Anthropic, xAI, OpenAI, Ollama, MLX; smart router + fallback |
 | **Tools** | Filesystem, shell, git, search, apply_patch, MCP, browser (CDP), LSP, gh, test_runner, computer-use (gated) |
 | **Integrations** | VS Code daemon (framed JSON + token); HTTP `serve` + Web UI; Tauri macOS shell |
-| **Not wired** | Collab WebSocket, bridges, diff-review TUI, swarm cancel/wait, OTLP verification |
+| **Swarm** | `cancel`/`wait` CLI; `[swarm]` config; SQLite persistence |
+| **Collab** | WebSocket `/ws/session/:id` when `[collab].enabled` |
+| **Bridges** | `harness bridge` CLI (Obsidian, Notes, Calendar, GitHub Projects) |
+| **Not wired** | Diff-review TUI (E-03); OTLP verification |
 
 **Canonical open backlog (severity-ranked):** [`TODO.md`](../TODO.md)
 
@@ -136,8 +139,6 @@ All items below were remediated in the 2026-05-22 session. Kept for audit trail.
 
 | ID | Task |
 |----|------|
-| **E-01** | Collab: wire server **or** delete module |
-| **E-02** | Bridges: CLI entry **or** remove |
 | **E-03** | Diff review: wire TUI **or** remove |
 
 ### 🟡 Medium
@@ -183,9 +184,9 @@ Sandbox, confirm gate, HTTP/daemon auth, sync tar-slip, [`THREAT_MODEL.md`](THRE
 
 | Milestone | Status |
 |-----------|--------|
-| C.1 Collab | **Open** — wire WebSocket or delete module |
-| C.2 Bridges | **Open** — CLI entry or remove |
-| C.3 Swarm | **Partial** — DB + spawn ✅; cancel/wait open |
+| C.1 Collab | **Done** — `/ws/session/:id` when `[collab].enabled` |
+| C.2 Bridges | **Done** — `harness bridge` CLI |
+| C.3 Swarm | **Done** — cancel/wait + `[swarm]` config |
 | C.4 Diff review | **Open** — wire TUI or remove |
 | C.5 Observability | **Partial** — JSONL ✅; OTLP untested |
 | **C.6 Stable** | **Blocked on REL-01** manual smoke |

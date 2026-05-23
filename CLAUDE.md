@@ -88,10 +88,15 @@ harness completions bash > ~/.bash_completion.d/harness
 harness completions zsh > ~/.zsh/completions/_harness
 harness completions fish > ~/.config/fish/completions/harness.fish
 
-# Parallel swarm (experimental; SQLite-backed registry; `harness swarm run` added in remediation)
+# Parallel swarm (SQLite registry)
 harness swarm list
 harness swarm status <task-id>
 harness swarm result <task-id>
+harness swarm cancel <task-id>
+harness swarm wait <task-id>
+
+# External bridges (Obsidian, Notes, Calendar, GitHub Projects)
+harness bridge obsidian "Title" "content"
 
 # Observability traces
 harness trace
@@ -360,7 +365,7 @@ POST /api/chat          body: {prompt, session_id?}   → SSE AgentEvent stream 
 GET  /api/sessions      → [{id, name, updated_at}]    (Bearer auth)
 GET  /api/sessions/:id  → full Session JSON           (Bearer auth)
 GET  /api/health        → {status, model, auth_token} (loopback bootstrap)
-WS   /ws/session/:id    → collaborative events (E13 — not implemented)
+WS   /ws/session/:id    → collaborative events when `[collab].enabled` (Bearer token via `?token=`)
 ```
 
 Protected routes require `Authorization: Bearer $(cat ~/.harness/server.token)`. See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).

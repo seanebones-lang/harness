@@ -1,10 +1,6 @@
 #![allow(dead_code)]
-//! **Status:** EXPERIMENTAL — helpers implemented; no CLI/TUI/server entry points yet.
-//! Gated by `[bridges]` config block when wired.
-//! - **Obsidian**: write notes/snippets to the Obsidian vault via its URI scheme
-//! - **Apple Notes**: create/append notes via osascript
-//! - **Calendar**: query and create events via EventKit (osascript)
-//! - **GitHub Projects**: read/update project board items via `gh api graphql`
+//! External app bridges — Obsidian, Apple Notes, Calendar, GitHub Projects.
+//! CLI: `harness bridge …` when `[bridges.*]` enabled in config.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
