@@ -62,6 +62,7 @@ async fn main() -> Result<()> {
 
     let cfg = config::load(cli.config.as_deref())?;
     swarm::configure(&cfg.swarm);
+    daemon::configure(&cfg.daemon);
 
     if let Some(Commands::Project { action }) = &cli.command {
         handle_project_command(action)?;

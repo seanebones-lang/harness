@@ -270,6 +270,22 @@ impl ToolCall {
     }
 }
 
+/// Encode pending tool calls as an assistant message for conversation history.
+///
+/// Wire format: `__tool_calls__:` + JSON array of [`ToolCall`] (OpenAI-compatible shape).
+/// Providers decode this prefix when building API requests.
+pub fn tool_calls_to_message(calls: &[ToolCall]) -> Message {
+    let encoded = format!(
+        "__tool_calls__:{}",
+        serde_json::to_string(calls).unwrap_or_default()
+    );
+    Message {
+        role: Role::Assistant,
+        content: MessageContent::Text(encoded),
+        tool_call_id: None,
+    }
+}
+
 // ── Streaming delta ───────────────────────────────────────────────────────────
 
 /// Incremental item emitted while streaming a chat completion.
@@ -513,5 +529,23 @@ mod tests {
     fn role_deserializes_lowercase() {
         let role: Role = serde_json::from_str("\"assistant\"").unwrap();
         assert_eq!(role, Role::Assistant);
+    }
+
+    #[test]
+    fn tool_calls_to_message_roundtrip_prefix() {
+        let calls = vec![ToolCall {
+            id: "call_1".into(),
+            kind: "function".into(),
+            function: ToolCallFunction {
+                name: "read_file".into(),
+                arguments: r#"{"path":"src/main.rs"}"#.into(),
+            },
+        }];
+        let msg = tool_calls_to_message(&calls);
+        let text = msg.content.as_str();
+        assert!(text.starts_with("__tool_calls__:"));
+        let json = text.strip_prefix("__tool_calls__:").unwrap();
+        let back: Vec<ToolCall> = serde_json::from_str(json).unwrap();
+        assert_eq!(back[0].function.name, "read_file");
     }
 }

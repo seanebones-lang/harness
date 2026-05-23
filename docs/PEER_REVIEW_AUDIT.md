@@ -119,7 +119,7 @@ All items below were remediated in the 2026-05-22 session. Kept for audit trail.
 | P1-9 | ✅ | Computer-use input validation |
 | P1-10–P1-13 | ✅ | Tool loop cap; native_tools; `--think`; approval plan mode |
 | P1-11 | ✅ | **AGT-07** — shared `policy` module; git mutating ops included |
-| P1-14 | ⚠️ Open | **AGT-06** — `tool_calls_to_message` in provider-core |
+| P1-14 | ✅ | **AGT-06** — `tool_calls_to_message` in provider-core |
 | P1-2 (partial) | ✅ | **SEC-15** — `[mcp].command_allowlist` |
 | SEC-14 | ✅ | Rate limit 60/min/IP; non-loopback bind warning |
 
@@ -137,20 +137,18 @@ All items below were remediated in the 2026-05-22 session. Kept for audit trail.
 
 ### 🟠 High — next sprint
 
-| ID | Task |
-|----|------|
-| **E-03** | Diff review: wire TUI **or** remove |
+_None — E-03 closed May 2026._
 
 ### 🟡 Medium
 
 | ID | Task |
 |----|------|
-| **AGT-06** | `tool_calls_to_message` → provider-core |
-| **SWARM-01/02** | `cancel`/`wait`; `[swarm]` in Config |
+| **SWARM-01/02** | ✅ `cancel`/`wait`; `[swarm]` in Config |
 | **TST-10/11/12** | Proptest MCP/LSP; coverage 70%; checkpoint tests |
-| **OBS-01** | OTLP integration test |
-| **REL-02/04** | VS Code Windows E2E; daemon transport config |
-| **CFG-01/02** | Approval effective_mode; collab/bridges in Config |
+| **OBS-01** | ✅ OTLP mock HTTP integration test |
+| **REL-02** | VS Code Windows E2E |
+| **REL-04** | ✅ `[daemon].transport` in Config |
+| **CFG-01** | Approval effective_mode |
 
 ### 🟢 Low / ⚪ Optional
 
@@ -216,7 +214,7 @@ New providers; cross-platform desktop; enterprise features; performance; i18n.
 | Sev | Original count | May 2026 status |
 |-----|----------------|-----------------|
 | Critical (P0) | 7 | **All closed** |
-| High (P1) | 14 | **12 closed**; AGT-06/07, SEC-15 open |
+| High (P1) | 14 | **14 closed** |
 | Residual | — | Rate limiting; MCP allowlist; experimental modules unwired |
 
 ### 5.3 Correctness & reliability (updated)

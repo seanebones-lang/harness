@@ -5,9 +5,8 @@ use anyhow::Result;
 use futures::StreamExt;
 use harness_memory::{MemoryStore, Session, SessionStore};
 use harness_provider_core::{
-    ArcProvider, ChatRequest, Delta, DeltaStream, Message, Role, StopReason,
+    tool_calls_to_message, ArcProvider, ChatRequest, Delta, DeltaStream, Message, Role, StopReason,
 };
-use harness_provider_xai::tool_calls_to_message;
 use harness_tools::ToolExecutor;
 use tracing::debug;
 

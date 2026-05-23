@@ -48,6 +48,12 @@ pub struct Config {
     /// External app bridges (`[bridges]`).
     #[serde(default)]
     pub bridges: crate::bridges::BridgesConfig,
+    /// OpenTelemetry / local traces (`[observability]`).
+    #[serde(default)]
+    pub observability: crate::observability::ObservabilityConfig,
+    /// Editor daemon transport (`[daemon]`).
+    #[serde(default)]
+    pub daemon: crate::daemon::DaemonConfig,
 }
 
 /// Tools and sandbox settings.
