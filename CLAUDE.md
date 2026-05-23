@@ -385,6 +385,11 @@ max_tokens = 8192
 enabled = true
 embed_model = "nomic-embed-text"   # or voyage-3.5 (VOYAGE_API_KEY)
 
+[approval]
+mode = "auto"                      # auto | smart | plan (plan ≡ harness --plan in TUI)
+# auto_approve = ["read_file"]
+# always_ask = ["shell:git push"]
+
 [budget]
 daily_usd = 5.00
 monthly_usd = 50.00

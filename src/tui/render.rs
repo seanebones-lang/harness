@@ -315,7 +315,11 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
         indicators.push_str("[⚠CU] ");
     }
     if state.plan_mode {
-        indicators.push_str("[PLAN] ");
+        if let Some(label) = state.confirm_bar_label.as_deref() {
+            indicators.push_str(&format!("[{label}] "));
+        } else {
+            indicators.push_str("[PLAN] ");
+        }
     }
     if state.recording_voice {
         indicators.push_str("[🎙REC] ");

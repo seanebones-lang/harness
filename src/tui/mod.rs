@@ -67,6 +67,7 @@ pub async fn run(
     initial_thinking_budget: Option<u32>,
     ambient_shutdown: Option<watch::Sender<()>>,
     confirm_rx: Option<mpsc::Receiver<ConfirmRequest>>,
+    confirm_bar_label: Option<&'static str>,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -84,6 +85,7 @@ pub async fn run(
     {
         let mut st = state.lock();
         st.plan_mode = has_confirm_gate;
+        st.confirm_bar_label = confirm_bar_label.map(str::to_string);
         st.computer_use_active = cfg.computer_use.is_enabled();
         st.budget_daily_usd = cfg.budget.daily_usd;
         st.budget_monthly_usd = cfg.budget.monthly_usd;

@@ -156,14 +156,25 @@ async fn main() -> Result<()> {
     let browser_enabled = cli.browser || cfg.browser.enabled.unwrap_or(false);
     let browser_url = cfg.browser.url.clone().unwrap_or(cli.browser_url);
 
-    // Plan/approve mode: CLI flag or `[approval].mode = "plan"`.
-    let plan_mode = cli.plan || cfg.approval.effective_mode() == "plan";
+    // Plan/approve mode: CLI flag or `[approval].mode = "plan" | "smart"`.
+    let approval_mode = cfg.approval.effective_mode();
+    let confirm_active =
+        cli.plan || approval_mode == "plan" || approval_mode == "smart";
     let interactive_tui = cli.command.is_none() && cli.prompt.is_none();
-    let (confirm_gate, confirm_rx) = if plan_mode && interactive_tui {
+    let (confirm_gate, confirm_rx) = if confirm_active && interactive_tui {
         let (gate, rx) = harness_tools::confirm::channel();
         (Some(gate), Some(rx))
     } else {
         (None, None)
+    };
+    let confirm_bar_label = if confirm_active && interactive_tui {
+        Some(if cli.plan || approval_mode == "plan" {
+            "PLAN"
+        } else {
+            "SMART"
+        })
+    } else {
+        None
     };
 
     // Build tools (including MCP servers if config exists).
@@ -892,6 +903,7 @@ async fn main() -> Result<()> {
                     cli.think,
                     ambient_tx,
                     confirm_rx,
+                    confirm_bar_label,
                 )
                 .await;
                 graceful_ambient_shutdown(ambient_shutdown).await;

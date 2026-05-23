@@ -71,6 +71,13 @@ embed_model = "nomic-embed-text"
 # relaxed = warn but allow paths outside the root. off = disable checks.
 sandbox = "strict"
 
+[approval]
+# auto = never pause (default). smart = pause for new-file writes + shell confirm patterns.
+# plan = pause for all destructive tool calls (same as harness --plan).
+# mode = "auto"
+# auto_approve = ["read_file", "list_dir"]
+# always_ask = ["shell:git push", "write_file"]
+
 # [shell]
 # Optional allowlist for argv0 when the command starts with an absolute path.
 # cmd_allowlist = ["/usr/bin/git", "/usr/bin/cargo"]
