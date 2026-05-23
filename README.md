@@ -15,6 +15,17 @@ curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/script
 This downloads a prebuilt binary when available. Falls back to building from source if no release exists yet.
 > If you find Harness useful, consider starring the repo — it helps others discover it.
 
+### Features
+
+- **Safety-first approvals** — Smart mode, Plan mode, and explicit confirmation for destructive actions
+- **Semantic + project memory** — Context-aware recall across sessions
+- **Sub-agent swarm** — Delegate work to specialized sub-agents
+- **Multi-provider** — xAI, Anthropic, OpenAI, Ollama
+- **Cost tracking** — Real-time token usage and spend visibility
+- **MCP + browser automation** — Tool use and web interaction
+- **One-liner install** — Prebuilts for macOS, Linux, Windows
+
+
 
 Harness is a fast, private, terminal-first Rust coding agent. Multi-provider (xAI Grok, Claude, OpenAI, local), semantic memory, sub-agents, cost tracking, and MCP support.
 
