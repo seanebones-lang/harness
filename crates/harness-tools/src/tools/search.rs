@@ -3,10 +3,16 @@ use harness_provider_core::ToolDefinition;
 use ignore::WalkBuilder;
 use regex::Regex;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 use crate::registry::Tool;
+use crate::workspace_root::WorkspaceRoot;
 
-pub struct SearchCodeTool;
+/// Regex code search tool.
+pub struct SearchCodeTool {
+    /// Workspace root — search paths are resolved under this directory.
+    pub workspace: Arc<WorkspaceRoot>,
+}
 
 #[async_trait]
 impl Tool for SearchCodeTool {
@@ -18,7 +24,7 @@ impl Tool for SearchCodeTool {
                 "type": "object",
                 "properties": {
                     "pattern": { "type": "string", "description": "Regex pattern to search for." },
-                    "path": { "type": "string", "description": "Directory to search. Defaults to current directory." },
+                    "path": { "type": "string", "description": "Directory to search. Defaults to workspace root." },
                     "file_glob": { "type": "string", "description": "Optional glob to filter files, e.g. '*.rs'." },
                     "max_results": { "type": "integer", "description": "Max number of matches to return. Default 50." }
                 },
@@ -31,14 +37,15 @@ impl Tool for SearchCodeTool {
         let pattern = args["pattern"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing pattern"))?;
-        let root = args["path"].as_str().unwrap_or(".");
+        let root_path = args["path"].as_str().unwrap_or(".");
+        let root = self.workspace.resolve(root_path)?;
         let file_glob = args["file_glob"].as_str();
         let max_results = args["max_results"].as_u64().unwrap_or(50) as usize;
 
         let re = Regex::new(pattern)?;
         let mut results: Vec<String> = Vec::new();
 
-        let mut builder = WalkBuilder::new(root);
+        let mut builder = WalkBuilder::new(&root);
         builder.hidden(false).git_ignore(true);
 
         for entry in builder.build().flatten() {

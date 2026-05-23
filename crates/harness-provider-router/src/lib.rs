@@ -452,3 +452,161 @@ impl Provider for ProviderRouter {
         Err(last_err)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use futures::stream;
+    use futures::StreamExt;
+    use harness_provider_core::{ChatRequest, Delta, StopReason};
+    use std::collections::HashMap;
+
+    struct StaticProvider {
+        label: &'static str,
+        text: String,
+        fail_stream: bool,
+    }
+
+    #[async_trait]
+    impl Provider for StaticProvider {
+        fn name(&self) -> &str {
+            self.label
+        }
+
+        fn model(&self) -> &str {
+            "static-model"
+        }
+
+        async fn stream_chat(&self, _req: ChatRequest) -> Result<DeltaStream, ProviderError> {
+            if self.fail_stream {
+                return Err(ProviderError::Api {
+                    status: 429,
+                    message: "rate limited".into(),
+                });
+            }
+            let text = self.text.clone();
+            Ok(Box::pin(stream::iter(vec![
+                Ok(Delta::Text(text)),
+                Ok(Delta::Done {
+                    stop_reason: StopReason::EndTurn,
+                }),
+            ])))
+        }
+
+        async fn embed(&self, _model: &str, _text: &str) -> Result<Vec<f32>, ProviderError> {
+            Ok(vec![0.1, 0.2, 0.3])
+        }
+
+        fn pricing(&self) -> Option<Pricing> {
+            None
+        }
+    }
+
+    async fn collect_text(provider: ArcProvider) -> String {
+        let mut stream = provider
+            .stream_chat(ChatRequest::new("static-model"))
+            .await
+            .expect("stream");
+        let mut out = String::new();
+        while let Some(item) = stream.next().await {
+            if let Ok(Delta::Text(t)) = item {
+                out.push_str(&t);
+            }
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn routes_fast_heavy_and_embed_providers() {
+        let router = ProviderRouter::new("default")
+            .add("default", Arc::new(StaticProvider {
+                label: "default",
+                text: "main".into(),
+                fail_stream: false,
+            }))
+            .add("fast", Arc::new(StaticProvider {
+                label: "fast",
+                text: "fast".into(),
+                fail_stream: false,
+            }))
+            .add("embed", Arc::new(StaticProvider {
+                label: "embed",
+                text: "unused".into(),
+                fail_stream: false,
+            }))
+            .with_fast("fast")
+            .with_embed("embed");
+
+        assert_eq!(router.default_provider().name(), "default");
+        assert_eq!(router.fast_provider().name(), "fast");
+        assert_eq!(router.embed_provider().name(), "embed");
+        assert_eq!(
+            collect_text(router.fast_provider().clone()).await,
+            "fast"
+        );
+
+        let embedding = router.embed("embed-model", "hello").await.expect("embed");
+        assert_eq!(embedding.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn stream_chat_falls_back_when_default_fails() {
+        let router = ProviderRouter::new("primary")
+            .add(
+                "primary",
+                Arc::new(StaticProvider {
+                    label: "primary",
+                    text: "nope".into(),
+                    fail_stream: true,
+                }),
+            )
+            .add(
+                "backup",
+                Arc::new(StaticProvider {
+                    label: "backup",
+                    text: "fallback ok".into(),
+                    fail_stream: false,
+                }),
+            )
+            .with_fallback(vec!["backup".into()]);
+        let router: ArcProvider = Arc::new(router);
+
+        let text = collect_text(router).await;
+        assert_eq!(text, "fallback ok");
+    }
+
+    #[tokio::test]
+    async fn from_config_honors_explicit_default_and_fallback() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "anthropic".into(),
+            ProviderEntry {
+                name: Some("anthropic".into()),
+                api_key: Some("sk-ant-test".into()),
+                model: Some("claude-sonnet-4-6".into()),
+                base_url: None,
+            },
+        );
+        entries.insert(
+            "xai".into(),
+            ProviderEntry {
+                name: Some("xai".into()),
+                api_key: Some("xai-test".into()),
+                model: Some("grok-4.3".into()),
+                base_url: None,
+            },
+        );
+
+        let cfg = RouterConfig {
+            default: Some("xai".into()),
+            fallback: Some(vec!["anthropic".into()]),
+            ..Default::default()
+        };
+
+        let router = ProviderRouter::from_config(&entries, &cfg).expect("router");
+        assert_eq!(router.default_provider().name(), "xai");
+        assert!(router.get("anthropic").is_some());
+        assert!(router.get("xai").is_some());
+    }
+}

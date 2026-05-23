@@ -4,22 +4,21 @@ use crate::config::Config;
 use anyhow::Result;
 use harness_memory::SessionStore;
 
-pub fn run_status(cfg: &Config, model: &str, store: &SessionStore, api_key: &str) -> Result<()> {
+pub fn run_status(cfg: &Config, model: &str, store: &SessionStore, _api_key: &str) -> Result<()> {
     println!("harness status\n");
 
     let key_source = if cfg.provider.api_key.is_some() {
         "config file"
     } else if std::env::var("XAI_API_KEY").is_ok() {
         "XAI_API_KEY env var"
+    } else if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+        "ANTHROPIC_API_KEY env var"
+    } else if std::env::var("OPENAI_API_KEY").is_ok() {
+        "OPENAI_API_KEY env var"
     } else {
         "unknown"
     };
-    let key_preview = if api_key.len() > 8 {
-        format!("{}…{}", &api_key[..6], &api_key[api_key.len() - 4..])
-    } else {
-        "(too short)".to_string()
-    };
-    println!("  API key : {} ({})", key_preview, key_source);
+    println!("  API key : configured ({key_source})");
     println!("  Model   : {model}");
 
     let cfg_path = {

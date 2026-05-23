@@ -1,11 +1,5 @@
 #![allow(dead_code)]
-//! Collaborative WebSocket sessions: multiple users sharing a harness session.
-//!
-//! Adds a `/ws/session/:id` WebSocket route to the server.
-//! All connected clients see the same chat stream (agent events broadcast).
-//! Events: UserJoined, UserLeft, UserTyping, AgentEvent (rebroadcast).
-//!
-//! Enable with `[collab]` config block.
+//! **Status:** EXPERIMENTAL — not wired to `server.rs` or the TUI. Module retained for future work.
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};

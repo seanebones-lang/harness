@@ -12,7 +12,7 @@ Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI �
 
 ## Prerequisites
 
-- **Rust** (stable, edition 2021) via [rustup](https://rustup.rs) — on Windows, use the **MSVC** toolchain (Visual Studio C++ build tools) unless you know you need GNU.
+- **Rust** (stable, edition 2021) via [rustup](https://rustup.rs) — on Windows, use the **MSVC** toolchain (Visual Studio C++ build tools) unless you know you need GNU. After install, ensure `~/.cargo/bin` is on your `PATH` (run `source "$HOME/.cargo/env"` or add it to `~/.zshrc`).
 - **Git** — required to clone the repo (and **Git for Windows** is recommended on Windows so `sh.exe` is on `PATH` for the `shell` tool’s POSIX behavior).
 - **Platforms:** **macOS**, **Linux**, and **Windows** are all exercised in [CI](.github/workflows/ci.yml) (`fmt`, `clippy --all-features`, `test`, `build`). Optional features (voice, computer-use, desktop notifications) vary by OS — see **Optional features by platform** below.
 
@@ -74,12 +74,19 @@ cargo build --profile release-lto
 
 That's it. Harness auto-detects which API keys are set and picks the best available provider. Run **`harness init`** once if you want a generated global config under `~/.harness/` (install scripts may already create `config.toml`).
 
-### Development snapshot
+### Development snapshot (May 2026)
 
-- **`TODO.md`** — remaining work is mostly **Polish** (ambient abstraction, browser/ambient test coverage, session list timing). Older Critical/Important backlog items are **implemented** on current `main`.
-- **CI:** Pull requests and `main` run **fmt**, **clippy `--all-features`**, **tests**, **build**, and **install-script smoke jobs** (`scripts/install.sh` on Ubuntu + macOS, `scripts/install.ps1` on Windows) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Tag **GitHub Releases** binaries are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml); ship only when `main` is green and [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) is satisfied.
+| | |
+|--|--|
+| **Status** | Public **beta** — stable blocked on manual smoke §3 |
+| **Tests** | **164** (`cargo test --all`), clippy clean, CI multi-OS, coverage ≥ 60% on PRs |
+| **Security** | P0 closed; [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) |
+| **Backlog** | [`TODO.md`](TODO.md) — open items ranked by severity + roadmap |
+| **Audit** | [`docs/PEER_REVIEW_AUDIT.md`](docs/PEER_REVIEW_AUDIT.md) |
 
-See [`CLAUDE.md`](CLAUDE.md) for module-level detail and contributor hooks (`core.hooksPath`). **Want to help?** See [`CONTRIBUTING.md`](CONTRIBUTING.md) for a guided tour of the open task list.
+**Docs:** [`docs/BROWSER_CDP.md`](docs/BROWSER_CDP.md) · [`docs/COOKBOOK.md`](docs/COOKBOOK.md) · [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) · [`docs/i18n/USER_MANUAL.es.md`](docs/i18n/USER_MANUAL.es.md)
+
+See [`CLAUDE.md`](CLAUDE.md) for module-level detail and contributor hooks (`core.hooksPath`). **Want to help?** See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
@@ -167,12 +174,13 @@ Full cheat sheet: [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md). Phase E highlights:
 | Feature | macOS | Linux | Windows | Notes |
 |--------|-------|-------|---------|--------|
 | **Core CLI / TUI** | Yes | Yes | Yes | Same `harness` binary; CI covers all three. |
-| **`shell` tool** | `sh -c` | `sh -c` | Git `sh`/`bash` if on `PATH`; else **`cmd.exe /C`** (limited POSIX) | Install **Git for Windows** and ensure `usr\bin` is on `PATH` for best results. |
+| **`shell` tool** | `sh -c` | `sh -c` | Git `sh`/`bash` → **PowerShell** → `cmd.exe /C` | Install **Git for Windows** for POSIX `sh`; otherwise PowerShell is used before `cmd.exe`. |
 | **GitHub `/pr`, `/issues`, `harness pr`** | With `gh` | With `gh` | With `gh` | Run `gh auth login` once. |
 | **Desktop notifications** | Notification Center | **libnotify** (e.g. `libnotify-bin`) | Varies / may be limited | See [`config/default.toml`](config/default.toml). |
 | **Voice (`harness voice`, Ctrl+S)** | `sox` / `afrecord` + Whisper or `whisper-cli` | `sox rec` + backends | Not first-class | Prefer OpenAI Whisper API or local tooling you already use. |
 | **Computer use** | **`cliclick`** (`brew install cliclick`) | **`xdotool`** | **Not supported** | Opus 4.7+ only; dangerous — see [`config/default.toml`](config/default.toml). |
-| **VS Code extension** | Yes | Yes | **Unix socket** — use **WSL** or wait for a Windows transport | Default socket `~/.harness/daemon.sock`. |
+| **VS Code extension + daemon** | Unix socket | Unix socket | **Loopback TCP** (`~/.harness/daemon.port`) | Run `harness daemon` first; on Windows the extension reads the port file. WSL still uses the Linux path. |
+| **Tauri desktop app** | Yes | Partial | Partial | Auto-starts `harness serve` on `127.0.0.1:8787` — see [`apps/desktop/README.md`](apps/desktop/README.md). |
 
 ---
 
@@ -351,7 +359,7 @@ The bundled page keeps the chat **session ID in localStorage** across reloads an
 
 ## Browser tool (Chrome CDP, optional)
 
-Requires Chrome/Chromium launched with **`--remote-debugging-port`** (typically `9222`). Enable `[browser]` in config or pass **`--browser`** at startup; optionally set **`--browser-url`**. Registers a `browser` tool (navigate, screenshot, DOM actions). Full detail: **`harness-browser`** in [`CLAUDE.md`](CLAUDE.md).
+Requires Chrome/Chromium launched with **`--remote-debugging-port`** (typically `9222`). Enable `[browser]` in config or pass **`--browser`** at startup; optionally set **`--browser-url`**. Registers a `browser` tool (navigate, screenshot, DOM actions). Setup and troubleshooting: [`docs/BROWSER_CDP.md`](docs/BROWSER_CDP.md). Implementation: **`harness-browser`** in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -366,13 +374,19 @@ npm run dev      # development
 npm run build    # release bundle
 ```
 
-Requires `harness` on `PATH` for auto-spawn of `harness daemon`. See [`apps/desktop/README.md`](apps/desktop/README.md).
+Requires `harness` on `PATH`; the app auto-spawns **`harness serve --addr 127.0.0.1:8787`** when `/api/health` is not already reachable. See [`apps/desktop/README.md`](apps/desktop/README.md).
 
 ---
 
 ## VS Code extension (optional)
 
-`extensions/vscode/` — side-panel chat against the harness daemon over a **Unix domain socket** (`~/.harness/daemon.sock` by default). **Windows:** use **WSL** for a supported setup today, or run the TUI / `harness serve` natively. Install with `npm install`, then **Run Extension** or package with `vsce`.
+`extensions/vscode/` — side-panel chat against the harness daemon.
+
+- **macOS / Linux:** Unix domain socket at `~/.harness/daemon.sock` (default).
+- **Windows (native):** loopback **TCP** — run **`harness daemon`** first; the extension reads `~/.harness/daemon.port`.
+- **WSL2:** use the Linux socket path inside your distro.
+
+Install with `npm install`, then **Run Extension** or package with `vsce`. See [`docs/INSTALL.md`](docs/INSTALL.md) for transport details.
 
 ---
 
@@ -452,7 +466,7 @@ crates/
   harness-provider-ollama/      Local Ollama (Qwen3-Coder)
   harness-provider-router/      Smart multi-provider router with env-key detection
   harness-provider-core/        Shared types (ChatRequest, Delta, Provider trait)
-  harness-tools/                Tool trait + shell/gh/computer/file/search/patch/spawn
+  harness-tools/                Tool trait + shell/gh/git/computer/file/search/patch/spawn
   harness-memory/               SQLite session store + vector memory
   harness-mcp/                  MCP stdio protocol client
   harness-browser/              Chrome CDP browser tool
@@ -470,24 +484,46 @@ For a developer deep-dive see [`CLAUDE.md`](CLAUDE.md). User-facing migration no
 
 | Symptom | What to try |
 |--------|--------------|
+| `command not found: cargo` | Install [rustup](https://rustup.rs), then run `source "$HOME/.cargo/env"` (add that line to `~/.zshrc`). Open a new terminal. |
 | `command not found: harness` | **Unix:** add `~/.local/bin` to `PATH` (`export PATH="$HOME/.local/bin:$PATH"`). Run `hash -r` or open a new shell. **Windows:** add `%USERPROFILE%\.local\bin` to User **Path** and open a new terminal. |
 | API / auth errors | **Unix:** `export ANTHROPIC_API_KEY=…`. **Windows:** `$env:ANTHROPIC_API_KEY='…'`. Run `harness status` and `harness doctor`. |
-| `shell` tool behaves oddly on Windows | Install **Git for Windows** so `sh.exe` is on `PATH`; without it Harness falls back to `cmd.exe` (not POSIX). |
+| `shell` tool behaves oddly on Windows | Install **Git for Windows** so `sh.exe` is on `PATH` (POSIX). Without Git, Harness uses **PowerShell**, then **`cmd.exe /C`** as a last resort. |
 | `/pr`, `/issues`, `/ci` fail | Install GitHub CLI on your OS: `gh auth login`, then `gh auth status`. |
 | Clippy fails locally but CI passes | Run the same command as CI: `cargo clippy --all-targets --all-features -- -D warnings`. |
 | Checkpoint / `/undo` says not a git repo | Run `git init` in the project root (Harness uses git for checkpoints). |
 | Web UI empty or connection errors | Start the server: `harness serve --addr 127.0.0.1:8787`, then open the URL it prints. |
-| Browser / CDP tool errors | Chrome must run with `--remote-debugging-port` matching `[browser].url` in config (see `config/default.toml`). |
+| Browser / CDP tool errors | Chrome must run with `--remote-debugging-port` matching `[browser].url` in config. See [`docs/BROWSER_CDP.md`](docs/BROWSER_CDP.md). |
+| VS Code extension won't connect | Start **`harness daemon`** first. On Windows, check `~/.harness/daemon.port` exists (loopback TCP). On macOS/Linux, check `~/.harness/daemon.sock`. |
 
 ---
 
 ## Known limitations
 
-Non-exhaustive list; details live in [`TODO.md`](TODO.md):
+See [`TODO.md`](TODO.md) for the full severity-ranked backlog. Summary:
 
-- **Polish:** ambient provider abstraction, extra `harness-browser` tests, optional ambient consolidation tests.
-- **UX:** session titles from async auto-naming can lag the first `harness sessions` list right after save.
-- **`shell` on Windows:** prefers Git `sh`/`bash`; without them commands run via `cmd.exe` (not POSIX).
+- **Stable release** — blocked on maintainer **manual smoke §3** ([`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md)); automated gates pass (**164 tests**).
+- **Experimental modules** — `collab`, `bridges`, `diff_review` compile but are not wired to CLI/TUI/server.
+- **Tauri desktop** — macOS-first; Windows/Linux packaging incomplete.
+- **Optional tools** — `DatabaseTool`, `NotebookTool`, `DockerTool` not implemented (`GitTool` is).
+
+---
+
+## Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| [`Start Here/USER MANUAL.md`](Start%20Here/USER%20MANUAL.md) | Plain-language user guide |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | Install every OS + WSL2 |
+| [`docs/BROWSER_CDP.md`](docs/BROWSER_CDP.md) | Chrome DevTools / browser tool |
+| [`docs/COOKBOOK.md`](docs/COOKBOOK.md) | Example prompts |
+| [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md) | TUI keys |
+| [`docs/i18n/USER_MANUAL.es.md`](docs/i18n/USER_MANUAL.es.md) | Spanish manual (partial) |
+| [`CLAUDE.md`](CLAUDE.md) | Developer / module reference |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributor guide |
+| [`TODO.md`](TODO.md) | Open backlog (severity-ranked) + roadmap |
+| [`docs/PEER_REVIEW_AUDIT.md`](docs/PEER_REVIEW_AUDIT.md) | Security audit + remediation log |
+| [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | HTTP/daemon/tool trust boundaries |
+| [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) | Latest verification / go-no-go |
 
 ---
 

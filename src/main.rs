@@ -1,4 +1,5 @@
 mod agent;
+mod auth_token;
 mod ambient;
 mod background;
 mod bridges;
@@ -151,6 +152,16 @@ async fn main() -> Result<()> {
     let browser_enabled = cli.browser || cfg.browser.enabled.unwrap_or(false);
     let browser_url = cfg.browser.url.clone().unwrap_or(cli.browser_url);
 
+    // Plan/approve mode: CLI flag or `[approval].mode = "plan"`.
+    let plan_mode = cli.plan || cfg.approval.effective_mode() == "plan";
+    let interactive_tui = cli.command.is_none() && cli.prompt.is_none();
+    let (confirm_gate, confirm_rx) = if plan_mode && interactive_tui {
+        let (gate, rx) = harness_tools::confirm::channel();
+        (Some(gate), Some(rx))
+    } else {
+        (None, None)
+    };
+
     // Build tools (including MCP servers if config exists).
     let tools = build_tools(
         provider.clone(),
@@ -160,8 +171,11 @@ async fn main() -> Result<()> {
         &browser_url,
         memory_store.clone(),
         embed_model.clone(),
+        confirm_gate,
     )
     .await;
+
+    let run_opts = agent::RunOnceOptions::from_config(&cfg, cli.think);
 
     match cli.command {
         Some(Commands::Sessions) => {
@@ -184,6 +198,7 @@ async fn main() -> Result<()> {
                 cfg.agent.system_prompt.as_deref(),
                 &effective_prompt,
                 cli.resume.as_deref(),
+                run_opts.clone(),
             )
             .await?;
         }
@@ -220,12 +235,23 @@ async fn main() -> Result<()> {
                 Some(&system_pr),
                 &context,
                 None,
+                run_opts.clone(),
             )
             .await?;
         }
 
         Some(Commands::Serve { addr }) => {
             let addr: std::net::SocketAddr = addr.parse().context("invalid address")?;
+            if !addr.ip().is_loopback() {
+                tracing::warn!(
+                    %addr,
+                    "binding harness serve to a non-loopback address exposes the agent API — bearer token auth is required"
+                );
+            }
+            let auth_token = auth_token::server_token()?;
+            tracing::info!(
+                "HTTP auth token loaded from ~/.harness/server.token (send as Authorization: Bearer <token>)"
+            );
             let cfg_for_serve = cfg.clone();
             let inner = server::ServeRuntimeState {
                 provider,
@@ -246,6 +272,7 @@ async fn main() -> Result<()> {
                 browser_enabled,
                 browser_url,
                 config_active_path: Arc::new(config::active_config_toml_path()),
+                auth_token,
             };
             server::serve(state, addr).await?;
         }
@@ -346,6 +373,7 @@ async fn main() -> Result<()> {
                 match daemon::send_request(&daemon::DaemonRequest {
                     id: 1,
                     method: "status".into(),
+                    token: String::new(),
                     params: serde_json::json!({}),
                 })
                 .await
@@ -497,6 +525,7 @@ async fn main() -> Result<()> {
                     cfg.agent.system_prompt.as_deref(),
                     &transcript,
                     cli.resume.as_deref(),
+                    run_opts.clone(),
                 )
                 .await?;
             }
@@ -773,18 +802,12 @@ async fn main() -> Result<()> {
                     cfg.agent.system_prompt.as_deref(),
                     &effective_prompt,
                     cli.resume.as_deref(),
+                    run_opts,
                 )
                 .await?;
             } else {
                 let ambient_tx = ambient_shutdown.as_ref().map(|(tx, _)| tx.clone());
-                // In plan mode, create a confirm gate channel and pass it to both the
-                // tools executor and the TUI (which will handle the confirmation prompts).
-                let (tools, confirm_rx) = if cli.plan {
-                    let (gate, rx) = harness_tools::confirm::channel();
-                    (tools.with_confirm_gate(gate), Some(rx))
-                } else {
-                    (tools, None)
-                };
+                // Confirm gate already attached in build_tools when plan mode is active.
                 let result = tui::run(
                     provider,
                     session_store,
@@ -794,6 +817,7 @@ async fn main() -> Result<()> {
                     model,
                     cfg,
                     cli.resume.as_deref(),
+                    cli.think,
                     ambient_tx,
                     confirm_rx,
                 )

@@ -11,6 +11,7 @@ use harness_tools::tools::{
     PatchFileTool, ReadFileTool, SearchCodeTool, ShellConfig, ShellTool, WriteFileTool,
 };
 use harness_tools::{SandboxMode, ToolExecutor, ToolRegistry, WorkspaceRoot};
+use std::sync::Arc;
 use tempfile::tempdir;
 
 fn offsandbox(dir: &std::path::Path) -> std::sync::Arc<WorkspaceRoot> {
@@ -289,8 +290,11 @@ async fn search_code_tool() {
     )
     .unwrap();
 
+    let ws = Arc::new(
+        WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap(),
+    );
     let mut registry = ToolRegistry::new();
-    registry.register(SearchCodeTool);
+    registry.register(SearchCodeTool { workspace: ws });
     let executor = ToolExecutor::new(registry);
 
     let call = ToolCall {

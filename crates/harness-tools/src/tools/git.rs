@@ -5,11 +5,18 @@
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
 use serde_json::{json, Value};
+use std::path::Path;
+use std::sync::Arc;
 use tokio::process::Command;
 
 use crate::registry::Tool;
+use crate::workspace_root::WorkspaceRoot;
 
-pub struct GitTool;
+/// Structured git operations tool.
+pub struct GitTool {
+    /// Workspace root — git runs with this as `current_dir`; clone targets are sandboxed.
+    pub workspace: Arc<WorkspaceRoot>,
+}
 
 #[async_trait]
 impl Tool for GitTool {
@@ -84,37 +91,52 @@ impl Tool for GitTool {
         let action = args["action"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing action"))?;
+        let cwd = self.workspace.root();
 
         match action {
-            "status" => run_git(&["status", "--short"]).await,
+            "status" => run_git(cwd, &["status", "--short"]).await,
 
             "diff" => {
                 let staged = args["staged"].as_bool().unwrap_or(false);
-                let paths: Vec<&str> = args["paths"]
+                let paths: Vec<String> = args["paths"]
                     .as_array()
-                    .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|p| self.workspace.resolve(p).map(|x| x.to_string_lossy().into_owned()))
+                            .collect::<anyhow::Result<_>>()
+                    })
+                    .transpose()?
                     .unwrap_or_default();
 
                 let mut git_args = vec!["diff"];
                 if staged {
                     git_args.push("--cached");
                 }
-                git_args.extend(paths.iter().copied());
-                run_git(&git_args).await
+                let path_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+                git_args.extend(path_refs.iter().copied());
+                run_git(cwd, &git_args).await
             }
 
             "add" => {
-                let paths: Vec<&str> = args["paths"]
+                let paths: Vec<String> = args["paths"]
                     .as_array()
-                    .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|p| self.workspace.resolve(p).map(|x| x.to_string_lossy().into_owned()))
+                            .collect::<anyhow::Result<_>>()
+                    })
+                    .transpose()?
                     .unwrap_or_default();
 
                 if paths.is_empty() {
-                    run_git(&["add", "."]).await
+                    run_git(cwd, &["add", "."]).await
                 } else {
                     let mut git_args = vec!["add", "--"];
-                    git_args.extend(paths.iter().copied());
-                    run_git(&git_args).await
+                    let path_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+                    git_args.extend(path_refs.iter().copied());
+                    run_git(cwd, &git_args).await
                 }
             }
 
@@ -122,30 +144,30 @@ impl Tool for GitTool {
                 let msg = args["message"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("commit requires a message"))?;
-                run_git(&["commit", "-m", msg]).await
+                run_git(cwd, &["commit", "-m", msg]).await
             }
 
             "branch" => match args["branch_name"].as_str() {
-                Some(name) => run_git(&["checkout", "-b", name]).await,
-                None => run_git(&["branch", "--list", "-v"]).await,
+                Some(name) => run_git(cwd, &["checkout", "-b", name]).await,
+                None => run_git(cwd, &["branch", "--list", "-v"]).await,
             },
 
             "push" => {
                 let remote = args["remote"].as_str().unwrap_or("origin");
-                let branch = args["branch_name"].as_str().unwrap_or("HEAD");
+                let branch_arg = args["branch_name"].as_str().unwrap_or("HEAD");
                 let force = args["force"].as_bool().unwrap_or(false);
+                let resolved = resolve_branch_name(branch_arg, cwd).await?;
 
-                // Block force-push to main/master.
-                if force && matches!(branch, "main" | "master") {
+                if force && is_protected_branch(&resolved) {
                     return Err(anyhow::anyhow!(
-                        "Force-push to {branch} is blocked for safety. Use git shell directly if you really need this."
+                        "Force-push to {resolved} is blocked for safety. Use git shell directly if you really need this."
                     ));
                 }
 
                 if force {
-                    run_git(&["push", "--force-with-lease", remote, branch]).await
+                    run_git(cwd, &["push", "--force-with-lease", remote, &resolved]).await
                 } else {
-                    run_git(&["push", remote, branch]).await
+                    run_git(cwd, &["push", remote, &resolved]).await
                 }
             }
 
@@ -154,9 +176,11 @@ impl Tool for GitTool {
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("clone requires `repo`"))?;
                 if let Some(directory) = args["directory"].as_str() {
-                    run_git(&["clone", repo, directory]).await
+                    let dest = self.workspace.resolve(directory)?;
+                    let dest_s = dest.to_string_lossy();
+                    run_git(cwd, &["clone", repo, &dest_s]).await
                 } else {
-                    run_git(&["clone", repo]).await
+                    run_git(cwd, &["clone", repo]).await
                 }
             }
 
@@ -164,10 +188,10 @@ impl Tool for GitTool {
                 let remote = args["remote"].as_str();
                 let branch = args["branch_name"].as_str();
                 match (remote, branch) {
-                    (Some(r), Some(b)) => run_git(&["pull", "--ff-only", r, b]).await,
-                    (Some(r), None) => run_git(&["pull", "--ff-only", r]).await,
-                    (None, Some(b)) => run_git(&["pull", "--ff-only", "origin", b]).await,
-                    (None, None) => run_git(&["pull", "--ff-only"]).await,
+                    (Some(r), Some(b)) => run_git(cwd, &["pull", "--ff-only", r, b]).await,
+                    (Some(r), None) => run_git(cwd, &["pull", "--ff-only", r]).await,
+                    (None, Some(b)) => run_git(cwd, &["pull", "--ff-only", "origin", b]).await,
+                    (None, None) => run_git(cwd, &["pull", "--ff-only"]).await,
                 }
             }
 
@@ -175,10 +199,10 @@ impl Tool for GitTool {
                 let remote = args["remote"].as_str();
                 let branch = args["branch_name"].as_str();
                 match (remote, branch) {
-                    (Some(r), Some(b)) => run_git(&["fetch", r, b]).await,
-                    (Some(r), None) => run_git(&["fetch", r]).await,
-                    (None, Some(b)) => run_git(&["fetch", "origin", b]).await,
-                    (None, None) => run_git(&["fetch", "--all", "--prune"]).await,
+                    (Some(r), Some(b)) => run_git(cwd, &["fetch", r, b]).await,
+                    (Some(r), None) => run_git(cwd, &["fetch", r]).await,
+                    (None, Some(b)) => run_git(cwd, &["fetch", "origin", b]).await,
+                    (None, None) => run_git(cwd, &["fetch", "--all", "--prune"]).await,
                 }
             }
 
@@ -186,28 +210,34 @@ impl Tool for GitTool {
                 let branch = args["branch_name"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("checkout requires `branch_name`"))?;
-                run_git(&["checkout", branch]).await
+                run_git(cwd, &["checkout", branch]).await
             }
 
             "switch" => {
                 let branch = args["branch_name"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("switch requires `branch_name`"))?;
-                run_git(&["switch", branch]).await
+                run_git(cwd, &["switch", branch]).await
             }
 
             "log" => {
                 let limit = args["limit"].as_u64().unwrap_or(10);
                 let fmt = "--format=%h %s (%an, %ar)";
                 let n_str = format!("-{limit}");
-                run_git(&["log", &n_str, fmt]).await
+                run_git(cwd, &["log", &n_str, fmt]).await
             }
 
             "blame" => {
-                let paths: Vec<&str> = args["paths"]
+                let paths: Vec<String> = args["paths"]
                     .as_array()
                     .and_then(|a| a.first())
                     .and_then(|v| v.as_str())
+                    .map(|p| {
+                        self.workspace
+                            .resolve(p)
+                            .map(|x| x.to_string_lossy().into_owned())
+                    })
+                    .transpose()?
                     .map(|p| vec![p])
                     .unwrap_or_default();
 
@@ -217,16 +247,22 @@ impl Tool for GitTool {
 
                 if let Some(line) = args["line"].as_u64() {
                     let range = format!("-L {line},{line}");
-                    run_git(&["blame", &range, paths[0]]).await
+                    run_git(cwd, &["blame", &range, &paths[0]]).await
                 } else {
-                    run_git(&["blame", paths[0]]).await
+                    run_git(cwd, &["blame", &paths[0]]).await
                 }
             }
 
             "restore" => {
-                let paths: Vec<&str> = args["paths"]
+                let paths: Vec<String> = args["paths"]
                     .as_array()
-                    .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|p| self.workspace.resolve(p).map(|x| x.to_string_lossy().into_owned()))
+                            .collect::<anyhow::Result<_>>()
+                    })
+                    .transpose()?
                     .unwrap_or_default();
 
                 if paths.is_empty() {
@@ -234,17 +270,18 @@ impl Tool for GitTool {
                 }
 
                 let mut git_args = vec!["restore", "--"];
-                git_args.extend(paths.iter().copied());
-                run_git(&git_args).await
+                let path_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+                git_args.extend(path_refs.iter().copied());
+                run_git(cwd, &git_args).await
             }
 
             "stash" => {
                 let sub = args["stash_action"].as_str().unwrap_or("list");
                 match sub {
-                    "push" => run_git(&["stash", "push"]).await,
-                    "pop" => run_git(&["stash", "pop"]).await,
-                    "drop" => run_git(&["stash", "drop"]).await,
-                    _ => run_git(&["stash", "list"]).await,
+                    "push" => run_git(cwd, &["stash", "push"]).await,
+                    "pop" => run_git(cwd, &["stash", "pop"]).await,
+                    "drop" => run_git(cwd, &["stash", "drop"]).await,
+                    _ => run_git(cwd, &["stash", "list"]).await,
                 }
             }
 
@@ -253,8 +290,34 @@ impl Tool for GitTool {
     }
 }
 
-async fn run_git(args: &[&str]) -> anyhow::Result<String> {
-    let output = Command::new("git").args(args).output().await?;
+fn is_protected_branch(name: &str) -> bool {
+    matches!(name, "main" | "master")
+}
+
+async fn resolve_branch_name(branch: &str, cwd: &Path) -> anyhow::Result<String> {
+    if branch != "HEAD" {
+        return Ok(branch.to_string());
+    }
+    let output = Command::new("git")
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .current_dir(cwd)
+        .output()
+        .await?;
+    if output.status.success() {
+        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !name.is_empty() {
+            return Ok(name);
+        }
+    }
+    Ok("HEAD".to_string())
+}
+
+async fn run_git(cwd: &Path, args: &[&str]) -> anyhow::Result<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .await?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -274,4 +337,78 @@ async fn run_git(args: &[&str]) -> anyhow::Result<String> {
     } else {
         result
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace_root::{SandboxMode, WorkspaceRoot};
+    use serde_json::json;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+
+    #[test]
+    fn protected_branch_names() {
+        assert!(is_protected_branch("main"));
+        assert!(is_protected_branch("master"));
+        assert!(!is_protected_branch("feature/x"));
+    }
+
+    #[tokio::test]
+    async fn push_blocks_force_to_main() {
+        let dir = tempdir().unwrap();
+        let ws = Arc::new(
+            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("workspace"),
+        );
+        let tool = GitTool { workspace: ws.clone() };
+
+        std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(dir.path())
+            .output()
+            .expect("git init");
+        std::fs::write(dir.path().join("README.md"), "init\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(dir.path())
+            .output()
+            .expect("git add");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "init"])
+            .env("GIT_AUTHOR_NAME", "test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .current_dir(dir.path())
+            .output()
+            .expect("git commit");
+
+        let err = tool
+            .execute(json!({
+                "action": "push",
+                "branch_name": "main",
+                "force": true
+            }))
+            .await
+            .expect_err("force push blocked");
+        assert!(err.to_string().contains("blocked"));
+    }
+
+    #[tokio::test]
+    async fn clone_rejects_directory_outside_workspace() {
+        let dir = tempdir().unwrap();
+        let ws = Arc::new(
+            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("workspace"),
+        );
+        let tool = GitTool { workspace: ws };
+        let err = tool
+            .execute(json!({
+                "action": "clone",
+                "repo": "https://example.com/repo.git",
+                "directory": "../outside"
+            }))
+            .await
+            .expect_err("clone escape");
+        assert!(err.to_string().contains("escapes workspace root"));
+    }
 }

@@ -63,6 +63,7 @@ pub async fn run(
     model: String,
     cfg: Config,
     resume_id: Option<&str>,
+    initial_thinking_budget: Option<u32>,
     ambient_shutdown: Option<watch::Sender<()>>,
     confirm_rx: Option<mpsc::Receiver<ConfirmRequest>>,
 ) -> Result<()> {
@@ -86,6 +87,7 @@ pub async fn run(
         st.budget_daily_usd = cfg.budget.daily_usd;
         st.budget_monthly_usd = cfg.budget.monthly_usd;
         st.notifications = cfg.notifications.clone();
+        st.thinking_budget = initial_thinking_budget;
     }
     let mut session = match resume_id {
         Some(id) => session_store
@@ -135,6 +137,9 @@ pub async fn run(
         &tools,
         &model,
         &system_prompt,
+        cfg.native_tools.web_search_enabled(),
+        cfg.native_tools.code_execution_enabled(),
+        cfg.native_tools.x_search_enabled(),
         ambient_shutdown,
         confirm_rx,
     )

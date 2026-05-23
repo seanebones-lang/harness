@@ -1,9 +1,6 @@
 #![allow(dead_code)]
-//! Ecosystem bridges: OS-level integrations for macOS apps and GitHub Projects.
-//!
-//! Gated by `[bridges]` config block. Each bridge is independently enabled.
-//!
-//! Available bridges:
+//! **Status:** EXPERIMENTAL — helpers implemented; no CLI/TUI/server entry points yet.
+//! Gated by `[bridges]` config block when wired.
 //! - **Obsidian**: write notes/snippets to the Obsidian vault via its URI scheme
 //! - **Apple Notes**: create/append notes via osascript
 //! - **Calendar**: query and create events via EventKit (osascript)

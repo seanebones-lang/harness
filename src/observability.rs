@@ -1,4 +1,5 @@
 //! OpenTelemetry observability for Harness.
+//! **Status:** Local JSONL traces are wired; OTLP export is experimental and untested in CI.
 //!
 //! Instruments agent turns, tool calls, embed operations, and MCP calls
 //! with OTLP spans. Traces can be exported to:

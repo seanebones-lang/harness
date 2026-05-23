@@ -20,6 +20,7 @@ use tracing::{debug, warn};
 use crate::registry::Tool;
 
 /// The Anthropic computer-use tool implementation.
+/// Anthropic computer-use tool.
 pub struct ComputerUseTool;
 
 #[async_trait]
@@ -129,6 +130,52 @@ fn extract_coord(args: &Value) -> Result<(i32, i32)> {
     let x = coord.first().and_then(|v| v.as_i64()).unwrap_or(0) as i32;
     let y = coord.get(1).and_then(|v| v.as_i64()).unwrap_or(0) as i32;
     Ok((x, y))
+}
+
+/// Reject text that could break cliclick/osascript argument parsing.
+fn validate_type_text(text: &str) -> Result<()> {
+    if text.is_empty() {
+        anyhow::bail!("type action requires non-empty text");
+    }
+    if text.len() > 512 {
+        anyhow::bail!("type text exceeds 512 character limit");
+    }
+    if text.chars().any(|c| c == '\0' || c == '\n' || c == '\r') {
+        anyhow::bail!("type text contains disallowed control characters");
+    }
+    Ok(())
+}
+
+/// Allow only simple key combos (e.g. `cmd+c`, `ctrl+shift+p`).
+fn validate_key_combo(key: &str) -> Result<()> {
+    if key.is_empty() || key.len() > 48 {
+        anyhow::bail!("invalid key combo length");
+    }
+    for part in key.split('+') {
+        let p = part.trim();
+        if p.is_empty() {
+            anyhow::bail!("empty key segment in combo");
+        }
+        if !p
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ' ' | '-' | '_'))
+        {
+            anyhow::bail!("key combo contains disallowed characters");
+        }
+    }
+    Ok(())
+}
+
+fn escape_applescript_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn cliclick_type_safe(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 128
+        && text
+            .chars()
+            .all(|c| c.is_ascii_graphic() && c != ':' && c != '"')
 }
 
 // ── macOS implementations ────────────────────────────────────────────────────
@@ -307,12 +354,27 @@ async fn mouse_double_click(x: i32, y: i32) -> Result<String> {
 }
 
 async fn type_text(text: &str) -> Result<String> {
+    validate_type_text(text)?;
     if cfg!(target_os = "macos") {
-        if Command::new("cliclick")
-            .arg(format!("t:{text}"))
+        if cliclick_type_safe(text)
+            && Command::new("cliclick")
+                .arg(format!("t:{text}"))
+                .status()
+                .await
+                .map(|s| s.success())
+                .unwrap_or(false)
+        {
+            let preview: String = text.chars().take(40).collect();
+            return Ok(format!("Typed: {preview}"));
+        }
+        let escaped = escape_applescript_string(text);
+        let script = format!("tell application \"System Events\" to keystroke \"{escaped}\"");
+        if Command::new("osascript")
+            .args(["-e", &script])
             .status()
             .await
-            .is_ok()
+            .map(|s| s.success())
+            .unwrap_or(false)
         {
             let preview: String = text.chars().take(40).collect();
             return Ok(format!("Typed: {preview}"));
@@ -339,26 +401,18 @@ async fn type_text(text: &str) -> Result<String> {
 }
 
 async fn press_key(key: &str) -> Result<String> {
-    // Normalise key combo (e.g. "ctrl+c" → platform-specific)
+    validate_key_combo(key)?;
     if cfg!(target_os = "macos") {
-        // cliclick uses kc: for key codes; use osascript for combos
-        let script =
-            format!("tell application \"System Events\" to keystroke \"{key}\" using {{}}",);
-        // For simple keys, try cliclick
         if Command::new("cliclick")
             .arg(format!("kp:{key}"))
             .status()
             .await
-            .is_ok()
+            .map(|s| s.success())
+            .unwrap_or(false)
         {
             return Ok(format!("Key pressed: {key}"));
         }
-        // Fall back to osascript (works for combos like "cmd+c")
-        let _ = Command::new("osascript")
-            .args(["-e", &script])
-            .status()
-            .await;
-        return Ok(format!("Key pressed: {key}"));
+        anyhow::bail!("key press failed (install cliclick: brew install cliclick)");
     } else if Command::new("which")
         .arg("xdotool")
         .status()
@@ -464,4 +518,28 @@ fn encode_base64(data: &[u8]) -> String {
         );
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_type_text_rejects_control_chars() {
+        assert!(validate_type_text("hello").is_ok());
+        assert!(validate_type_text("hello\nworld").is_err());
+    }
+
+    #[test]
+    fn validate_key_combo_allows_modifiers() {
+        assert!(validate_key_combo("cmd+c").is_ok());
+        assert!(validate_key_combo("ctrl+shift+p").is_ok());
+        assert!(validate_key_combo("bad;key").is_err());
+    }
+
+    #[test]
+    fn cliclick_type_safe_rejects_colons() {
+        assert!(cliclick_type_safe("hello"));
+        assert!(!cliclick_type_safe("a:b"));
+    }
 }

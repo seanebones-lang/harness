@@ -9,24 +9,33 @@ use serde_json::{json, Value};
 
 use crate::registry::Tool;
 
+/// Cargo test runner tool.
 pub struct TestRunnerTool;
 
 /// Structured test result returned to the agent.
 #[derive(Debug)]
 pub struct TestReport {
+    /// Number of passing tests.
     pub passed: usize,
+    /// Number of failing tests.
     pub failed: usize,
+    /// Individual failure records.
     pub errors: Vec<TestFailure>,
+    /// Raw tool output for debugging.
     pub raw_output: String,
 }
 
+/// Single failing test entry.
 #[derive(Debug)]
 pub struct TestFailure {
+    /// Test name or identifier.
     pub name: String,
+    /// Failure message or panic text.
     pub message: String,
 }
 
 impl TestReport {
+    /// Format a concise summary for the agent loop.
     pub fn to_agent_string(&self) -> String {
         let status = if self.failed == 0 { "PASS" } else { "FAIL" };
         let mut out = format!(

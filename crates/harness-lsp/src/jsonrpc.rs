@@ -74,14 +74,14 @@ impl LspTransport {
 
     pub async fn send_notification(&mut self, notif: &Notification) -> Result<()> {
         let body = serde_json::to_string(notif)?;
-        let msg = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+        let msg = encode_lsp_frame(&body);
         self.stdin.write_all(msg.as_bytes()).await?;
         Ok(())
     }
 
     pub async fn send_request(&mut self, req: &Request) -> Result<()> {
         let body = serde_json::to_string(req)?;
-        let msg = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+        let msg = encode_lsp_frame(&body);
         self.stdin.write_all(msg.as_bytes()).await?;
         Ok(())
     }
@@ -136,6 +136,91 @@ impl LspTransport {
             let resp = self.read_response().await?;
             if resp.id == Some(id) {
                 return Ok(resp);
+            }
+        }
+    }
+}
+
+/// Encode a JSON body as an LSP `Content-Length` frame.
+pub fn encode_lsp_frame(body: &str) -> String {
+    format!("Content-Length: {}\r\n\r\n{}", body.len(), body)
+}
+
+/// Decode one LSP frame from a buffer. Returns the JSON body and remaining input when a full frame is available.
+///
+/// Used by property tests; async `read_response` reads directly from the stream.
+#[allow(dead_code)]
+pub fn try_decode_lsp_frame(input: &str) -> Result<Option<(String, &str)>> {
+    let mut rest = input;
+    let mut content_length: Option<usize> = None;
+    loop {
+        let Some(nl) = rest.find('\n') else {
+            return Ok(None);
+        };
+        let line = rest[..nl].trim_end_matches('\r');
+        rest = &rest[nl + 1..];
+        if line.is_empty() {
+            if content_length.is_some() {
+                break;
+            }
+            continue;
+        }
+        if let Some(len_str) = line.strip_prefix("Content-Length: ") {
+            content_length = Some(len_str.trim().parse()?);
+        }
+    }
+    let content_length =
+        content_length.ok_or_else(|| anyhow::anyhow!("LSP: missing Content-Length header"))?;
+    if content_length == 0 {
+        return Ok(Some((String::new(), rest)));
+    }
+    if rest.len() < content_length {
+        return Ok(None);
+    }
+    let body = rest[..content_length].to_string();
+    rest = &rest[content_length..];
+    Ok(Some((body, rest)))
+}
+
+#[cfg(test)]
+mod framing_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn ascii_body(max: usize) -> impl Strategy<Value = String> {
+        prop::collection::vec(0x20u8..=0x7e, 0..max).prop_map(|bytes| {
+            String::from_utf8(bytes).expect("ascii")
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn lsp_frame_round_trip(body in ascii_body(200)) {
+            let framed = encode_lsp_frame(&body);
+            let (decoded, rest) = try_decode_lsp_frame(&framed)
+                .expect("decode")
+                .expect("complete frame");
+            prop_assert_eq!(decoded, body);
+            prop_assert!(rest.is_empty());
+        }
+
+        #[test]
+        fn lsp_frame_chunk_invariance(body in ascii_body(200)) {
+            let framed = encode_lsp_frame(&body);
+            if framed.is_empty() {
+                return Ok(());
+            }
+            for split in 1..framed.len() {
+                let (a, b) = framed.split_at(split);
+                let first = try_decode_lsp_frame(a).expect("decode a");
+                if first.is_none() {
+                    let combined = format!("{a}{b}");
+                    let (decoded, rest) = try_decode_lsp_frame(&combined)
+                        .expect("decode combined")
+                        .expect("complete frame");
+                    prop_assert_eq!(decoded, body.clone());
+                    prop_assert!(rest.is_empty());
+                }
             }
         }
     }

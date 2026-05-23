@@ -3,6 +3,7 @@ use crate::registry::Tool as _;
 use crate::registry::ToolRegistry;
 use crate::tools::TestRunnerTool;
 use harness_provider_core::ToolCall;
+use std::collections::HashSet;
 use tracing::{debug, warn};
 
 /// Tools that require explicit confirmation in plan mode.
@@ -11,6 +12,7 @@ const DESTRUCTIVE_TOOLS: &[&str] = &["write_file", "patch_file", "shell", "apply
 /// Tools that modify files (trigger autoformat + optional autotest).
 const FILE_WRITE_TOOLS: &[&str] = &["write_file", "patch_file", "apply_patch"];
 
+/// Runs registered tools on behalf of the agent, with optional confirm gate and hooks.
 #[derive(Clone)]
 pub struct ToolExecutor {
     registry: ToolRegistry,
@@ -24,9 +26,14 @@ pub struct ToolExecutor {
     autotest_scope: Option<String>,
     /// Trust rules: (tool, pattern) pairs that bypass the confirm gate.
     trusted: Vec<(String, String)>,
+    /// MCP-adapted tool names (require confirmation in plan mode).
+    mcp_tool_names: HashSet<String>,
+    /// Always-ask rules from config: (tool, pattern).
+    always_ask: Vec<(String, String)>,
 }
 
 impl ToolExecutor {
+    /// Build an executor over the given tool registry.
     pub fn new(registry: ToolRegistry) -> Self {
         Self {
             registry,
@@ -35,6 +42,8 @@ impl ToolExecutor {
             autotest: false,
             autotest_scope: None,
             trusted: Vec::new(),
+            mcp_tool_names: HashSet::new(),
+            always_ask: Vec::new(),
         }
     }
 
@@ -42,6 +51,42 @@ impl ToolExecutor {
     pub fn with_trusted(mut self, rules: Vec<(String, String)>) -> Self {
         self.trusted = rules;
         self
+    }
+
+    /// Attach always-ask rules from `[approval].always_ask`.
+    pub fn with_always_ask(mut self, rules: Vec<(String, String)>) -> Self {
+        self.always_ask = rules;
+        self
+    }
+
+    /// Mark MCP tool names that require confirmation in plan mode.
+    pub fn with_mcp_tool_names(mut self, names: HashSet<String>) -> Self {
+        self.mcp_tool_names = names;
+        self
+    }
+
+    fn first_arg_preview(args: &serde_json::Value) -> &str {
+        args.get("command")
+            .or_else(|| args.get("path"))
+            .or_else(|| args.get("action"))
+            .or_else(|| args.get("patch"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    fn needs_confirmation(&self, tool: &str, args: &serde_json::Value) -> bool {
+        if DESTRUCTIVE_TOOLS.contains(&tool) || self.mcp_tool_names.contains(tool) {
+            return true;
+        }
+        let preview = Self::first_arg_preview(args);
+        for (t, p) in &self.always_ask {
+            let tool_match = t == tool || t == "*";
+            let pat_match = p == "*" || preview.contains(p.as_str());
+            if tool_match && pat_match {
+                return true;
+            }
+        }
+        false
     }
 
     fn is_trusted(&self, tool: &str, first_arg: &str) -> bool {
@@ -74,6 +119,7 @@ impl ToolExecutor {
         self
     }
 
+    /// Execute a provider tool call and return string output for the agent loop.
     pub async fn execute(&self, call: &ToolCall) -> String {
         let args = match call.args() {
             Ok(v) => v,
@@ -88,14 +134,8 @@ impl ToolExecutor {
         // In plan mode, pause and wait for confirmation before destructive calls.
         // Trusted tool/pattern pairs bypass the confirm gate.
         if let Some(gate) = &self.confirm_gate {
-            if DESTRUCTIVE_TOOLS.contains(&call.function.name.as_str()) {
-                let first_arg = args
-                    .get("command")
-                    .or_else(|| args.get("path"))
-                    .or_else(|| args.get("action"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
+            if self.needs_confirmation(&call.function.name, &args) {
+                let first_arg = Self::first_arg_preview(&args);
                 if !self.is_trusted(&call.function.name, first_arg) {
                     let preview = build_preview(&call.function.name, &args);
                     let approved = gate.request(&call.function.name, preview).await;
@@ -145,10 +185,12 @@ impl ToolExecutor {
         result
     }
 
+    /// Underlying tool registry.
     pub fn registry(&self) -> &ToolRegistry {
         &self.registry
     }
 
+    /// Whether plan/approve confirmation is enabled.
     pub fn has_confirm_gate(&self) -> bool {
         self.confirm_gate.is_some()
     }

@@ -10,7 +10,9 @@ Harness is an AI coding assistant you run in your terminal. You type a request; 
 
 **Default model: `claude-sonnet-4-6`** — 10x cheaper than base price on repeated context thanks to Anthropic prompt caching. Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
 
-**Operational truth vs older blog posts:** the canonical backlog lives in **`TODO.md`** (Polish-first today). **`README.md`** and this manual track current behavior (`main`). Licensed under the MIT License — see [`LICENSE`](../LICENSE).
+**Operational truth (May 2026):** Public **beta** — **164 automated tests**, P0 security closed ([`docs/THREAT_MODEL.md`](../docs/THREAT_MODEL.md)). Stable release blocked on maintainer manual smoke ([`docs/PUBLIC_RELEASE.md`](../docs/PUBLIC_RELEASE.md)). Canonical backlog + roadmap: **[`TODO.md`](../TODO.md)**. Licensed MIT — see [`LICENSE`](../LICENSE).
+
+**More docs:** [`docs/BROWSER_CDP.md`](../docs/BROWSER_CDP.md) · [`docs/COOKBOOK.md`](../docs/COOKBOOK.md) · [`docs/PEER_REVIEW_AUDIT.md`](../docs/PEER_REVIEW_AUDIT.md)
 
 ---
 
@@ -494,8 +496,8 @@ harness trace <id>     # export a specific trace id
 
 ### Desktop app & VS Code
 
-- **Tauri shell:** [`apps/desktop/README.md`](../apps/desktop/README.md) — tray icon, **Cmd+Shift+H** (Ctrl+Shift+H on Windows/Linux) to show/hide, tries to run `harness daemon` if no socket exists.
-- **VS Code:** [`extensions/vscode/`](../extensions/vscode/) — install deps with `npm install`, then open in VS Code and run the extension (or package with `vsce`).
+- **Tauri shell:** [`apps/desktop/README.md`](../apps/desktop/README.md) — tray icon, **Cmd+Shift+H** (Ctrl+Shift+H on Windows/Linux) to show/hide. Auto-starts **`harness serve --addr 127.0.0.1:8787`** when `/api/health` is not already up.
+- **VS Code:** [`extensions/vscode/`](../extensions/vscode/) — side-panel chat via **`harness daemon`**. **macOS/Linux:** Unix socket (`~/.harness/daemon.sock`). **Windows native:** loopback TCP via `~/.harness/daemon.port`. Install deps with `npm install`, then run the extension (or package with `vsce`).
 
 ---
 

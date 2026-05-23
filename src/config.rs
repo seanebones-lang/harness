@@ -109,15 +109,12 @@ pub struct NativeToolsConfig {
 }
 
 impl NativeToolsConfig {
-    #[allow(dead_code)]
     pub fn web_search_enabled(&self) -> bool {
         self.web_search.unwrap_or(false)
     }
-    #[allow(dead_code)]
     pub fn code_execution_enabled(&self) -> bool {
         self.code_execution.unwrap_or(false)
     }
-    #[allow(dead_code)]
     pub fn x_search_enabled(&self) -> bool {
         self.x_search.unwrap_or(false)
     }
@@ -193,9 +190,26 @@ pub struct ApprovalConfig {
 
 impl ApprovalConfig {
     /// "auto" (default), "smart", or "plan".
-    #[allow(dead_code)]
     pub fn effective_mode(&self) -> &str {
         self.mode.as_deref().unwrap_or("auto")
+    }
+
+    /// Parse `always_ask` entries (`tool:pattern` or bare tool name).
+    pub fn parsed_always_ask(&self) -> Vec<(String, String)> {
+        self.always_ask
+            .as_ref()
+            .map(|list| {
+                list.iter()
+                    .map(|s| {
+                        if let Some((tool, pat)) = s.split_once(':') {
+                            (tool.trim().to_string(), pat.trim().to_string())
+                        } else {
+                            (s.trim().to_string(), "*".to_string())
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -365,5 +379,10 @@ pub fn write_config_toml(path: &Path, cfg: &Config) -> anyhow::Result<()> {
         .join(format!(".{fname}.{nano}.write_tmp"));
     std::fs::write(&tmp, text)?;
     std::fs::rename(&tmp, path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
     Ok(())
 }

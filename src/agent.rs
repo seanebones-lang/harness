@@ -99,6 +99,7 @@ pub async fn drive_agent_with_options(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 pub async fn drive_agent_with_schema(
     provider: &ArcProvider,
     tools: &ToolExecutor,
@@ -161,9 +162,18 @@ pub async fn drive_agent_full(
     )
     .await;
 
+    const MAX_TOOL_LOOPS: usize = 50;
+    let mut tool_loops = 0usize;
+
     loop {
+        if tool_loops >= MAX_TOOL_LOOPS {
+            emit(AgentEvent::Error(format!(
+                "stopped after {MAX_TOOL_LOOPS} tool-call rounds (safety limit)"
+            )));
+            break;
+        }
         // Auto-compact context when approaching 70% of the model context window.
-        maybe_compact(provider, session, 0.70).await;
+        maybe_compact(provider, session, 0.70, Some(&emit)).await;
 
         let mut req = ChatRequest::new(&session.model)
             .with_messages(session.messages.clone())
@@ -223,7 +233,7 @@ pub async fn drive_agent_full(
             let has_destructive = pending_tool_calls.iter().any(|c| {
                 matches!(
                     c.function.name.as_str(),
-                    "write_file" | "patch_file" | "shell"
+                    "write_file" | "patch_file" | "shell" | "apply_patch"
                 )
             });
             if has_destructive && !_checkpoint_taken.get() {
@@ -259,6 +269,7 @@ pub async fn drive_agent_full(
                 session.push(Message::tool_result(&call.id, result));
             }
 
+            tool_loops += 1;
             continue;
         }
 
@@ -353,25 +364,51 @@ pub fn estimate_tokens(messages: &[harness_provider_core::Message]) -> usize {
         .sum()
 }
 
+/// Rough context window (tokens) for compaction heuristics.
+pub fn context_limit_for_model(model: &str) -> usize {
+    let m = model.to_lowercase();
+    if m.contains("gpt") || m.contains("grok") {
+        1_000_000
+    } else if m.contains("claude") || m.contains("opus") || m.contains("sonnet") || m.contains("haiku")
+    {
+        200_000
+    } else if m.contains("qwen") || m.contains("coder") {
+        256_000
+    } else {
+        128_000
+    }
+}
+
 /// Context compaction: when the session exceeds `threshold` fraction of the model context
 /// window, summarise the oldest non-system messages and replace them with a compact block.
-///
-/// Uses the provider's fast model when available (falls back to the session model).
-/// Context limit is approximated at 128k tokens for modern models.
-pub async fn maybe_compact(provider: &ArcProvider, session: &mut Session, threshold: f32) {
-    const CONTEXT_LIMIT: usize = 128_000;
-
+pub async fn maybe_compact(
+    provider: &ArcProvider,
+    session: &mut Session,
+    threshold: f32,
+    emit: Option<&impl Fn(AgentEvent)>,
+) {
+    let limit = context_limit_for_model(&session.model);
     let total = estimate_tokens(&session.messages);
-    if (total as f32) < CONTEXT_LIMIT as f32 * threshold {
+    if (total as f32) < limit as f32 * threshold {
         return;
     }
 
-    tracing::debug!(tokens = total, "compacting context");
-    compact_context(provider, session).await;
+    tracing::debug!(tokens = total, limit, "compacting context");
+    let before = session.messages.len();
+    if compact_context(provider, session).await {
+        let after = session.messages.len();
+        if let Some(emit) = emit {
+            emit(AgentEvent::ContextCompacted {
+                messages_before: before,
+                messages_after: after,
+            });
+        }
+    }
 }
 
 /// Force-compact the oldest half of non-system messages into a summary block.
-pub async fn compact_context(provider: &ArcProvider, session: &mut Session) {
+/// Returns `true` if messages were replaced with a summary.
+pub async fn compact_context(provider: &ArcProvider, session: &mut Session) -> bool {
     // Separate system messages from the rest.
     let (system_msgs, mut conv_msgs): (Vec<_>, Vec<_>) = session
         .messages
@@ -382,7 +419,7 @@ pub async fn compact_context(provider: &ArcProvider, session: &mut Session) {
         // Nothing worth compacting.
         session.messages.extend(system_msgs);
         session.messages.extend(conv_msgs);
-        return;
+        return false;
     }
 
     // Take the oldest half for summarisation.
@@ -427,7 +464,7 @@ pub async fn compact_context(provider: &ArcProvider, session: &mut Session) {
             session.messages.extend(system_msgs);
             session.messages.extend(to_compact);
             session.messages.extend(remaining);
-            return;
+            return false;
         }
     };
 
@@ -442,6 +479,7 @@ pub async fn compact_context(provider: &ArcProvider, session: &mut Session) {
         mid,
         session.messages.len()
     );
+    true
 }
 
 /// Store the most recent user↔assistant exchange as an embedded memory.
@@ -524,6 +562,31 @@ pub async fn suggest_session_name(provider: &ArcProvider, session: &Session) -> 
     None
 }
 
+/// Optional flags for non-interactive `run_once`.
+#[derive(Debug, Clone, Default)]
+pub struct RunOnceOptions {
+    /// Extended thinking token budget.
+    pub thinking_budget: Option<u32>,
+    /// Enable provider-native web search.
+    pub native_web_search: bool,
+    /// Enable provider-native code execution.
+    pub native_code_execution: bool,
+    /// Enable provider-native X search (xAI).
+    pub native_x_search: bool,
+}
+
+impl RunOnceOptions {
+    /// Build options from harness config and optional CLI thinking budget.
+    pub fn from_config(cfg: &crate::config::Config, thinking_budget: Option<u32>) -> Self {
+        Self {
+            thinking_budget,
+            native_web_search: cfg.native_tools.web_search_enabled(),
+            native_code_execution: cfg.native_tools.code_execution_enabled(),
+            native_x_search: cfg.native_tools.x_search_enabled(),
+        }
+    }
+}
+
 /// Non-interactive single-prompt run. Prints events to stdout/stderr.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_once(
@@ -536,6 +599,7 @@ pub async fn run_once(
     system_prompt: Option<&str>,
     prompt: &str,
     resume_id: Option<&str>,
+    opts: RunOnceOptions,
 ) -> Result<()> {
     let mut session = match resume_id {
         Some(id) => store
@@ -556,7 +620,7 @@ pub async fn run_once(
     let sys = system_prompt.unwrap_or(DEFAULT_SYSTEM).to_string();
 
     let handle = tokio::spawn(async move {
-        drive_agent(
+        drive_agent_full(
             &provider2,
             &tools2,
             mem2.as_ref(),
@@ -564,6 +628,11 @@ pub async fn run_once(
             &mut session,
             &sys,
             Some(&tx),
+            opts.thinking_budget,
+            opts.native_web_search,
+            opts.native_code_execution,
+            opts.native_x_search,
+            None,
         )
         .await?;
         Ok::<Session, anyhow::Error>(session)
@@ -582,6 +651,12 @@ pub async fn run_once(
                 eprintln!("[← {name}] {preview}");
             }
             AgentEvent::MemoryRecall { count } => eprintln!("[memory] recalled {count} entries"),
+            AgentEvent::ContextCompacted {
+                messages_before,
+                messages_after,
+            } => eprintln!(
+                "[compact] {messages_before} → {messages_after} messages"
+            ),
             AgentEvent::SubAgentSpawned { task } => eprintln!("[swarm] spawning: {task}"),
             AgentEvent::SubAgentDone { task, .. } => eprintln!("[swarm] done: {task}"),
             AgentEvent::TokenUsage { input, output } => {
@@ -611,4 +686,370 @@ pub async fn run_once(
 
     eprintln!("[session {}]", final_session.short_id());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use futures::stream;
+    use harness_provider_core::{
+        ChatRequest, DeltaStream, Pricing, Provider, ProviderError, ToolCall, ToolCallFunction,
+        ToolDefinition,
+    };
+    use harness_tools::registry::{Tool, ToolRegistry};
+    use harness_tools::ToolExecutor;
+    use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    /// Returns scripted delta batches on each `stream_chat` call (in order).
+    struct ScriptProvider {
+        scripts: Mutex<Vec<Vec<Delta>>>,
+        calls: AtomicUsize,
+        embed: Vec<f32>,
+    }
+
+    impl ScriptProvider {
+        fn new(scripts: Vec<Vec<Delta>>) -> Self {
+            Self {
+                scripts: Mutex::new(scripts),
+                calls: AtomicUsize::new(0),
+                embed: vec![1.0, 0.0, 0.0],
+            }
+        }
+
+        fn with_embed(mut self, embed: Vec<f32>) -> Self {
+            self.embed = embed;
+            self
+        }
+    }
+
+    #[async_trait]
+    impl Provider for ScriptProvider {
+        fn name(&self) -> &str {
+            "script"
+        }
+
+        fn model(&self) -> &str {
+            "script-model"
+        }
+
+        async fn stream_chat(&self, _req: ChatRequest) -> Result<DeltaStream, ProviderError> {
+            let idx = self.calls.fetch_add(1, Ordering::SeqCst);
+            let batch = {
+                let scripts = self.scripts.lock().expect("scripts lock");
+                scripts.get(idx).cloned().unwrap_or_else(|| {
+                    vec![Delta::Done {
+                        stop_reason: StopReason::EndTurn,
+                    }]
+                })
+            };
+            Ok(Box::pin(stream::iter(batch.into_iter().map(Ok))))
+        }
+
+        fn pricing(&self) -> Option<Pricing> {
+            None
+        }
+
+        async fn embed(&self, _model: &str, _text: &str) -> Result<Vec<f32>, ProviderError> {
+            Ok(self.embed.clone())
+        }
+    }
+
+    struct EchoTool;
+
+    #[async_trait]
+    impl Tool for EchoTool {
+        fn definition(&self) -> ToolDefinition {
+            ToolDefinition::new(
+                "echo",
+                "Echo a message",
+                json!({
+                    "type": "object",
+                    "properties": { "msg": { "type": "string" } },
+                    "required": ["msg"]
+                }),
+            )
+        }
+
+        async fn execute(&self, args: serde_json::Value) -> anyhow::Result<String> {
+            Ok(format!(
+                "echo:{}",
+                args.get("msg").and_then(|v| v.as_str()).unwrap_or("")
+            ))
+        }
+    }
+
+    fn echo_call(id: &str) -> ToolCall {
+        ToolCall {
+            id: id.into(),
+            kind: "function".into(),
+            function: ToolCallFunction {
+                name: "echo".into(),
+                arguments: r#"{"msg":"hi"}"#.into(),
+            },
+        }
+    }
+
+    fn echo_executor() -> ToolExecutor {
+        let mut registry = ToolRegistry::new();
+        registry.register(EchoTool);
+        ToolExecutor::new(registry)
+    }
+
+    async fn run_and_collect(
+        provider: ArcProvider,
+        tools: &ToolExecutor,
+        session: &mut Session,
+    ) -> (Vec<AgentEvent>, Result<()>) {
+        let (tx, mut rx) = crate::events::channel();
+        let result = drive_agent(
+            &provider,
+            tools,
+            None,
+            None,
+            session,
+            "test system",
+            Some(&tx),
+        )
+        .await;
+        let mut events = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            events.push(ev);
+        }
+        (events, result)
+    }
+
+    #[tokio::test]
+    async fn drive_agent_streams_text_and_completes() {
+        let mut session = Session::new("script-model");
+        session.push(Message::user("hello"));
+
+        let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![vec![
+            Delta::Text("world".into()),
+            Delta::Done {
+                stop_reason: StopReason::EndTurn,
+            },
+        ]]));
+
+        let (events, result) = run_and_collect(provider, &echo_executor(), &mut session).await;
+
+        result.expect("drive_agent should succeed");
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::TextChunk(s) if s == "world")),
+            "expected text chunk"
+        );
+        assert!(events.iter().any(|e| matches!(e, AgentEvent::Done)));
+        assert_eq!(session.messages.len(), 2);
+        assert!(session.messages[1].content.as_str().contains("world"));
+    }
+
+    #[tokio::test]
+    async fn drive_agent_executes_tool_then_continues() {
+        let mut session = Session::new("script-model");
+        session.push(Message::user("use echo"));
+
+        let script = Arc::new(ScriptProvider::new(vec![
+            vec![
+                Delta::ToolCall(echo_call("tc1")),
+                Delta::Done {
+                    stop_reason: StopReason::ToolUse,
+                },
+            ],
+            vec![
+                Delta::Text("finished".into()),
+                Delta::Done {
+                    stop_reason: StopReason::EndTurn,
+                },
+            ],
+        ]));
+        let provider: ArcProvider = script.clone();
+        let (tx, mut rx) = crate::events::channel();
+        let result = drive_agent(
+            &provider,
+            &echo_executor(),
+            None,
+            None,
+            &mut session,
+            "test system",
+            Some(&tx),
+        )
+        .await;
+        let mut events = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            events.push(ev);
+        }
+
+        result.expect("drive_agent should succeed");
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::ToolStart { name, .. } if name == "echo"))
+        );
+        assert!(
+            events.iter().any(
+                |e| matches!(e, AgentEvent::ToolResult { result, .. } if result.contains("echo:hi"))
+            )
+        );
+        assert_eq!(script.calls.load(Ordering::SeqCst), 2);
+        assert!(session.messages.len() >= 4);
+    }
+
+    #[tokio::test]
+    async fn drive_agent_stops_at_tool_loop_limit() {
+        let mut session = Session::new("script-model");
+        session.push(Message::user("loop forever"));
+
+        let always_tool = vec![Delta::ToolCall(echo_call("tc")), Delta::Done {
+            stop_reason: StopReason::ToolUse,
+        }];
+        let script = Arc::new(ScriptProvider::new(vec![always_tool; 60]));
+        let provider: ArcProvider = script.clone();
+        let (tx, mut rx) = crate::events::channel();
+        let result = drive_agent(
+            &provider,
+            &echo_executor(),
+            None,
+            None,
+            &mut session,
+            "test system",
+            Some(&tx),
+        )
+        .await;
+        let mut events = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            events.push(ev);
+        }
+
+        result.expect("drive_agent should return Ok after safety stop");
+        assert!(
+            events.iter().any(|e| {
+                matches!(e, AgentEvent::Error(msg) if msg.contains("50") && msg.contains("safety limit"))
+            }),
+            "expected safety-limit error event"
+        );
+        assert_eq!(script.calls.load(Ordering::SeqCst), 50);
+    }
+
+    #[test]
+    fn estimate_tokens_uses_char_heuristic() {
+        let msgs = vec![
+            Message::user("abcd"),
+            Message::assistant("efgh"),
+        ];
+        assert_eq!(estimate_tokens(&msgs), 4);
+    }
+
+    #[tokio::test]
+    async fn maybe_compact_skips_small_sessions() {
+        let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![]));
+        let mut session = Session::new("script-model");
+        session.push(Message::user("short"));
+        maybe_compact(&provider, &mut session, 0.7, None::<&fn(AgentEvent)>).await;
+        assert_eq!(session.messages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn compact_context_replaces_old_messages_with_summary() {
+        let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![vec![
+            Delta::Text("older turns summary".into()),
+            Delta::Done {
+                stop_reason: StopReason::EndTurn,
+            },
+        ]]));
+        let mut session = Session::new("script-model");
+        for i in 0..8 {
+            session.push(Message::user(format!("question {i}")));
+            session.push(Message::assistant(format!("answer {i}")));
+        }
+        let before = session.messages.len();
+        compact_context(&provider, &mut session).await;
+        assert!(session.messages.len() < before);
+        assert!(
+            session
+                .messages
+                .iter()
+                .any(|m| m.content.as_str().contains("[compacted:"))
+        );
+    }
+
+    #[tokio::test]
+    async fn build_augmented_system_injects_matching_memories() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = MemoryStore::open(dir.path().join("mem.db")).expect("memory db");
+        let embedding = vec![1.0, 0.0, 0.0];
+        store
+            .insert("other", "prior architecture fact", &embedding)
+            .expect("insert memory");
+
+        let provider: ArcProvider =
+            Arc::new(ScriptProvider::new(vec![]).with_embed(embedding.clone()));
+        let mut session = Session::new("script-model");
+        session.id = "current".to_string();
+        session.push(Message::user("tell me about architecture"));
+
+        use std::cell::Cell;
+
+        let recalled = Cell::new(0usize);
+        let emit = |event: AgentEvent| {
+            if let AgentEvent::MemoryRecall { count } = event {
+                recalled.set(count);
+            }
+        };
+
+        let augmented = build_augmented_system(
+            &provider,
+            Some(&store),
+            Some("embed-model"),
+            &session,
+            "base prompt",
+            &emit,
+        )
+        .await;
+
+        assert!(recalled.get() >= 1, "expected MemoryRecall event");
+        assert!(augmented.contains("prior architecture fact"));
+        assert!(augmented.contains("Relevant past context"));
+    }
+
+    #[test]
+    fn context_limit_varies_by_model_family() {
+        assert_eq!(context_limit_for_model("gpt-5.5"), 1_000_000);
+        assert_eq!(context_limit_for_model("claude-sonnet-4-6"), 200_000);
+        assert_eq!(context_limit_for_model("qwen3-coder:30b"), 256_000);
+        assert_eq!(context_limit_for_model("unknown-model"), 128_000);
+    }
+
+    #[tokio::test]
+    async fn maybe_compact_emits_context_compacted_event() {
+        use std::cell::Cell;
+
+        let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![vec![
+            Delta::Text("summary block".into()),
+            Delta::Done {
+                stop_reason: StopReason::EndTurn,
+            },
+        ]]));
+        let mut session = Session::new("claude-sonnet-4-6");
+        for i in 0..8 {
+            session.push(Message::user(format!("question {i}")));
+            session.push(Message::assistant(format!("answer {i}")));
+        }
+        let saw = Cell::new(false);
+        let emit = |event: AgentEvent| {
+            if let AgentEvent::ContextCompacted {
+                messages_before,
+                messages_after,
+            } = event
+            {
+                assert!(messages_before > messages_after);
+                saw.set(true);
+            }
+        };
+        maybe_compact(&provider, &mut session, 0.0, Some(&emit)).await;
+        assert!(saw.get(), "expected ContextCompacted event");
+    }
 }
