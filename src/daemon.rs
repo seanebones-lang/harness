@@ -28,11 +28,62 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-#[cfg(windows)]
 use tokio::net::{TcpListener, TcpStream};
 #[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
+
+/// TCP port file written when the daemon binds loopback TCP.
+pub fn tcp_port_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".harness")
+        .join("daemon.port")
+}
+
+/// `[daemon]` config block.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct DaemonConfig {
+    /// `auto` (platform default), `unix`, or `tcp`.
+    pub transport: Option<String>,
+}
+
+impl DaemonConfig {
+    /// Resolved transport mode.
+    pub fn effective_transport(&self) -> DaemonTransport {
+        DaemonTransport::parse(self.transport.as_deref().unwrap_or("auto"))
+    }
+}
+
+/// Daemon IPC transport selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DaemonTransport {
+    Auto,
+    Unix,
+    Tcp,
+}
+
+impl DaemonTransport {
+    fn parse(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "unix" => Self::Unix,
+            "tcp" => Self::Tcp,
+            _ => Self::Auto,
+        }
+    }
+}
+
+static DAEMON_TRANSPORT: OnceLock<DaemonTransport> = OnceLock::new();
+
+/// Apply `[daemon]` settings from config (first call wins).
+pub fn configure(cfg: &DaemonConfig) {
+    let _ = DAEMON_TRANSPORT.set(cfg.effective_transport());
+}
+
+fn effective_transport() -> DaemonTransport {
+    DAEMON_TRANSPORT.get().copied().unwrap_or(DaemonTransport::Auto)
+}
 
 /// Default Unix socket path (macOS/Linux).
 pub fn socket_path() -> PathBuf {
@@ -42,38 +93,32 @@ pub fn socket_path() -> PathBuf {
         .join("daemon.sock")
 }
 
-/// TCP port file written on Windows when the daemon binds loopback.
-#[cfg(windows)]
-pub fn tcp_port_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".harness")
-        .join("daemon.port")
-}
-
 /// Connect to the running daemon transport for this platform.
 pub async fn connect_daemon() -> Result<DaemonConn> {
     let _token = crate::auth_token::read_token_file("daemon.token")?;
+    let mode = effective_transport();
+
     #[cfg(unix)]
-    {
-        let stream = UnixStream::connect(socket_path()).await?;
-        Ok(DaemonConn::Unix(stream))
+    if mode != DaemonTransport::Tcp {
+        if let Ok(stream) = UnixStream::connect(socket_path()).await {
+            return Ok(DaemonConn::Unix(stream));
+        }
+        if mode == DaemonTransport::Unix {
+            return Err(anyhow::anyhow!("daemon unix socket not available"));
+        }
     }
-    #[cfg(windows)]
-    {
-        let port_text = std::fs::read_to_string(tcp_port_path())
-            .map_err(|e| anyhow::anyhow!("daemon port file missing: {e}"))?;
-        let port: u16 = port_text.trim().parse()?;
-        let stream = TcpStream::connect(format!("127.0.0.1:{port}")).await?;
-        Ok(DaemonConn::Tcp(stream))
-    }
+
+    let port_text = std::fs::read_to_string(tcp_port_path())
+        .map_err(|e| anyhow::anyhow!("daemon port file missing: {e}"))?;
+    let port: u16 = port_text.trim().parse()?;
+    let stream = TcpStream::connect(format!("127.0.0.1:{port}")).await?;
+    Ok(DaemonConn::Tcp(stream))
 }
 
 /// Active daemon connection (Unix socket or loopback TCP).
 pub enum DaemonConn {
     #[cfg(unix)]
     Unix(UnixStream),
-    #[cfg(windows)]
     Tcp(TcpStream),
 }
 
@@ -82,7 +127,6 @@ impl DaemonConn {
         match self {
             #[cfg(unix)]
             DaemonConn::Unix(s) => read_frame(s).await,
-            #[cfg(windows)]
             DaemonConn::Tcp(s) => read_frame(s).await,
         }
     }
@@ -91,26 +135,14 @@ impl DaemonConn {
         match self {
             #[cfg(unix)]
             DaemonConn::Unix(s) => write_frame(s, msg).await,
-            #[cfg(windows)]
             DaemonConn::Tcp(s) => write_frame(s, msg).await,
         }
     }
 }
 
-/// Check if a daemon is currently listening on the socket.
+/// Check if a daemon is currently listening.
 pub async fn is_running() -> bool {
-    #[cfg(unix)]
-    {
-        let path = socket_path();
-        if !path.exists() {
-            return false;
-        }
-        return tokio::net::UnixStream::connect(&path).await.is_ok();
-    }
-    #[cfg(windows)]
-    {
-        connect_daemon().await.is_ok()
-    }
+    connect_daemon().await.is_ok()
 }
 
 // ── Wire protocol ─────────────────────────────────────────────────────────────
@@ -254,8 +286,10 @@ pub async fn run_daemon(
     let auth_token = crate::auth_token::daemon_token()?;
     tracing::info!("daemon auth token loaded from ~/.harness/daemon.token");
 
+    let transport = effective_transport();
+
     #[cfg(unix)]
-    {
+    if transport != DaemonTransport::Tcp {
         let sock_path = socket_path();
         let _ = std::fs::remove_file(&sock_path);
         let listener = UnixListener::bind(&sock_path)?;
@@ -289,43 +323,39 @@ pub async fn run_daemon(
         }
 
         let _ = std::fs::remove_file(&sock_path);
+        return Ok(());
     }
 
-    #[cfg(windows)]
-    {
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let port = listener.local_addr()?.port();
-        std::fs::write(tcp_port_path(), port.to_string())?;
-        tracing::info!(port, "daemon listening (tcp loopback)");
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+    std::fs::write(tcp_port_path(), port.to_string())?;
+    tracing::info!(port, "daemon listening (tcp loopback)");
 
-        loop {
-            tokio::select! {
-                accept = listener.accept() => {
-                    match accept {
-                        Ok((stream, _)) => {
-                            spawn_handler(
-                                stream,
-                                provider.clone(),
-                                session_store.clone(),
-                                memory_store.clone(),
-                                embed_model.clone(),
-                                tools.clone(),
-                                model.clone(),
-                                system_prompt.clone(),
-                                auth_token.clone(),
-                            );
-                        }
-                        Err(e) => tracing::warn!("daemon accept error: {e}"),
+    loop {
+        tokio::select! {
+            accept = listener.accept() => {
+                match accept {
+                    Ok((stream, _)) => {
+                        spawn_handler(
+                            stream,
+                            provider.clone(),
+                            session_store.clone(),
+                            memory_store.clone(),
+                            embed_model.clone(),
+                            tools.clone(),
+                            model.clone(),
+                            system_prompt.clone(),
+                            auth_token.clone(),
+                        );
                     }
-                }
-                _ = shutdown_rx.changed() => {
-                    tracing::info!("daemon shutting down");
-                    break;
+                    Err(e) => tracing::warn!("daemon accept error: {e}"),
                 }
             }
+            _ = shutdown_rx.changed() => {
+                tracing::info!("daemon shutting down");
+                break;
+            }
         }
-
-        let _ = std::fs::remove_file(tcp_port_path());
     }
 
     Ok(())

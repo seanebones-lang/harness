@@ -1,14 +1,13 @@
 use async_trait::async_trait;
 use harness_provider_core::{
-    ChatRequest, DeltaStream, Message, MessageContent, Pricing, Provider, ProviderError, Role,
-    ToolDefinition,
+    ChatRequest, DeltaStream, Pricing, Provider, ProviderError, Role, ToolDefinition,
 };
 use reqwest::Client;
 use serde_json::Value;
 use tracing::{debug, warn};
 
 use crate::stream::SseStream;
-use crate::types::{ApiMessage, ApiRequest, ApiToolCall, ApiToolCallFunction, StreamOptions};
+use crate::types::{ApiMessage, ApiRequest, ApiToolCall, StreamOptions};
 
 const XAI_BASE_URL: &str = "https://api.x.ai/v1";
 
@@ -337,26 +336,4 @@ impl XaiProvider {
     }
 }
 
-/// Encode tool calls into a Message for conversation history.
-pub fn tool_calls_to_message(calls: &[harness_provider_core::ToolCall]) -> Message {
-    let api_calls: Vec<ApiToolCall> = calls
-        .iter()
-        .map(|c| ApiToolCall {
-            id: c.id.clone(),
-            kind: c.kind.clone(),
-            function: ApiToolCallFunction {
-                name: c.function.name.clone(),
-                arguments: c.function.arguments.clone(),
-            },
-        })
-        .collect();
-    let encoded = format!(
-        "__tool_calls__:{}",
-        serde_json::to_string(&api_calls).unwrap_or_default()
-    );
-    Message {
-        role: Role::Assistant,
-        content: MessageContent::Text(encoded),
-        tool_call_id: None,
-    }
-}
+// tool_calls_to_message lives in harness-provider-core (shared wire format).

@@ -307,7 +307,7 @@ Background memory consolidation after turns. Uses **`ArcProvider`** (any backend
 
 ### `daemon` (`src/daemon.rs`)
 
-Editor IPC for the VS Code extension. **macOS/Linux:** Unix domain socket at `~/.harness/daemon.sock`. **Windows:** loopback **TCP** with port written to `~/.harness/daemon.port`. `connect_daemon()` picks transport at runtime. Optional `[daemon] transport` stub in `config/default.toml` (not fully wired yet).
+Editor IPC for the VS Code extension. **macOS/Linux:** Unix domain socket at `~/.harness/daemon.sock` (default). **Windows:** loopback **TCP** with port written to `~/.harness/daemon.port`. `[daemon].transport` in config selects `auto` (platform default), `unix`, or `tcp`; Unix can force TCP via `transport = "tcp"`.
 
 ## Agent loop (`src/agent.rs`)
 
