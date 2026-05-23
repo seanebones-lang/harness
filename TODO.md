@@ -18,7 +18,10 @@
 | **Providers** | Anthropic, xAI, OpenAI, Ollama, MLX; router with fallback; SSE tests for Anthropic/Ollama |
 | **Tools** | Workspace sandbox on filesystem/search/git/apply_patch; plan-mode confirm gate; 32+ harness-tools tests |
 | **Editor IPC** | Daemon length-prefixed frames + token; VS Code extension aligned |
-| **Experimental (compiled, not wired)** | `collab`, `bridges`, `diff_review`; OTLP export untested |
+| **Experimental (compiled, not wired)** | `diff_review` TUI path; OTLP export untested |
+| **Swarm** | cancel/wait CLI; `[swarm]` in Config |
+| **Collab** | WebSocket when `[collab].enabled` |
+| **Bridges** | `harness bridge` CLI |
 | **Threat model** | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) |
 
 ---
@@ -35,8 +38,6 @@
 
 | ID | Task | Notes |
 |----|------|-------|
-| **E-01** | **Collab:** wire WebSocket in `server.rs` + `[collab]` in `Config` **or** remove `src/collab.rs` | Module marked EXPERIMENTAL; CLAUDE.md updated |
-| **E-02** | **Bridges:** CLI/TUI entry points **or** feature-gate / remove `src/bridges.rs` | Obsidian/Notes/Calendar helpers exist; no callers |
 | **E-03** | **Diff review:** wire E4 into TUI plan path **or** remove `src/diff_review.rs` | Staging buffer not in hot path |
 
 ### 🟡 Medium (quality / completeness)
@@ -44,8 +45,8 @@
 | ID | Task | Notes |
 |----|------|-------|
 | **AGT-06** | Move `tool_calls_to_message` to `harness-provider-core` | Today xAI helper used for all backends |
-| **SWARM-01** | Implement `cancel` / `wait` on swarm tasks **or** keep docs as-is | `register_task` / `get_task` / `spawn_task` work; no cancel API |
-| **SWARM-02** | Wire `[swarm]` block in `Config` (today comment stub in `default.toml`) | DB path / concurrency from config |
+| **SWARM-01** | Implement `cancel` / `wait` on swarm tasks **or** keep docs as-is | ✅ `harness swarm cancel/wait` |
+| **SWARM-02** | Wire `[swarm]` block in `Config` (today comment stub in `default.toml`) | ✅ `max_concurrency`, `db_path` |
 | **TST-10** | Proptest: MCP NDJSON classifier, LSP async read path | Partial proptest exists elsewhere |
 | **TST-11** | Raise coverage gate **60% → 70%** | [`coverage.yml`](.github/workflows/coverage.yml) |
 | **TST-12** | `checkpoint.rs` unit tests | Git stash integration untested |
@@ -53,7 +54,7 @@
 | **REL-02** | VS Code extension **E2E on native Windows** | Protocol + token fixed; no automated E2E |
 | **REL-04** | Wire `[daemon] transport` in TOML → `Config` | Comment stub only |
 | **CFG-01** | Wire `[approval].effective_mode()` or remove dead code | `config.rs` |
-| **CFG-02** | Add `[collab]` / `[bridges]` to `Config` struct **or** remove from `default.toml` | Doc/config honesty |
+| **CFG-02** | Add `[collab]` / `[bridges]` to `Config` struct **or** remove from `default.toml` | ✅ wired in `Config` + `default.toml` |
 
 ### 🟢 Low (polish / docs)
 
@@ -97,9 +98,9 @@
 
 | Milestone | Status | Deliverable |
 |-----------|--------|-------------|
-| C.1 Collab | **Open** | Wire server WebSocket **or** delete module |
-| C.2 Bridges | **Open** | CLI entry points **or** remove |
-| C.3 Swarm | **Partial** | Persistence + spawn work; `cancel`/`wait` + config TBD |
+| C.1 Collab | **Done** | WebSocket `/ws/session/:id` when `[collab].enabled` |
+| C.2 Bridges | **Done** | `harness bridge` CLI |
+| C.3 Swarm | **Done** | cancel/wait + `[swarm]` config |
 | C.4 Diff review | **Open** | TUI inline diff **or** remove |
 | C.5 Observability | **Partial** | Local JSONL ✅; OTLP untested |
 | C.6 Stable release | **Blocked** | REL-01 manual smoke on target OSes |
@@ -117,6 +118,12 @@
 ---
 
 ## Recently completed
+
+### Phase C follow-up (2026-05-22)
+
+- **E-01** — Collab WebSocket + `[collab]` in Config
+- **E-02** — `harness bridge` CLI
+- **SWARM-01/02** — `cancel`/`wait`; `[swarm]` config
 
 ### Peer review follow-up (2026-05-22)
 
