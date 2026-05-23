@@ -139,10 +139,10 @@ if !has_anthropic
         .clone()
         .or_else(|| cfg.provider.model.clone())
         .unwrap_or_else(|| {
-            if has_anthropic {
+            if has_xai {
                 "grok-4.3".to_string()
-            } else if has_xai {
-                "grok-4.3".to_string()
+            } else if has_anthropic {
+                "claude-3-5-sonnet-20241022".to_string()
             } else if has_openai {
                 "gpt-5.5".to_string()
             } else {
@@ -956,3 +956,4 @@ if !has_anthropic
     graceful_ambient_shutdown(ambient_shutdown).await;
     Ok(())
 }
+use std::io::Write;
