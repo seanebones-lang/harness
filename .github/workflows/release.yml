@@ -1,18 +1,141 @@
-# This file is maintained by cargo-dist
 name: Release
-permissions:
-  contents: write
+# Policy: tag only when `main` CI is green and docs checks in `docs/PUBLIC_RELEASE.md` are satisfied.
 
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]*'
+      - "v[0-9]+.[0-9]+.[0-9]*"
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  dist:
-    runs-on: ubuntu-latest
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            artifact: harness-linux-x86_64
+            smoke: native
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            artifact: harness-linux-aarch64
+            cross: true
+            smoke: verify
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            artifact: harness-macos-x86_64
+            smoke: rosetta
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            artifact: harness-macos-aarch64
+            smoke: native
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            artifact: harness-windows-x86_64.exe
+
     steps:
       - uses: actions/checkout@v4
-      - uses: cargo-bins/cargo-dist-action@v1
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
         with:
-          version: "0.28.0"
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (for aarch64 Linux)
+        if: matrix.cross
+        run: cargo install cross --locked --version 0.2.5
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary (cross)
+        if: matrix.cross
+        run: cross build --release --profile release-lto --target ${{ matrix.target }}
+
+      - name: Build release binary
+        if: "!matrix.cross"
+        run: cargo build --release --profile release-lto --target ${{ matrix.target }}
+
+      - name: Rename binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release-lto/harness ${{ matrix.artifact }}
+
+      - name: Rename binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release-lto/harness.exe ${{ matrix.artifact }}
+
+      - name: Smoke test binary (Unix — native)
+        if: runner.os != 'Windows' && matrix.smoke == 'native'
+        run: |
+          test -f "${{ matrix.artifact }}"
+          chmod +x "${{ matrix.artifact }}"
+          "./${{ matrix.artifact }}" --version
+          "./${{ matrix.artifact }}" --help >/dev/null
+
+      - name: Smoke test binary (Unix — Rosetta x86_64)
+        if: runner.os != 'Windows' && matrix.smoke == 'rosetta'
+        run: |
+          test -f "${{ matrix.artifact }}"
+          chmod +x "${{ matrix.artifact }}"
+          arch -x86_64 "./${{ matrix.artifact }}" --version
+          arch -x86_64 "./${{ matrix.artifact }}" --help >/dev/null
+
+      - name: Verify binary artifact (cross-built)
+        if: runner.os != 'Windows' && matrix.smoke == 'verify'
+        run: |
+          test -f "${{ matrix.artifact }}"
+          test -s "${{ matrix.artifact }}"
+          file "${{ matrix.artifact }}"
+
+      - name: Smoke test binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if (!(Test-Path -LiteralPath '${{ matrix.artifact }}')) { throw 'artifact missing' }
+          & ".\${{ matrix.artifact }}" --version
+          & ".\${{ matrix.artifact }}" --help | Out-Null
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum harness-* > checksums.txt 2>/dev/null || true
+          cat checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Harness ${{ github.ref_name }}
+          files: |
+            artifacts/*
+          generate_release_notes: true
+          draft: false
