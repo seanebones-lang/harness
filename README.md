@@ -62,6 +62,8 @@ Prebuilt binaries are published on [GitHub Releases](https://github.com/seanebon
 
 
 ### Quick Start (Windows, PowerShell)
+**Note:** Git for Windows + a modern terminal (Windows Terminal recommended) gives the best experience.
+
 
 From a directory where you want the source (or use an existing clone and `cd` into it):
 
