@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
         && cfg.providers.is_empty()
         && !harness_provider_mlx::mlx_runtime_available()
     {
-        eprintln!("harness: no API key found.\n\nSet one of:\n  XAI_API_KEY (recommended — grok-4.3)\n  XAI_API_KEY       (grok-4.3)\n  OPENAI_API_KEY    (gpt-5.5)\n\nOr start a local model (Ollama / MLX LM server).\n\nOr run: harness doctor  for a guided setup.");
+        eprintln!("harness: no API key found.\n\nSet one of:\n  ANTHROPIC_API_KEY (recommended — claude-sonnet-4-6)\n  XAI_API_KEY       (grok-4.3)\n  OPENAI_API_KEY    (gpt-5.5)\n\nOr start a local model (Ollama / MLX LM server).\n\nOr run: harness doctor  for a guided setup.");
         std::process::exit(1);
     }
 
@@ -99,7 +99,7 @@ async fn main() -> Result<()> {
         .or_else(|| cfg.provider.model.clone())
         .unwrap_or_else(|| {
             if has_anthropic {
-                "grok-4.3".to_string()
+                "claude-sonnet-4-6".to_string()
             } else if has_xai {
                 "grok-4.3".to_string()
             } else if has_openai {

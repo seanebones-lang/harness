@@ -26,7 +26,7 @@ pub fn build_arc_provider(cfg: &Config, cli_model: Option<&str>) -> Result<ArcPr
         .or_else(|| cfg.provider.model.clone())
         .unwrap_or_else(|| {
             if has_anthropic {
-                "claude-sonnet-4-6".to_string()
+                "grok-4.3".to_string()
             } else if has_xai {
                 "grok-4.3".to_string()
             } else if has_openai {
