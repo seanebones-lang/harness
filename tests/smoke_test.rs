@@ -290,9 +290,7 @@ async fn search_code_tool() {
     )
     .unwrap();
 
-    let ws = Arc::new(
-        WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap(),
-    );
+    let ws = Arc::new(WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap());
     let mut registry = ToolRegistry::new();
     registry.register(SearchCodeTool { workspace: ws });
     let executor = ToolExecutor::new(registry);

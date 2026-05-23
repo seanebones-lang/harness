@@ -447,7 +447,9 @@ mod tests {
     fn compute_hunks_detects_single_line_change() {
         let hunks = compute_hunks("alpha\nbeta", "alpha\ngamma");
         assert!(!hunks.is_empty());
-        assert!(hunks.iter().any(|h| h.lines.iter().any(|(op, _)| *op == '+')));
+        assert!(hunks
+            .iter()
+            .any(|h| h.lines.iter().any(|(op, _)| *op == '+')));
     }
 
     #[test]

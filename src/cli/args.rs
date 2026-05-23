@@ -152,8 +152,6 @@ pub enum Commands {
     Status,
     /// Restore the most recent harness checkpoint stash (undo last agent turn).
     Undo,
-    /// Update harness to the latest version.
-    Update,
     /// Manage harness checkpoint stashes.
     Checkpoint {
         #[command(subcommand)]
@@ -309,14 +307,9 @@ pub enum BridgeAction {
         content: String,
     },
     /// Create a note in Apple Notes.
-    Notes {
-        title: String,
-        content: String,
-    },
+    Notes { title: String, content: String },
     /// List calendar events for a date (`YYYY-MM-DD`).
-    CalendarList {
-        date: String,
-    },
+    CalendarList { date: String },
     /// Create a calendar event (`start`/`end` as AppleScript date strings).
     CalendarCreate {
         title: String,

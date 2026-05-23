@@ -43,8 +43,8 @@ use tokio::sync::watch;
 use crate::agent::DEFAULT_SYSTEM;
 use crate::config::Config;
 
-mod driver;
 mod confirm_flow;
+mod driver;
 mod events;
 mod input;
 mod render;

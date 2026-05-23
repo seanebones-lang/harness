@@ -401,9 +401,8 @@ pub async fn connect_to_server(
     prompt: &str,
     session_id: Option<&str>,
 ) -> Result<()> {
-    let token = crate::auth_token::read_token_file("server.token").or_else(|_| {
-        std::env::var("HARNESS_SERVER_TOKEN").map_err(anyhow::Error::msg)
-    })?;
+    let token = crate::auth_token::read_token_file("server.token")
+        .or_else(|_| std::env::var("HARNESS_SERVER_TOKEN").map_err(anyhow::Error::msg))?;
     let client = reqwest::Client::new();
     let mut body = serde_json::json!({ "prompt": prompt });
     if let Some(id) = session_id {

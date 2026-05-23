@@ -82,7 +82,10 @@ pub fn configure(cfg: &DaemonConfig) {
 }
 
 fn effective_transport() -> DaemonTransport {
-    DAEMON_TRANSPORT.get().copied().unwrap_or(DaemonTransport::Auto)
+    DAEMON_TRANSPORT
+        .get()
+        .copied()
+        .unwrap_or(DaemonTransport::Auto)
 }
 
 /// Default Unix socket path (macOS/Linux).

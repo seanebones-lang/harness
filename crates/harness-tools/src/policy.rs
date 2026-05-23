@@ -51,7 +51,10 @@ mod tests {
 
     #[test]
     fn git_readonly_skips_checkpoint() {
-        assert!(!tool_requires_checkpoint("git", &json!({"action": "status"})));
+        assert!(!tool_requires_checkpoint(
+            "git",
+            &json!({"action": "status"})
+        ));
         assert!(!tool_requires_checkpoint("git", &json!({"action": "diff"})));
         assert!(!tool_requires_checkpoint(
             "git",
@@ -61,7 +64,10 @@ mod tests {
 
     #[test]
     fn git_mutating_requires_checkpoint() {
-        assert!(tool_requires_checkpoint("git", &json!({"action": "commit", "message": "x"})));
+        assert!(tool_requires_checkpoint(
+            "git",
+            &json!({"action": "commit", "message": "x"})
+        ));
         assert!(tool_requires_checkpoint("git", &json!({"action": "push"})));
         assert!(tool_requires_checkpoint(
             "git",

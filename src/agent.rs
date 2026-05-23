@@ -368,7 +368,10 @@ pub fn context_limit_for_model(model: &str) -> usize {
     let m = model.to_lowercase();
     if m.contains("gpt") || m.contains("grok") {
         1_000_000
-    } else if m.contains("claude") || m.contains("opus") || m.contains("sonnet") || m.contains("haiku")
+    } else if m.contains("claude")
+        || m.contains("opus")
+        || m.contains("sonnet")
+        || m.contains("haiku")
     {
         200_000
     } else if m.contains("qwen") || m.contains("coder") {
@@ -653,9 +656,7 @@ pub async fn run_once(
             AgentEvent::ContextCompacted {
                 messages_before,
                 messages_after,
-            } => eprintln!(
-                "[compact] {messages_before} → {messages_after} messages"
-            ),
+            } => eprintln!("[compact] {messages_before} → {messages_after} messages"),
             AgentEvent::SubAgentSpawned { task } => eprintln!("[swarm] spawning: {task}"),
             AgentEvent::SubAgentDone { task, .. } => eprintln!("[swarm] done: {task}"),
             AgentEvent::TokenUsage { input, output } => {
@@ -883,16 +884,12 @@ mod tests {
         }
 
         result.expect("drive_agent should succeed");
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, AgentEvent::ToolStart { name, .. } if name == "echo"))
-        );
-        assert!(
-            events.iter().any(
-                |e| matches!(e, AgentEvent::ToolResult { result, .. } if result.contains("echo:hi"))
-            )
-        );
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, AgentEvent::ToolStart { name, .. } if name == "echo")));
+        assert!(events.iter().any(
+            |e| matches!(e, AgentEvent::ToolResult { result, .. } if result.contains("echo:hi"))
+        ));
         assert_eq!(script.calls.load(Ordering::SeqCst), 2);
         assert!(session.messages.len() >= 4);
     }
@@ -902,9 +899,12 @@ mod tests {
         let mut session = Session::new("script-model");
         session.push(Message::user("loop forever"));
 
-        let always_tool = vec![Delta::ToolCall(echo_call("tc")), Delta::Done {
-            stop_reason: StopReason::ToolUse,
-        }];
+        let always_tool = vec![
+            Delta::ToolCall(echo_call("tc")),
+            Delta::Done {
+                stop_reason: StopReason::ToolUse,
+            },
+        ];
         let script = Arc::new(ScriptProvider::new(vec![always_tool; 60]));
         let provider: ArcProvider = script.clone();
         let (tx, mut rx) = crate::events::channel();
@@ -935,10 +935,7 @@ mod tests {
 
     #[test]
     fn estimate_tokens_uses_char_heuristic() {
-        let msgs = vec![
-            Message::user("abcd"),
-            Message::assistant("efgh"),
-        ];
+        let msgs = vec![Message::user("abcd"), Message::assistant("efgh")];
         assert_eq!(estimate_tokens(&msgs), 4);
     }
 
@@ -967,12 +964,10 @@ mod tests {
         let before = session.messages.len();
         compact_context(&provider, &mut session).await;
         assert!(session.messages.len() < before);
-        assert!(
-            session
-                .messages
-                .iter()
-                .any(|m| m.content.as_str().contains("[compacted:"))
-        );
+        assert!(session
+            .messages
+            .iter()
+            .any(|m| m.content.as_str().contains("[compacted:")));
     }
 
     #[tokio::test]

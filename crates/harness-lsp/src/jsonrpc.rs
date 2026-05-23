@@ -188,9 +188,8 @@ mod framing_tests {
     use proptest::prelude::*;
 
     fn ascii_body(max: usize) -> impl Strategy<Value = String> {
-        prop::collection::vec(0x20u8..=0x7e, 0..max).prop_map(|bytes| {
-            String::from_utf8(bytes).expect("ascii")
-        })
+        prop::collection::vec(0x20u8..=0x7e, 0..max)
+            .prop_map(|bytes| String::from_utf8(bytes).expect("ascii"))
     }
 
     proptest! {

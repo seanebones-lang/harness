@@ -520,31 +520,37 @@ mod tests {
     #[tokio::test]
     async fn routes_fast_heavy_and_embed_providers() {
         let router = ProviderRouter::new("default")
-            .add("default", Arc::new(StaticProvider {
-                label: "default",
-                text: "main".into(),
-                fail_stream: false,
-            }))
-            .add("fast", Arc::new(StaticProvider {
-                label: "fast",
-                text: "fast".into(),
-                fail_stream: false,
-            }))
-            .add("embed", Arc::new(StaticProvider {
-                label: "embed",
-                text: "unused".into(),
-                fail_stream: false,
-            }))
+            .add(
+                "default",
+                Arc::new(StaticProvider {
+                    label: "default",
+                    text: "main".into(),
+                    fail_stream: false,
+                }),
+            )
+            .add(
+                "fast",
+                Arc::new(StaticProvider {
+                    label: "fast",
+                    text: "fast".into(),
+                    fail_stream: false,
+                }),
+            )
+            .add(
+                "embed",
+                Arc::new(StaticProvider {
+                    label: "embed",
+                    text: "unused".into(),
+                    fail_stream: false,
+                }),
+            )
             .with_fast("fast")
             .with_embed("embed");
 
         assert_eq!(router.default_provider().name(), "default");
         assert_eq!(router.fast_provider().name(), "fast");
         assert_eq!(router.embed_provider().name(), "embed");
-        assert_eq!(
-            collect_text(router.fast_provider().clone()).await,
-            "fast"
-        );
+        assert_eq!(collect_text(router.fast_provider().clone()).await, "fast");
 
         let embedding = router.embed("embed-model", "hello").await.expect("embed");
         assert_eq!(embedding.len(), 3);
