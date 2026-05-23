@@ -131,7 +131,9 @@ pub(crate) struct AppState {
 pub(crate) struct PendingConfirm {
     pub(crate) tool_name: String,
     pub(crate) preview: String,
-    pub(crate) reply: tokio::sync::oneshot::Sender<bool>,
+    pub(crate) file_diff: Option<crate::diff_review::FileDiff>,
+    pub(crate) hunk_index: usize,
+    pub(crate) reply: tokio::sync::oneshot::Sender<harness_tools::ConfirmResult>,
 }
 
 fn is_first_run() -> bool {

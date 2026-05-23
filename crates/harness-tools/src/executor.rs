@@ -1,4 +1,5 @@
 use crate::confirm::ConfirmGate;
+use crate::confirm::ConfirmResult;
 use crate::policy::tool_requires_confirmation;
 use crate::registry::Tool as _;
 use crate::registry::ToolRegistry;
@@ -139,12 +140,39 @@ impl ToolExecutor {
                 let first_arg = Self::first_arg_preview(&args);
                 if !self.is_trusted(&call.function.name, first_arg) {
                     let preview = build_preview(&call.function.name, &args);
-                    let approved = gate.request(&call.function.name, preview).await;
-                    if !approved {
-                        return format!(
-                            "[plan mode] '{}' was skipped by user.",
-                            call.function.name
-                        );
+                    match gate
+                        .request(&call.function.name, preview, Some(args.clone()))
+                        .await
+                    {
+                        ConfirmResult::Deny => {
+                            return format!(
+                                "[plan mode] '{}' was skipped by user.",
+                                call.function.name
+                            );
+                        }
+                        ConfirmResult::ApplyContent { path, content } => {
+                            if let Err(e) = tokio::fs::write(&path, &content).await {
+                                return format!("Tool error writing {path}: {e}");
+                            }
+                            let mut result =
+                                format!("[plan mode] applied reviewed diff to {path}");
+                            if self.autoformat {
+                                tokio::spawn(autoformat(path.clone()));
+                            }
+                            if self.autotest {
+                                let scope = self.autotest_scope.clone();
+                                let test_args = serde_json::json!({ "scope": scope });
+                                if let Ok(report) = TestRunnerTool.execute(test_args).await {
+                                    if report.contains("FAIL") {
+                                        result = format!("{result}\n\n[autotest]\n{report}");
+                                    } else {
+                                        result = format!("{result}\n\n[autotest] {report}");
+                                    }
+                                }
+                            }
+                            return result;
+                        }
+                        ConfirmResult::Approve => {}
                     }
                 }
             }

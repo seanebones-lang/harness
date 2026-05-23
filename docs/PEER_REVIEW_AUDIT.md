@@ -18,7 +18,7 @@
 | **Swarm** | `cancel`/`wait` CLI; `[swarm]` config; SQLite persistence |
 | **Collab** | WebSocket `/ws/session/:id` when `[collab].enabled` |
 | **Bridges** | `harness bridge` CLI (Obsidian, Notes, Calendar, GitHub Projects) |
-| **Not wired** | Diff-review TUI (E-03); OTLP verification |
+| **Not wired** | OTLP verification |
 
 **Canonical open backlog (severity-ranked):** [`TODO.md`](../TODO.md)
 
@@ -187,7 +187,7 @@ Sandbox, confirm gate, HTTP/daemon auth, sync tar-slip, [`THREAT_MODEL.md`](THRE
 | C.1 Collab | **Done** — `/ws/session/:id` when `[collab].enabled` |
 | C.2 Bridges | **Done** — `harness bridge` CLI |
 | C.3 Swarm | **Done** — cancel/wait + `[swarm]` config |
-| C.4 Diff review | **Open** — wire TUI or remove |
+| C.4 Diff review | **Done** — plan-mode hunk overlay |
 | C.5 Observability | **Partial** — JSONL ✅; OTLP untested |
 | **C.6 Stable** | **Blocked on REL-01** manual smoke |
 

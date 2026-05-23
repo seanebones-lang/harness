@@ -5,9 +5,26 @@
 //! The UI holds the receiver, shows a preview, and responds via the oneshot channel
 //! embedded in the request.
 
+use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
 
 const CONFIRM_CHANNEL_CAP: usize = 256;
+
+/// Outcome of a plan-mode confirmation prompt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfirmResult {
+    /// User denied the action; skip the tool call.
+    Deny,
+    /// User approved; run the tool normally.
+    Approve,
+    /// User approved a partial diff; write `content` to `path` instead of running the tool.
+    ApplyContent {
+        /// Target file path.
+        path: String,
+        /// Final content after hunk review.
+        content: String,
+    },
+}
 
 /// A single confirmation request sent from the executor to the UI.
 pub struct ConfirmRequest {
@@ -15,8 +32,10 @@ pub struct ConfirmRequest {
     pub tool_name: String,
     /// Human-readable preview of the proposed action (diff, command, etc.).
     pub preview: String,
-    /// Send `true` to approve, `false` to deny.
-    pub reply: oneshot::Sender<bool>,
+    /// Raw tool arguments (for inline diff review in the TUI).
+    pub args: Option<Value>,
+    /// Send the user's decision back to the executor.
+    pub reply: oneshot::Sender<ConfirmResult>,
 }
 
 /// Confirmation gate sender for plan/approve mode.
@@ -25,31 +44,35 @@ pub struct ConfirmGate(pub mpsc::Sender<ConfirmRequest>);
 
 impl ConfirmGate {
     /// Request confirmation for a destructive action.
-    /// Returns `true` if approved, `false` if denied or the channel is unavailable.
-    pub async fn request(&self, tool_name: &str, preview: String) -> bool {
+    pub async fn request(
+        &self,
+        tool_name: &str,
+        preview: String,
+        args: Option<Value>,
+    ) -> ConfirmResult {
         let (tx, rx) = oneshot::channel();
         let req = ConfirmRequest {
             tool_name: tool_name.to_string(),
             preview,
+            args,
             reply: tx,
         };
         match self.0.try_send(req) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(_)) => {
                 tracing::warn!("confirm channel full; defaulting to deny");
-                return false;
+                return ConfirmResult::Deny;
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 tracing::warn!("confirm channel closed; defaulting to deny");
-                return false;
+                return ConfirmResult::Deny;
             }
         }
         match rx.await {
-            Ok(true) => true,
-            Ok(false) => false,
+            Ok(result) => result,
             Err(_) => {
                 tracing::warn!("confirm reply dropped; defaulting to deny");
-                false
+                ConfirmResult::Deny
             }
         }
     }
@@ -69,39 +92,60 @@ mod tests {
     async fn closed_channel_denies() {
         let (gate, rx) = channel();
         drop(rx);
-        assert!(
-            !gate.request("shell", "rm -rf .".into()).await,
-            "closed channel must deny"
+        assert_eq!(
+            gate.request("shell", "rm -rf .".into(), None).await,
+            ConfirmResult::Deny
         );
     }
 
     #[tokio::test]
-    async fn explicit_deny_returns_false() {
+    async fn explicit_deny_returns_deny() {
         let (gate, mut rx) = channel();
         let gate2 = gate.clone();
         tokio::spawn(async move {
             if let Some(req) = rx.recv().await {
-                let _ = req.reply.send(false);
+                let _ = req.reply.send(ConfirmResult::Deny);
             }
         });
-        assert!(
-            !gate2.request("write_file", "write foo".into()).await,
-            "explicit deny must return false"
+        assert_eq!(
+            gate2.request("write_file", "write foo".into(), None).await,
+            ConfirmResult::Deny
         );
     }
 
     #[tokio::test]
-    async fn explicit_approve_returns_true() {
+    async fn explicit_approve_returns_approve() {
         let (gate, mut rx) = channel();
         let gate2 = gate.clone();
         tokio::spawn(async move {
             if let Some(req) = rx.recv().await {
-                let _ = req.reply.send(true);
+                let _ = req.reply.send(ConfirmResult::Approve);
             }
         });
-        assert!(
-            gate2.request("shell", "git push".into()).await,
-            "explicit approve must return true"
+        assert_eq!(
+            gate2.request("shell", "git push".into(), None).await,
+            ConfirmResult::Approve
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_content_short_circuits_tool() {
+        let (gate, mut rx) = channel();
+        let gate2 = gate.clone();
+        tokio::spawn(async move {
+            if let Some(req) = rx.recv().await {
+                let _ = req.reply.send(ConfirmResult::ApplyContent {
+                    path: "foo.rs".into(),
+                    content: "fn main() {}".into(),
+                });
+            }
+        });
+        assert_eq!(
+            gate2.request("write_file", "write foo.rs".into(), None).await,
+            ConfirmResult::ApplyContent {
+                path: "foo.rs".into(),
+                content: "fn main() {}".into(),
+            }
         );
     }
 }

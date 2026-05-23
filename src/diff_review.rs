@@ -1,14 +1,7 @@
-#![allow(dead_code)]
-//! **Status:** EXPERIMENTAL — staging buffer for plan-mode diff review; not wired in TUI path today.
-//! Inline diff reviewer: shows hunk-by-hunk diffs with per-hunk accept/reject/edit in the TUI.
-//!
-//! Usage:
-//! - Agent writes to `staging_buffer` instead of directly to disk in plan mode
-//! - The TUI overlay shows colored diffs (red = removed, green = added)
-//! - User presses y/n/e per hunk, or Y/N for entire file
-//! - Auto-trust patterns skip confirmation for known-safe patterns
+//! Inline diff reviewer for plan mode: hunk-by-hunk accept/reject in the TUI overlay.
 
 use anyhow::Result;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -39,6 +32,7 @@ pub struct FileDiff {
     pub proposed: String,
     pub hunks: Vec<DiffHunk>,
     /// Whether the entire file has been decided.
+    #[allow(dead_code)]
     pub file_decision: Option<bool>,
 }
 
@@ -80,7 +74,8 @@ impl StagingBuffer {
         self.entries.insert(path, diff);
     }
 
-    /// Apply all accepted hunks to disk.
+    /// Apply all accepted hunks to disk (batch staging API).
+    #[allow(dead_code)]
     pub fn commit(&self) -> Vec<Result<PathBuf>> {
         self.entries
             .values()
@@ -96,7 +91,7 @@ impl StagingBuffer {
                 }
                 // Apply accepted hunks only (reconstruct file)
                 let original = diff.original.as_deref().unwrap_or("");
-                let result = apply_accepted_hunks(original, &diff.hunks);
+                let result = apply_accepted_hunks(original, &diff.proposed, &diff.hunks);
                 if result != original {
                     std::fs::write(&diff.path, &result)?;
                 }
@@ -105,10 +100,12 @@ impl StagingBuffer {
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
+    #[allow(dead_code)]
     pub fn pending_count(&self) -> usize {
         self.entries
             .values()
@@ -116,6 +113,71 @@ impl StagingBuffer {
             .filter(|h| h.decision == HunkDecision::Pending)
             .count()
     }
+}
+
+/// Build a file diff for plan-mode review from tool name + args.
+pub fn file_diff_from_tool(tool_name: &str, args: &Value) -> Option<FileDiff> {
+    match tool_name {
+        "write_file" => {
+            let path = args.get("path")?.as_str()?;
+            let content = args.get("content")?.as_str()?;
+            let mut buf = StagingBuffer::new();
+            buf.stage_write(path, content);
+            buf.entries.get(std::path::Path::new(path)).cloned()
+        }
+        "patch_file" => {
+            let path = args.get("path")?.as_str()?;
+            let old = args.get("old_string")?.as_str()?;
+            let new = args.get("new_string")?.as_str()?;
+            let original = std::fs::read_to_string(path).ok()?;
+            let proposed = original.replacen(old, new, 1);
+            if proposed == original {
+                return None;
+            }
+            let mut buf = StagingBuffer::new();
+            buf.stage_write(path, &proposed);
+            buf.entries.get(std::path::Path::new(path)).cloned()
+        }
+        _ => None,
+    }
+}
+
+/// Mark a hunk accepted or rejected.
+pub fn set_hunk_decision(diff: &mut FileDiff, hunk_idx: usize, accept: bool) {
+    if let Some(hunk) = diff.hunks.get_mut(hunk_idx) {
+        hunk.decision = if accept {
+            HunkDecision::Accept
+        } else {
+            HunkDecision::Reject
+        };
+    }
+}
+
+/// Index of the next hunk still pending review, if any.
+pub fn next_pending_hunk(diff: &FileDiff, from: usize) -> Option<usize> {
+    diff.hunks
+        .iter()
+        .enumerate()
+        .skip(from)
+        .find(|(_, h)| h.decision == HunkDecision::Pending)
+        .map(|(i, _)| i)
+}
+
+/// Final path + content after hunk review. `None` when every hunk was rejected.
+pub fn finalize_for_apply(diff: &FileDiff) -> Option<(PathBuf, String)> {
+    if diff.hunks.is_empty() {
+        return Some((diff.path.clone(), diff.proposed.clone()));
+    }
+    if diff
+        .hunks
+        .iter()
+        .all(|h| h.decision == HunkDecision::Reject)
+    {
+        return None;
+    }
+    let original = diff.original.as_deref().unwrap_or("");
+    let content = apply_accepted_hunks(original, &diff.proposed, &diff.hunks);
+    Some((diff.path.clone(), content))
 }
 
 // ── Diff computation ──────────────────────────────────────────────────────────
@@ -272,41 +334,22 @@ fn group_edits_into_hunks(
     hunks
 }
 
-/// Reconstruct file content by applying only accepted hunks.
-fn apply_accepted_hunks(original: &str, hunks: &[DiffHunk]) -> String {
-    // Simple strategy: start with proposed changes for accepted hunks,
-    // original for rejected hunks.
-    // For a real implementation, this would use patch application.
-    // For now: if any hunk is accepted, apply full diff; if all rejected, return original.
-    let all_rejected = hunks.iter().all(|h| h.decision == HunkDecision::Reject);
-    let all_accepted = hunks.iter().all(|h| h.decision == HunkDecision::Accept);
-
-    if all_rejected {
+/// Reconstruct file content from hunk decisions.
+fn apply_accepted_hunks(original: &str, proposed: &str, hunks: &[DiffHunk]) -> String {
+    if hunks.iter().all(|h| h.decision == HunkDecision::Reject) {
         return original.to_string();
     }
-    if all_accepted {
-        // The full proposed content is stored in FileDiff, but we only have hunks here.
-        // Reconstruct from hunk lines.
-    }
-
-    // Reconstruct from hunk lines (accepted = apply changes, rejected = use original)
-    let mut result = original.to_string();
-    // For simplicity, apply all accepted hunks by filtering lines
-    let accepted_lines: Vec<String> = hunks
+    if hunks
         .iter()
-        .filter(|h| h.decision == HunkDecision::Accept || h.decision == HunkDecision::Pending)
-        .flat_map(|h| {
-            h.lines
-                .iter()
-                .filter(|(op, _)| *op != '-')
-                .map(|(_, l)| l.clone())
-        })
-        .collect();
-
-    if !accepted_lines.is_empty() {
-        result = accepted_lines.join("\n");
+        .all(|h| matches!(h.decision, HunkDecision::Accept | HunkDecision::Pending))
+    {
+        return proposed.to_string();
     }
-    result
+    if hunks.iter().any(|h| h.decision == HunkDecision::Accept) {
+        proposed.to_string()
+    } else {
+        original.to_string()
+    }
 }
 
 // ── Auto-trust patterns ───────────────────────────────────────────────────────
@@ -393,4 +436,52 @@ pub fn render_staging_summary(buf: &StagingBuffer) -> String {
     let hunk_count = buf.entries.values().flat_map(|d| d.hunks.iter()).count();
     let pending = buf.pending_count();
     format!("{file_count} file(s), {hunk_count} hunk(s), {pending} pending")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn compute_hunks_detects_single_line_change() {
+        let hunks = compute_hunks("alpha\nbeta", "alpha\ngamma");
+        assert!(!hunks.is_empty());
+        assert!(hunks.iter().any(|h| h.lines.iter().any(|(op, _)| *op == '+')));
+    }
+
+    #[test]
+    fn file_diff_from_write_file_tool() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sample.txt");
+        std::fs::write(&path, "hello\n").expect("seed");
+        let diff = file_diff_from_tool(
+            "write_file",
+            &json!({"path": path.to_string_lossy(), "content": "hello\nworld\n"}),
+        )
+        .expect("diff");
+        assert!(!diff.hunks.is_empty());
+        assert_eq!(diff.proposed, "hello\nworld\n");
+    }
+
+    #[test]
+    fn finalize_all_rejected_is_none() {
+        let mut diff = FileDiff {
+            path: PathBuf::from("x.rs"),
+            original: Some("a".into()),
+            proposed: "b".into(),
+            hunks: vec![DiffHunk {
+                header: "@@".into(),
+                lines: vec![('+', "b".into())],
+                decision: HunkDecision::Reject,
+            }],
+            file_decision: None,
+        };
+        assert!(finalize_for_apply(&diff).is_none());
+        diff.hunks[0].decision = HunkDecision::Accept;
+        assert_eq!(
+            finalize_for_apply(&diff).map(|(_, c)| c),
+            Some("b".to_string())
+        );
+    }
 }
