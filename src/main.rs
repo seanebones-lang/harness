@@ -82,14 +82,55 @@ async fn main() -> Result<()> {
         .unwrap_or(false);
     let has_ollama = cfg.providers.contains_key("ollama");
 
-    if !has_anthropic
+if !has_anthropic
         && !has_xai
         && !has_openai
         && !has_ollama
         && cfg.providers.is_empty()
         && !harness_provider_mlx::mlx_runtime_available()
     {
-        eprintln!("harness: no API key found.\n\nSet one of:\n  XAI_API_KEY (recommended — grok-4.3)\n  XAI_API_KEY       (grok-4.3)\n  OPENAI_API_KEY    (gpt-5.5)\n\nOr start a local model (Ollama / MLX LM server).\n\nOr run: harness doctor  for a guided setup.");
+        eprintln!("harness: No API key found.");
+        eprintln!();
+        eprintln!("Would you like to configure one now? (y/n)");
+        
+        let mut input = String::new();
+        if std::io::stdin().read_line(&mut input).is_ok() && input.trim().to_lowercase().starts_with('y') {
+            println!();
+            println!("Which provider would you like to use?");
+            println!("  [1] xAI (Grok)         ← Recommended");
+            println!("  [2] Anthropic (Claude)");
+            println!("  [3] OpenAI");
+            println!("  [4] Ollama (local)");
+            println!();
+            print!("Enter choice [1-4]: ");
+            std::io::stdout().flush().ok();
+
+            let mut choice = String::new();
+            std::io::stdin().read_line(&mut choice).ok();
+
+            match choice.trim() {
+                "1" => {
+                    println!("\n→ Run this command:");
+                    println!("   export XAI_API_KEY=\"xai-...\"");
+                    println!("\nThen restart harness.");
+                }
+                "2" => {
+                    println!("\n→ Run this command:");
+                    println!("   export ANTHROPIC_API_KEY=\"sk-ant-...\"");
+                    println!("\nThen restart harness.");
+                }
+                "3" => {
+                    println!("\n→ Run this command:");
+                    println!("   export OPENAI_API_KEY=\"sk-...\"");
+                    println!("\nThen restart harness.");
+                }
+                "4" => {
+                    println!("\n→ Make sure Ollama is running (example):");
+                    println!("   ollama run qwen3-coder:30b");
+                }
+                _ => println!("Invalid choice."),
+            }
+        }
         std::process::exit(1);
     }
 
