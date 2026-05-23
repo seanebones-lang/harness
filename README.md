@@ -41,7 +41,7 @@ cd /path/to/your/project
 harness
 ```
 
-Prebuilt binaries are published on [GitHub Releases](https://github.com/seanebones-lang/harness/releases). See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for how releases are created.
+Prebuilt binaries are published on [GitHub Releases](https://github.com/seanebones-lang/harness/releases). See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the release process and [docs/RELEASE_POLICY.md](docs/RELEASE_POLICY.md) for the release policy.
 **Updating:** Re-run the install script above to get the latest version.
 **Homebrew** (coming soon): `brew install harness`
 
