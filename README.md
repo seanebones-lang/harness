@@ -22,6 +22,8 @@ Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI �
 
 **Status:** Beta — fine for daily use.
 
+**v0.1.0-beta** released May 23, 2026 — first public release.
+
 **Full docs & troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md)
 
 ---
