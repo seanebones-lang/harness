@@ -25,6 +25,15 @@ Three targeted tests, no API key needed:
 
 Spin up a mock `MemoryStore` with ≥ 5 entries, trigger consolidation, assert merged / `__consolidated__` entries are written correctly.
 
+### Swarm module tests and CLI integration
+
+The swarm system (src/swarm.rs) has solid core logic but lacks:
+- Unit tests for register/update/list flows
+- Integration with the main CLI (`harness swarm spawn`, `harness swarm status`)
+- Background watcher that auto-updates task status when sub-agents finish
+
+Add these as high-priority Polish items.
+
 ### Session-list title lag (`src/main.rs` → `list_sessions()`)
 
 Session names are generated async; titles can be missing on the first `harness sessions` call right after save. Options: re-query after rename completes, or add a note in UX copy. Small, contained change.

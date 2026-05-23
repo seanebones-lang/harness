@@ -138,3 +138,11 @@ Open an issue with:
 ## License
 
 By contributing you agree your code is released under the project's [MIT License](LICENSE).
+
+---
+
+## Releasing
+
+See [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for how to cut new releases.
+
+Only maintainers with write access should create releases.
