@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]*"
+      - "v[0-9]+.[0-9]+.[0-9]*-*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -26,17 +27,6 @@ jobs:
             artifact: harness-linux-aarch64
             cross: true
             smoke: verify
-          - target: x86_64-apple-darwin
-            runner: macos-latest
-            artifact: harness-macos-x86_64
-            smoke: rosetta
-          - target: aarch64-apple-darwin
-            runner: macos-latest
-            artifact: harness-macos-aarch64
-            smoke: native
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-            artifact: harness-windows-x86_64.exe
 
     steps:
       - uses: actions/checkout@v4
