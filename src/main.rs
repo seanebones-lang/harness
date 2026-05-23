@@ -17,6 +17,7 @@ mod notifications;
 mod observability;
 mod projects;
 mod provider_build;
+mod rate_limit;
 mod server;
 mod swarm;
 mod sync;

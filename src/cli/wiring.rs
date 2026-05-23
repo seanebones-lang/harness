@@ -304,18 +304,29 @@ pub async fn build_tools_inner(
     }
 
     // Load MCP tools.
+    let mcp_allowlist = cfg.mcp.command_allowlist.as_deref();
     let builtin_before: HashSet<String> = registry.names().into_iter().collect();
     if let Some(mcp_path) = harness_mcp::find_config() {
-        if let Err(e) =
-            harness_mcp::load_mcp_tools(&mcp_path, &mut registry, Some(provider.clone())).await
+        if let Err(e) = harness_mcp::load_mcp_tools(
+            &mcp_path,
+            &mut registry,
+            Some(provider.clone()),
+            mcp_allowlist,
+        )
+        .await
         {
             tracing::warn!("MCP load failed: {e}");
         }
     }
     if let Some(mcp_path) = &cfg.mcp.config_path {
         if mcp_path.exists() {
-            if let Err(e) =
-                harness_mcp::load_mcp_tools(mcp_path, &mut registry, Some(provider.clone())).await
+            if let Err(e) = harness_mcp::load_mcp_tools(
+                mcp_path,
+                &mut registry,
+                Some(provider.clone()),
+                mcp_allowlist,
+            )
+            .await
             {
                 tracing::warn!("MCP config load failed: {e}");
             }

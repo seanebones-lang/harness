@@ -231,10 +231,10 @@ pub async fn drive_agent_full(
         if !pending_tool_calls.is_empty() {
             // Create a git checkpoint stash on the first destructive tool call of this turn.
             let has_destructive = pending_tool_calls.iter().any(|c| {
-                matches!(
-                    c.function.name.as_str(),
-                    "write_file" | "patch_file" | "shell" | "apply_patch"
-                )
+                c.args()
+                    .ok()
+                    .map(|args| harness_tools::tool_requires_checkpoint(&c.function.name, &args))
+                    .unwrap_or(false)
             });
             if has_destructive && !_checkpoint_taken.get() {
                 _checkpoint_taken.set(true);

@@ -22,8 +22,16 @@ pub async fn load_mcp_tools(
     config_path: &Path,
     registry: &mut ToolRegistry,
     sampling_provider: Option<ArcProvider>,
+    command_allowlist: Option<&[String]>,
 ) -> Result<()> {
-    load_mcp_tools_with_progress(config_path, registry, None, sampling_provider).await
+    load_mcp_tools_with_progress(
+        config_path,
+        registry,
+        None,
+        sampling_provider,
+        command_allowlist,
+    )
+    .await
 }
 
 /// Load MCP tools with optional progress channel and LLM for MCP sampling.
@@ -32,6 +40,7 @@ pub async fn load_mcp_tools_with_progress(
     registry: &mut ToolRegistry,
     progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
     sampling_provider: Option<ArcProvider>,
+    command_allowlist: Option<&[String]>,
 ) -> Result<()> {
     let cfg = match config::load(config_path) {
         Ok(c) => c,
@@ -39,6 +48,14 @@ pub async fn load_mcp_tools_with_progress(
     };
 
     for (name, server_cfg) in cfg.mcp_servers {
+        if !command_is_allowed(&server_cfg.command, command_allowlist) {
+            warn!(
+                server = %name,
+                command = %server_cfg.command,
+                "skipping MCP server: command not in allowlist"
+            );
+            continue;
+        }
         match McpClient::spawn_with_opts(
             &name,
             &server_cfg,
@@ -81,6 +98,18 @@ pub async fn load_mcp_tools_with_progress(
     Ok(())
 }
 
+/// When `allowlist` is set and non-empty, only spawn servers whose command basename matches.
+fn command_is_allowed(command: &str, allowlist: Option<&[String]>) -> bool {
+    let Some(list) = allowlist.filter(|l| !l.is_empty()) else {
+        return true;
+    };
+    let cmd = std::path::Path::new(command)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(command);
+    list.iter().any(|allowed| allowed == command || allowed == cmd)
+}
+
 /// Returns the first existing MCP config path found.
 pub fn find_config() -> Option<std::path::PathBuf> {
     let candidates = [
@@ -89,4 +118,24 @@ pub fn find_config() -> Option<std::path::PathBuf> {
         dirs::home_dir()?.join(".harness/mcp.json"),
     ];
     candidates.into_iter().find(|p| p.exists())
+}
+
+#[cfg(test)]
+mod allowlist_tests {
+    use super::command_is_allowed;
+
+    #[test]
+    fn empty_allowlist_allows_all() {
+        assert!(command_is_allowed("/usr/bin/evil", None));
+        assert!(command_is_allowed("npx", Some(&[])));
+    }
+
+    #[test]
+    fn allowlist_matches_basename_or_full_path() {
+        let list = vec!["npx".to_string(), "/opt/bin/mcp".to_string()];
+        assert!(command_is_allowed("npx", Some(&list)));
+        assert!(command_is_allowed("/usr/local/bin/npx", Some(&list)));
+        assert!(command_is_allowed("/opt/bin/mcp", Some(&list)));
+        assert!(!command_is_allowed("python3", Some(&list)));
+    }
 }
