@@ -1,46 +1,51 @@
+[![Release](https://img.shields.io/github/v/release/seanebones-lang/harness?sort=semver)](https://github.com/seanebones-lang/harness/releases)
+[![Downloads](https://img.shields.io/github/downloads/seanebones-lang/harness/total)](https://github.com/seanebones-lang/harness/releases)
+[![Stars](https://img.shields.io/github/stars/seanebones-lang/harness?style=social)](https://github.com/seanebones-lang/harness/stargazers)
+[![License](https://img.shields.io/github/license/seanebones-lang/harness)](https://github.com/seanebones-lang/harness/blob/main/LICENSE)
+[![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
+
 # Harness — Rust Coding Agent (May 2026)
 
-Harness is a terminal-based AI coding assistant. It reads files, edits code, runs shell commands, searches your codebase, manages sessions with semantic memory, and can spawn sub-agents for parallel tasks.
+**One-liner install (macOS / Linux / Windows):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.sh | bash
+```
+
+This downloads a prebuilt binary when available. Falls back to building from source if no release exists yet.
+> If you find Harness useful, consider starring the repo — it helps others discover it.
+
+
+Harness is a fast, private, terminal-first Rust coding agent. Multi-provider (xAI Grok, Claude, OpenAI, local), semantic memory, sub-agents, cost tracking, and MCP support.
 
 Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
 
-**Status:** Beta — fine for daily use; expect ongoing polish. Before tagging a release, run the gates in [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md). Latest go/no-go notes: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md).
+**Status:** Beta — fine for daily use.
 
-**Plain-language guide:** [`Start Here/USER MANUAL.md`](Start%20Here/USER%20MANUAL.md) — complements this README with the same first-run story.
-
-**Full installation (every OS, FAQ, troubleshooting):** [`docs/INSTALL.md`](docs/INSTALL.md)
-
-## Prerequisites
-
-- **Rust** (stable, edition 2021) via [rustup](https://rustup.rs) — on Windows, use the **MSVC** toolchain (Visual Studio C++ build tools) unless you know you need GNU.
-- **Git** — required to clone the repo (and **Git for Windows** is recommended on Windows so `sh.exe` is on `PATH` for the `shell` tool’s POSIX behavior).
-- **Platforms:** **macOS**, **Linux**, and **Windows** are all exercised in [CI](.github/workflows/ci.yml) (`fmt`, `clippy --all-features`, `test`, `build`). Optional features (voice, computer-use, desktop notifications) vary by OS — see **Optional features by platform** below.
+**Full docs & troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md)
 
 ---
 
-## Quick Start (macOS / Linux)
+## Quick Start
 
 ```bash
-# 1. Build and install (replace clone URL if you use a fork)
-git clone https://github.com/seanebones-lang/harness.git
-cd harness
-cargo build --profile release-lto
-install -m 755 target/release-lto/harness ~/.local/bin/harness
-export PATH="$HOME/.local/bin:$PATH"   # add to ~/.zshrc permanently
+# 1. Install (see one-liner above)
 
-# 2. Set your API key (any of these work)
-export ANTHROPIC_API_KEY="sk-ant-..."   # preferred — unlocks prompt caching + thinking
-export XAI_API_KEY="xai-..."            # fallback
-export OPENAI_API_KEY="sk-..."          # fallback
+# 2. Set an API key (any of these)
+export ANTHROPIC_API_KEY="sk-ant-..."   # recommended
+export XAI_API_KEY="xai-..."
+export OPENAI_API_KEY="sk-..."
 
-# 3. Run from any project (optional: run `harness init` once first — seeds ~/.harness/config.toml)
+# 3. Run in any project
 cd /path/to/your/project
 harness
 ```
 
-**Alternative — install script (macOS / Linux):** from the repo root after clone, you can use [`scripts/install.sh`](scripts/install.sh) (sets `HARNESS_INSTALL_DIR` if you want a non-default bin dir — see script header). Review any `curl | bash` one-liner before running.
+Prebuilt binaries are published on [GitHub Releases](https://github.com/seanebones-lang/harness/releases). See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for how releases are created.
+**Updating:** Re-run the install script above to get the latest version.
+**Homebrew** (coming soon): `brew install harness`
 
-Prebuilt binaries for tagged releases may be attached as artifacts on [GitHub Releases](https://github.com/seanebones-lang/harness/releases) (see `.github/workflows/release.yml`). Prefer building from source or CI-verified `main` for the latest fixes.
+
 
 ### Quick Start (Windows, PowerShell)
 
@@ -513,3 +518,20 @@ Open an issue on the project’s GitHub tracker with: OS, Rust version (`rustc -
 ## License
 
 This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
+
+---
+
+
+See [`docs/COMPARISON.md`](docs/COMPARISON.md) for how Harness compares to Aider, Claude Code, Cursor, and other tools.
+
+## Why Harness?
+
+Harness stands out in the crowded AI coding agent space with:
+
+- **Rust performance & safety** — Fast startup, low memory footprint, memory-safe
+- **True local-first** — Your code and semantic memory never leave your machine
+- **Multi-provider flexibility** — xAI Grok, Claude 4, GPT-5, Ollama with intelligent fallback
+- **Production tooling** — Parallel sub-agents, cost tracking & limits, cross-machine sync, browser automation, MCP support
+- **Terminal-native** — Designed for developers who live in the terminal
+
+If you value speed, privacy, and control over cloud IDE lock-in, Harness is built for you.
