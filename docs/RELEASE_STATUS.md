@@ -14,6 +14,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | P0 security (tar-slip, auth, confirm gate, sandbox) | **Closed** — see [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
 | Threat model | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) |
 | Manual smoke §3 | **Pending** — checklist in [`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md) §3 (needs API keys) |
+| `cargo build --profile release-lto` | **Pass** — 2026-05-22 (post security follow-up) |
 
 **Go / no-go:** **GO** for public beta. **Stable** blocked on manual smoke §3 per target OS.
 

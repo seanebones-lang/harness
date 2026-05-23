@@ -139,7 +139,6 @@ All items below were remediated in the 2026-05-22 session. Kept for audit trail.
 | **E-01** | Collab: wire server **or** delete module |
 | **E-02** | Bridges: CLI entry **or** remove |
 | **E-03** | Diff review: wire TUI **or** remove |
-| **REL-05** | `release-lto` build before tag |
 
 ### 🟡 Medium
 

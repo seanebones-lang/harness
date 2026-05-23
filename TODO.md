@@ -38,7 +38,6 @@
 | **E-01** | **Collab:** wire WebSocket in `server.rs` + `[collab]` in `Config` **or** remove `src/collab.rs` | Module marked EXPERIMENTAL; CLAUDE.md updated |
 | **E-02** | **Bridges:** CLI/TUI entry points **or** feature-gate / remove `src/bridges.rs` | Obsidian/Notes/Calendar helpers exist; no callers |
 | **E-03** | **Diff review:** wire E4 into TUI plan path **or** remove `src/diff_review.rs` | Staging buffer not in hot path |
-| **REL-05** | Re-run `cargo build --profile release-lto` before release tag | Not re-run after remediation wave |
 
 ### 🟡 Medium (quality / completeness)
 
@@ -124,6 +123,7 @@
 - **AGT-07** — `harness-tools::policy` unifies checkpoint + plan-mode lists (incl. git mutating ops)
 - **SEC-14** — HTTP rate limit (60/min/IP) on protected routes; non-loopback bind warning
 - **SEC-15** — Optional `[mcp].command_allowlist` in config
+- **REL-05** — `cargo build --profile release-lto` pass (2026-05-22)
 
 ### Peer review remediation (2026-05-22)
 
