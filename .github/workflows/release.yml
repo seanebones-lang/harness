@@ -1,7 +1,7 @@
-# This file was mostly replaced by cargo-dist.
-# We keep a thin wrapper that triggers on tags.
-
+# This file is maintained by cargo-dist
 name: Release
+permissions:
+  contents: write
 
 on:
   push:
@@ -9,12 +9,10 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]*'
 
 jobs:
-  # Delegate to cargo-dist
   dist:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: cargo-bins/cargo-dist-action@v1
         with:
-          # The version of cargo-dist to use
           version: "0.28.0"

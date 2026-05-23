@@ -152,6 +152,8 @@ pub enum Commands {
     Status,
     /// Restore the most recent harness checkpoint stash (undo last agent turn).
     Undo,
+    /// Update harness to the latest version.
+    Update,
     /// Manage harness checkpoint stashes.
     Checkpoint {
         #[command(subcommand)]
