@@ -71,7 +71,6 @@ install_prebuilt() {
     fi
 
     tmp=$(mktemp -d)
-    trap 'rm -rf "$tmp" 2>/dev/null || true' EXIT
 
     info "Downloading prebuilt binary ($version)..."
     if curl -fsSL "$url" -o "$tmp/harness" 2>/dev/null || curl -fsSL "$url.exe" -o "$tmp/harness.exe" 2>/dev/null; then
