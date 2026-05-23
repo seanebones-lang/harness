@@ -16,6 +16,7 @@ This downloads a prebuilt binary when available. Falls back to building from sou
 > If you find Harness useful, consider starring the repo — it helps others discover it.
 
 ### Features
+See how Harness compares to Aider, Claude Code, Cursor, and others: [`docs/COMPARISON.md`](docs/COMPARISON.md)
 
 - **Safety-first approvals** — Smart mode, Plan mode, and explicit confirmation for destructive actions
 - **Semantic + project memory** — Context-aware recall across sessions
