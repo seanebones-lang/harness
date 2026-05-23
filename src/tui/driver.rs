@@ -8,7 +8,7 @@ use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use harness_memory::{MemoryStore, Session, SessionStore};
 use harness_provider_core::{ArcProvider, Message};
-use harness_tools::{ConfirmRequest, ToolExecutor};
+use harness_tools::{ConfirmRequest, ConfirmResult, ToolExecutor};
 use parking_lot::Mutex;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use tokio::sync::{mpsc, watch};
@@ -17,10 +17,11 @@ use crate::agent;
 use crate::events::{try_emit, AgentEvent};
 use crate::highlight::Highlighter;
 
+use super::confirm_flow::{approve_all_hunks, decide_hunk, move_hunk, reject_all_hunks};
 use super::events;
 use super::input::{
-    approve_confirm, handle_char, handle_mouse, handle_search_key, handle_slash_command,
-    handle_voice, show_help,
+    approve_confirm, finish_confirm, handle_char, handle_mouse, handle_search_key,
+    handle_slash_command, handle_voice, show_help,
 };
 use super::render;
 use super::slash::{at_file_completions, expand_at_files};
@@ -74,13 +75,37 @@ pub(super) async fn run_terminal_loop(
         if state.lock().pending_confirm.is_none() {
             if let Some(rx) = &mut confirm_rx {
                 if let Ok(req) = rx.try_recv() {
+                    let file_diff = req.args.as_ref().and_then(|args| {
+                        crate::diff_review::file_diff_from_tool(&req.tool_name, args)
+                    });
+                    if let Some(ref diff) = file_diff {
+                        let trust = crate::diff_review::AutoTrustPatterns::load();
+                        if trust.should_auto_accept(&diff.path) {
+                            let _ = req.reply.send(ConfirmResult::Approve);
+                            continue;
+                        }
+                        if trust.should_auto_reject(&diff.path) {
+                            let _ = req.reply.send(ConfirmResult::Deny);
+                            continue;
+                        }
+                    }
+                    let hunk_index = file_diff
+                        .as_ref()
+                        .and_then(|d| crate::diff_review::next_pending_hunk(d, 0))
+                        .unwrap_or(0);
                     let mut st = state.lock();
                     st.pending_confirm = Some(PendingConfirm {
                         tool_name: req.tool_name,
                         preview: req.preview,
+                        file_diff,
+                        hunk_index,
                         reply: req.reply,
                     });
-                    st.status = "PLAN MODE — y approve · n skip · a always allow".to_string();
+                    st.status = if st.pending_confirm.as_ref().unwrap().file_diff.is_some() {
+                        "DIFF REVIEW — y/n hunk · [/] nav · Enter approve all · Esc skip".into()
+                    } else {
+                        "PLAN MODE — y approve · n skip · a always allow".into()
+                    };
                 }
             }
         }
@@ -261,35 +286,73 @@ pub(super) async fn run_terminal_loop(
                         drop(st);
                         let confirm = state.lock().pending_confirm.take();
                         if let Some(pc) = confirm {
-                            let _ = pc.reply.send(false);
+                            let tool = pc.tool_name.clone();
+                            let result = reject_all_hunks(&pc);
+                            let _ = pc.reply.send(result);
                             let mut st = state.lock();
-                            st.push_event(format!("[plan] skipped: {}", pc.tool_name));
+                            st.push_event(format!("[plan] skipped: {tool}"));
                             st.status = "Skipped.".to_string();
                         }
                     }
 
                     // ── Y — approve confirm ────────────────────────────────────
                     (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                        let confirm = state.lock().pending_confirm.take();
-                        if let Some(pc) = confirm {
+                        if state.lock().pending_confirm.is_some() {
+                            let mut pc = state.lock().pending_confirm.take().unwrap();
+                            if pc.file_diff.is_some() {
+                                if let Some(result) = decide_hunk(&mut pc, true) {
+                                    finish_confirm(&state, pc, result, "approved");
+                                } else {
+                                    state.lock().pending_confirm = Some(pc);
+                                }
+                                continue;
+                            }
                             approve_confirm(&state, pc);
                             continue;
                         }
-                        // Otherwise insert 'y' normally
                         handle_char(&state, 'y');
                     }
 
                     // ── N — deny confirm ───────────────────────────────────────
                     (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                        let confirm = state.lock().pending_confirm.take();
-                        if let Some(pc) = confirm {
-                            let _ = pc.reply.send(false);
+                        if state.lock().pending_confirm.is_some() {
+                            let mut pc = state.lock().pending_confirm.take().unwrap();
+                            if pc.file_diff.is_some() {
+                                if let Some(result) = decide_hunk(&mut pc, false) {
+                                    finish_confirm(&state, pc, result, "reviewed");
+                                } else {
+                                    state.lock().pending_confirm = Some(pc);
+                                }
+                                continue;
+                            }
+                            let tool = pc.tool_name.clone();
+                            let _ = pc.reply.send(ConfirmResult::Deny);
                             let mut st = state.lock();
-                            st.push_event(format!("[plan] denied: {}", pc.tool_name));
+                            st.push_event(format!("[plan] denied: {tool}"));
                             st.status = "Denied.".to_string();
                             continue;
                         }
                         handle_char(&state, 'n');
+                    }
+
+                    (KeyCode::Char('['), KeyModifiers::NONE)
+                        if state.lock().pending_confirm.is_some() =>
+                    {
+                        let mut st = state.lock();
+                        if let Some(pc) = st.pending_confirm.as_mut() {
+                            move_hunk(pc, -1);
+                        }
+                        continue;
+                    }
+
+                    (KeyCode::Char(']'), KeyModifiers::NONE)
+                        if state.lock().pending_confirm.is_some() =>
+                    {
+                        let mut st = state.lock();
+                        if let Some(pc) = st.pending_confirm.as_mut() {
+                            move_hunk(pc, 1);
+                        }
+                        continue;
                     }
 
                     // ── A — always allow ──────────────────────────────────────
@@ -364,9 +427,14 @@ pub(super) async fn run_terminal_loop(
 
                         // Approve pending confirm
                         {
-                            let confirm = state.lock().pending_confirm.take();
-                            if let Some(pc) = confirm {
-                                approve_confirm(&state, pc);
+                            if state.lock().pending_confirm.is_some() {
+                                let mut pc = state.lock().pending_confirm.take().unwrap();
+                                if pc.file_diff.is_some() {
+                                    let result = approve_all_hunks(&mut pc);
+                                    finish_confirm(&state, pc, result, "approved all hunks");
+                                } else {
+                                    approve_confirm(&state, pc);
+                                }
                                 continue;
                             }
                         }

@@ -299,7 +299,7 @@ New MCP 2.0 features:
 
 ### `diff_review` (E4)
 
-`StagingBuffer`, `FileDiff`, `DiffHunk` — inline diff viewer with LCS-based diffing, `AutoTrustPatterns` for glob-based auto-approval.
+`StagingBuffer`, `FileDiff`, `DiffHunk` — LCS hunks; plan-mode TUI overlay (`y`/`n` per hunk, `[`/`]` nav) for `write_file` / `patch_file`. Auto-trust via `~/.harness/diff-trust.toml`.
 
 ### `ambient` (`src/ambient.rs`)
 

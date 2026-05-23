@@ -44,6 +44,7 @@ use crate::agent::DEFAULT_SYSTEM;
 use crate::config::Config;
 
 mod driver;
+mod confirm_flow;
 mod events;
 mod input;
 mod render;

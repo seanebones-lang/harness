@@ -36,9 +36,7 @@
 
 ### 🟠 High (security / product honesty — next sprint)
 
-| ID | Task | Notes |
-|----|------|-------|
-| **E-03** | **Diff review:** wire E4 into TUI plan path **or** remove `src/diff_review.rs` | Staging buffer not in hot path |
+_None — E-03 closed May 2026._
 
 ### 🟡 Medium (quality / completeness)
 
@@ -101,7 +99,7 @@
 | C.1 Collab | **Done** | WebSocket `/ws/session/:id` when `[collab].enabled` |
 | C.2 Bridges | **Done** | `harness bridge` CLI |
 | C.3 Swarm | **Done** | cancel/wait + `[swarm]` config |
-| C.4 Diff review | **Open** | TUI inline diff **or** remove |
+| C.4 Diff review | **Done** | Hunk overlay in `--plan` TUI for write/patch |
 | C.5 Observability | **Partial** | Local JSONL ✅; OTLP untested |
 | C.6 Stable release | **Blocked** | REL-01 manual smoke on target OSes |
 
@@ -118,6 +116,8 @@
 ---
 
 ## Recently completed
+
+- **E-03** — Diff review hunk overlay in plan-mode TUI (`write_file` / `patch_file`)
 
 ### Phase C follow-up (2026-05-22)
 

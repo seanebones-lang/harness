@@ -13,7 +13,7 @@ pub mod tools;
 /// Workspace path sandboxing for filesystem tools.
 pub mod workspace_root;
 
-pub use confirm::{ConfirmGate, ConfirmRequest};
+pub use confirm::{ConfirmGate, ConfirmRequest, ConfirmResult};
 pub use executor::ToolExecutor;
 pub use policy::{tool_requires_checkpoint, tool_requires_confirmation, BUILTIN_DESTRUCTIVE_TOOLS};
 pub use registry::ToolRegistry;
