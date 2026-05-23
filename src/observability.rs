@@ -332,10 +332,7 @@ mod tests {
             end_ts_us: 2_000,
             duration_ms: 1,
             status: SpanStatus::Ok,
-            attributes: HashMap::from([(
-                "model".into(),
-                serde_json::Value::String("test".into()),
-            )]),
+            attributes: HashMap::from([("model".into(), serde_json::Value::String("test".into()))]),
             events: vec![],
         }
     }

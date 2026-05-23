@@ -143,10 +143,7 @@ impl ToolExecutor {
                     return true;
                 }
                 if tool == "shell" {
-                    let cmd = args
-                        .get("command")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
+                    let cmd = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
                     if self
                         .shell_confirm_patterns
                         .iter()
@@ -230,8 +227,7 @@ impl ToolExecutor {
                             if let Err(e) = tokio::fs::write(&path, &content).await {
                                 return format!("Tool error writing {path}: {e}");
                             }
-                            let mut result =
-                                format!("[plan mode] applied reviewed diff to {path}");
+                            let mut result = format!("[plan mode] applied reviewed diff to {path}");
                             if self.autoformat {
                                 tokio::spawn(autoformat(path.clone()));
                             }
@@ -384,11 +380,8 @@ mod tests {
     async fn plan_mode_confirms_destructive_shell() {
         let ex = executor_with_policy(ConfirmPolicy::Plan);
         assert!(
-            ex.test_needs_confirmation(
-                "shell",
-                &json!({"command": "echo hello"})
-            )
-            .await
+            ex.test_needs_confirmation("shell", &json!({"command": "echo hello"}))
+                .await
         );
     }
 
@@ -396,11 +389,8 @@ mod tests {
     async fn smart_mode_skips_benign_shell() {
         let ex = executor_with_policy(ConfirmPolicy::Smart);
         assert!(
-            !ex.test_needs_confirmation(
-                "shell",
-                &json!({"command": "echo hello"})
-            )
-            .await
+            !ex.test_needs_confirmation("shell", &json!({"command": "echo hello"}))
+                .await
         );
     }
 
@@ -408,11 +398,8 @@ mod tests {
     async fn smart_mode_confirms_shell_patterns() {
         let ex = executor_with_policy(ConfirmPolicy::Smart);
         assert!(
-            ex.test_needs_confirmation(
-                "shell",
-                &json!({"command": "git push origin main"})
-            )
-            .await
+            ex.test_needs_confirmation("shell", &json!({"command": "git push origin main"}))
+                .await
         );
     }
 

@@ -395,12 +395,7 @@ mod tests {
     fn failed_status_persists_with_message() {
         let _db = TestDb::new();
         let id = register_task("fail me").expect("register");
-        update_status(
-            &id,
-            &TaskStatus::Failed("boom".into()),
-            Some("boom"),
-        )
-        .expect("failed");
+        update_status(&id, &TaskStatus::Failed("boom".into()), Some("boom")).expect("failed");
 
         let task = get_task(&id).expect("get").expect("found");
         assert_eq!(task.status, TaskStatus::Failed("boom".into()));

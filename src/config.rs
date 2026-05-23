@@ -417,10 +417,7 @@ mod tests {
     #[test]
     fn approval_parsed_always_ask_splits_tool_pattern() {
         let cfg = ApprovalConfig {
-            always_ask: Some(vec![
-                "shell:git push".into(),
-                "write_file".into(),
-            ]),
+            always_ask: Some(vec!["shell:git push".into(), "write_file".into()]),
             ..Default::default()
         };
         let parsed = cfg.parsed_always_ask();

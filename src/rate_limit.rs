@@ -38,10 +38,7 @@ fn limiter() -> &'static Mutex<RateLimiter> {
 
 /// Returns false when the client exceeded the per-IP request budget.
 pub fn allow(ip: IpAddr) -> bool {
-    limiter()
-        .lock()
-        .expect("rate limiter lock")
-        .check(ip)
+    limiter().lock().expect("rate limiter lock").check(ip)
 }
 
 #[cfg(test)]

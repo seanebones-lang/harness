@@ -78,9 +78,8 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_invokes_runner_with_context() {
-        let runner: SubAgentRunner = Arc::new(move |prompt| {
-            Box::pin(async move { Ok(format!("done:{prompt}")) })
-        });
+        let runner: SubAgentRunner =
+            Arc::new(move |prompt| Box::pin(async move { Ok(format!("done:{prompt}")) }));
         let tool = SpawnAgentTool::new(runner);
         let out = tool
             .execute(json!({

@@ -1,6 +1,6 @@
 mod agent;
-mod auth_token;
 mod ambient;
+mod auth_token;
 mod background;
 mod bridges;
 mod checkpoint;
@@ -38,13 +38,13 @@ use harness_tools::tools::GhTool;
 use std::sync::Arc;
 use tracing_subscriber::{fmt, EnvFilter};
 
+use cli::args::BridgeAction;
 use cli::{
     build_prompt_with_image, build_tools, connect_to_server, delete_session, export_session,
     graceful_ambient_shutdown, handle_doctor_command, handle_models_command,
     handle_project_command, list_sessions, run_init, run_self_dev, run_status,
 };
 use cli::{CheckpointAction, Cli, Commands, CostAction, SwarmAction, SyncAction};
-use cli::args::BridgeAction;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -158,8 +158,7 @@ async fn main() -> Result<()> {
 
     // Plan/approve mode: CLI flag or `[approval].mode = "plan" | "smart"`.
     let approval_mode = cfg.approval.effective_mode();
-    let confirm_active =
-        cli.plan || approval_mode == "plan" || approval_mode == "smart";
+    let confirm_active = cli.plan || approval_mode == "plan" || approval_mode == "smart";
     let interactive_tui = cli.command.is_none() && cli.prompt.is_none();
     let (confirm_gate, confirm_rx) = if confirm_active && interactive_tui {
         let (gate, rx) = harness_tools::confirm::channel();

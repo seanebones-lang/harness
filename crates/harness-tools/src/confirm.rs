@@ -141,7 +141,9 @@ mod tests {
             }
         });
         assert_eq!(
-            gate2.request("write_file", "write foo.rs".into(), None).await,
+            gate2
+                .request("write_file", "write foo.rs".into(), None)
+                .await,
             ConfirmResult::ApplyContent {
                 path: "foo.rs".into(),
                 content: "fn main() {}".into(),

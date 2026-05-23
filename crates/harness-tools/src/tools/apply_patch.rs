@@ -304,7 +304,8 @@ mod tests {
     #[test]
     fn parse_unified_diff_applies_single_hunk() {
         let (dir, ws) = workspace_with_file("foo.rs", "line1\nline2\nline3\n");
-        let patch = "--- a/foo.rs\n+++ b/foo.rs\n@@ -1,3 +1,3 @@\n line1\n-line2\n+line2 patched\n line3\n";
+        let patch =
+            "--- a/foo.rs\n+++ b/foo.rs\n@@ -1,3 +1,3 @@\n line1\n-line2\n+line2 patched\n line3\n";
         let changes = parse_unified_diff(patch, &ws).expect("parse");
         assert_eq!(changes.len(), 1);
         assert!(changes[0].1.contains("line2 patched"));
@@ -313,9 +314,7 @@ mod tests {
         let tool = ApplyPatchTool { workspace: ws };
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            tool.execute(json!({"patch": patch}))
-                .await
-                .expect("apply");
+            tool.execute(json!({"patch": patch})).await.expect("apply");
         });
         let updated = std::fs::read_to_string(dir.path().join("foo.rs")).unwrap();
         assert!(updated.contains("line2 patched"));

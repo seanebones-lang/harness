@@ -24,9 +24,9 @@
 //!   data: {"type":"error","message":"..."}
 
 use anyhow::Result;
+use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::ConnectInfo;
 use axum::extract::Query;
-use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::http::{header::AUTHORIZATION, Request, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -193,10 +193,7 @@ pub fn router(state: ServerState) -> Router {
         .route("/api/sessions/:id", get(get_session))
         .route("/api/chat", post(chat))
         .route("/api/setup/persist", post(persist_setup))
-        .layer(middleware::from_fn_with_state(
-            shared.clone(),
-            require_auth,
-        ));
+        .layer(middleware::from_fn_with_state(shared.clone(), require_auth));
 
     Router::new()
         .route("/", get(ui))
@@ -308,9 +305,9 @@ fn agent_event_to_collab(event: &AgentEvent) -> Option<CollabEvent> {
         AgentEvent::TextChunk(content) => Some(CollabEvent::AgentTextChunk {
             content: content.clone(),
         }),
-        AgentEvent::ToolStart { name, .. } => Some(CollabEvent::AgentToolStart {
-            name: name.clone(),
-        }),
+        AgentEvent::ToolStart { name, .. } => {
+            Some(CollabEvent::AgentToolStart { name: name.clone() })
+        }
         AgentEvent::ToolResult { name, result, .. } => {
             let preview = if result.len() > 120 {
                 format!("{}…", &result[..120])
@@ -1143,9 +1140,7 @@ mod tests {
         store.save(&session).expect("save session");
 
         let client = reqwest::Client::new();
-        let auth = |req: reqwest::RequestBuilder| {
-            req.header("Authorization", "Bearer test-token")
-        };
+        let auth = |req: reqwest::RequestBuilder| req.header("Authorization", "Bearer test-token");
 
         let sessions = auth(client.get(format!("{base_url}/api/sessions")))
             .send()
@@ -1160,12 +1155,12 @@ mod tests {
         );
 
         let loaded = auth(client.get(format!(
-                "{base_url}/api/sessions/{}",
-                urlencoding::encode(&session.id)
-            )))
-            .send()
-            .await
-            .expect("GET /api/sessions/:id should succeed");
+            "{base_url}/api/sessions/{}",
+            urlencoding::encode(&session.id)
+        )))
+        .send()
+        .await
+        .expect("GET /api/sessions/:id should succeed");
         assert_eq!(loaded.status(), StatusCode::OK);
         let loaded_json: serde_json::Value = loaded.json().await.expect("session json");
         assert_eq!(loaded_json["id"], session.id);

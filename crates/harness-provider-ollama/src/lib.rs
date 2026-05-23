@@ -303,17 +303,17 @@ fn parse_ollama_stream(
                         if let Ok(v) = serde_json::from_str::<Value>(&line) {
                             if let Some(calls) = v["message"]["tool_calls"].as_array() {
                                 for call in calls {
-                                    let id =
-                                        call["id"].as_str().unwrap_or("tool_0").to_string();
-                                    let name = call["function"]["name"]
-                                        .as_str()
-                                        .unwrap_or("")
-                                        .to_string();
+                                    let id = call["id"].as_str().unwrap_or("tool_0").to_string();
+                                    let name =
+                                        call["function"]["name"].as_str().unwrap_or("").to_string();
                                     let args = call["function"]["arguments"].to_string();
                                     s.pending_tools.push(ToolCall {
                                         id,
                                         kind: "function".into(),
-                                        function: ToolCallFunction { name, arguments: args },
+                                        function: ToolCallFunction {
+                                            name,
+                                            arguments: args,
+                                        },
                                     });
                                 }
                                 if let Some(call) = s.pending_tools.first().cloned() {

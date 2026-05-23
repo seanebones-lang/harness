@@ -107,7 +107,8 @@ fn command_is_allowed(command: &str, allowlist: Option<&[String]>) -> bool {
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(command);
-    list.iter().any(|allowed| allowed == command || allowed == cmd)
+    list.iter()
+        .any(|allowed| allowed == command || allowed == cmd)
 }
 
 /// Returns the first existing MCP config path found.

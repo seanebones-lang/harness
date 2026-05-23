@@ -229,9 +229,7 @@ mod tests {
         let loaded = store.load(&session.id).unwrap().unwrap();
         assert_eq!(loaded.name.as_deref(), Some("Renamed"));
 
-        assert!(!store
-            .set_name_if_missing(&session.id, "Other")
-            .unwrap());
+        assert!(!store.set_name_if_missing(&session.id, "Other").unwrap());
     }
 
     #[test]

@@ -104,10 +104,7 @@ pub(super) async fn run_terminal_loop(
                     st.status = if st.pending_confirm.as_ref().unwrap().file_diff.is_some() {
                         "DIFF REVIEW — y/n hunk · [/] nav · Enter approve all · Esc skip".into()
                     } else {
-                        let label = st
-                            .confirm_bar_label
-                            .as_deref()
-                            .unwrap_or("PLAN");
+                        let label = st.confirm_bar_label.as_deref().unwrap_or("PLAN");
                         format!("{label} MODE — y approve · n skip · a always allow")
                     };
                 }

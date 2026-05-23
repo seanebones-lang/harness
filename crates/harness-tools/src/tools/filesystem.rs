@@ -400,10 +400,7 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), "a").unwrap();
         std::fs::create_dir(dir.path().join("sub")).unwrap();
         let tool = ListDirTool { workspace: ws };
-        let out = tool
-            .execute(json!({"path": "."}))
-            .await
-            .expect("list");
+        let out = tool.execute(json!({"path": "."})).await.expect("list");
         assert!(out.contains("a.txt"));
         assert!(out.contains("sub/"));
     }

@@ -103,7 +103,11 @@ impl Tool for GitTool {
                     .map(|a| {
                         a.iter()
                             .filter_map(|v| v.as_str())
-                            .map(|p| self.workspace.resolve(p).map(|x| x.to_string_lossy().into_owned()))
+                            .map(|p| {
+                                self.workspace
+                                    .resolve(p)
+                                    .map(|x| x.to_string_lossy().into_owned())
+                            })
                             .collect::<anyhow::Result<_>>()
                     })
                     .transpose()?
@@ -124,7 +128,11 @@ impl Tool for GitTool {
                     .map(|a| {
                         a.iter()
                             .filter_map(|v| v.as_str())
-                            .map(|p| self.workspace.resolve(p).map(|x| x.to_string_lossy().into_owned()))
+                            .map(|p| {
+                                self.workspace
+                                    .resolve(p)
+                                    .map(|x| x.to_string_lossy().into_owned())
+                            })
                             .collect::<anyhow::Result<_>>()
                     })
                     .transpose()?
@@ -259,7 +267,11 @@ impl Tool for GitTool {
                     .map(|a| {
                         a.iter()
                             .filter_map(|v| v.as_str())
-                            .map(|p| self.workspace.resolve(p).map(|x| x.to_string_lossy().into_owned()))
+                            .map(|p| {
+                                self.workspace
+                                    .resolve(p)
+                                    .map(|x| x.to_string_lossy().into_owned())
+                            })
                             .collect::<anyhow::Result<_>>()
                     })
                     .transpose()?
@@ -360,7 +372,9 @@ mod tests {
         let ws = Arc::new(
             WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("workspace"),
         );
-        let tool = GitTool { workspace: ws.clone() };
+        let tool = GitTool {
+            workspace: ws.clone(),
+        };
 
         std::process::Command::new("git")
             .args(["init", "-b", "main"])
