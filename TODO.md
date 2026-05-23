@@ -100,3 +100,30 @@ Manual smoke (needs API keys / local GUI):
 - [ ] `harness sessions` — lists sessions including auto-named titles
 
 Full checklist: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md).
+
+---
+
+## High Priority Polish (v0.1.1)
+
+### Safety & Approval Flows
+- Improve visual diff previews in TUI (unified diff rendering)
+- Make "Smart mode" vs "Plan mode" differences more obvious to users
+- Add one-line "what will change" summary before multi-file edits
+
+### Swarm Reliability & Cost Control
+- Define clear "Fast" vs "Smart" sub-agent profiles with explicit cost/time budgets
+- Add swarm-level cost caps and easy cancellation
+- Improve task status visibility and background watcher reliability
+
+### Session Management Polish
+- Fix session-list title lag (async name generation)
+- Better session naming and recent session UX
+
+### Context Optimization
+- Improve compaction strategy and token estimation accuracy
+- Reduce unnecessary context bloat in long sessions
+
+### Windows Experience
+- Improve PowerShell install experience
+- Add clearer Git for Windows requirement messaging and troubleshooting
+
