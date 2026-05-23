@@ -16,11 +16,13 @@ pub type SwarmEnqueueRunner = Arc<
         + Sync,
 >;
 
+/// Parallel swarm task enqueue tool.
 pub struct SpawnSwarmTool {
     runner: SwarmEnqueueRunner,
 }
 
 impl SpawnSwarmTool {
+    /// Create the tool with a runtime-specific enqueue callback.
     pub fn new(runner: SwarmEnqueueRunner) -> Self {
         Self { runner }
     }

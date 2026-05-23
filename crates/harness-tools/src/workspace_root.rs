@@ -6,16 +6,21 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::warn;
 
+/// Filesystem sandbox strictness for tool path resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SandboxMode {
+    /// Reject paths outside the workspace root.
     #[default]
     Strict,
+    /// Allow absolute paths outside root with a warning.
     Relaxed,
+    /// Disable path sandboxing (dangerous).
     Off,
 }
 
 impl SandboxMode {
+    /// Parse sandbox mode from config string (`strict`, `relaxed`, `off`).
     pub fn from_config(s: Option<&str>) -> Self {
         match s.map(str::to_lowercase).as_deref() {
             Some("off") => SandboxMode::Off,
@@ -25,7 +30,7 @@ impl SandboxMode {
     }
 }
 
-/// Canonical-ish project root for sandboxing `read_file`, `write_file`, etc.
+/// Canonical-ish project root for sandboxing filesystem tools.
 #[derive(Debug, Clone)]
 pub struct WorkspaceRoot {
     root: PathBuf,
@@ -33,15 +38,18 @@ pub struct WorkspaceRoot {
 }
 
 impl WorkspaceRoot {
+    /// Create a workspace root, canonicalizing when possible.
     pub fn new(root: PathBuf, mode: SandboxMode) -> anyhow::Result<Self> {
         let root = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clean());
         Ok(Self { root, mode })
     }
 
+    /// Project root directory.
     pub fn root(&self) -> &Path {
         &self.root
     }
 
+    /// Active sandbox mode.
     pub fn mode(&self) -> SandboxMode {
         self.mode
     }
@@ -92,6 +100,7 @@ impl WorkspaceRoot {
     }
 }
 
+/// Thread-safe workspace root handle shared by tools.
 pub type ArcWorkspace = Arc<WorkspaceRoot>;
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 //! The agent picks the action and relevant parameters; the tool dispatches
 //! to the BrowserSession. The session is lazily created on first use.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
 use harness_tools::registry::Tool;
@@ -12,6 +12,26 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::session::BrowserSession;
+
+const KNOWN_ACTIONS: &[&str] = &[
+    "navigate",
+    "click",
+    "type",
+    "focus",
+    "get_text",
+    "get_links",
+    "evaluate",
+    "screenshot",
+    "page_info",
+];
+
+fn validate_action(action: &str) -> Result<()> {
+    if KNOWN_ACTIONS.contains(&action) {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("unknown action: {action}"))
+    }
+}
 
 pub struct BrowserTool {
     devtools_url: String,
@@ -81,16 +101,19 @@ impl Tool for BrowserTool {
         let action = args["action"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing action"))?;
+        validate_action(action)?;
 
-        let session_arc = match self.session().await {
-            Ok(s) => s,
-            Err(e) => return Ok(format!("Browser connect failed: {e}\nEnsure Chrome is running with --remote-debugging-port=9222")),
-        };
+        let session_arc = self.session().await.with_context(|| {
+            format!(
+                "Browser connect failed (url: {})\nEnsure Chrome is running with --remote-debugging-port=9222",
+                self.devtools_url
+            )
+        })?;
 
         let lock = session_arc.lock().await;
         let session = lock.as_ref().unwrap();
 
-        let result = match action {
+        match action {
             "navigate" => {
                 let url = args["url"]
                     .as_str()
@@ -130,12 +153,37 @@ impl Tool for BrowserTool {
             }
             "screenshot" => session.screenshot().await,
             "page_info" => session.page_info().await,
-            other => Err(anyhow::anyhow!("unknown action: {other}")),
-        };
+            _ => unreachable!("validated above"),
+        }
+    }
+}
 
-        match result {
-            Ok(s) => Ok(s),
-            Err(e) => Ok(format!("browser error: {e}")),
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harness_tools::registry::Tool;
+
+    #[tokio::test]
+    async fn unknown_action_returns_err_before_connect() {
+        let tool = BrowserTool::new("http://127.0.0.1:19222");
+        let err = tool
+            .execute(json!({ "action": "bogus" }))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("unknown action"));
+    }
+
+    #[tokio::test]
+    async fn missing_action_returns_err() {
+        let tool = BrowserTool::new("http://127.0.0.1:19222");
+        let err = tool.execute(json!({})).await.unwrap_err();
+        assert!(err.to_string().contains("missing action"));
+    }
+
+    #[test]
+    fn validate_action_accepts_known_actions() {
+        for action in KNOWN_ACTIONS {
+            validate_action(action).unwrap();
         }
     }
 }

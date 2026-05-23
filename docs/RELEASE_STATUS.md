@@ -4,6 +4,39 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-05-22 — Peer review remediation (security + tests + docs)**
+
+| Gate | Result |
+|------|--------|
+| `cargo fmt --all -- --check` | Not re-run this session (prior pass) |
+| `cargo clippy --all-targets --all-features -- -D warnings` | **Pass** |
+| `cargo test --all` | **Pass** — **164 tests** (agent, swarm, tools, providers) |
+| P0 security (tar-slip, auth, confirm gate, sandbox) | **Closed** — see [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
+| Threat model | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) |
+| Manual smoke §3 | **Pending** — checklist in [`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md) §3 (needs API keys) |
+| `cargo build --profile release-lto` | **Pass** — 2026-05-22 (post security follow-up) |
+
+**Go / no-go:** **GO** for public beta. **Stable** blocked on manual smoke §3 per target OS.
+
+---
+
+**2026-05-22 — TODO/CONTRIBUTING backlog implementation**
+
+| Gate | Result |
+|------|--------|
+| `cargo fmt --all -- --check` | Pass |
+| `cargo clippy --all-targets --all-features -- -D warnings` | Pass |
+| `cargo test --all` (incl. doctests) | Pass — **114 tests** |
+| `cargo build --profile release-lto` | Not re-run this session (prior May 2026 pass still valid) |
+| Coverage CI | [`.github/workflows/coverage.yml`](.github/workflows/coverage.yml) — PR gate **≥ 60%** line coverage |
+| Manual smoke §3 | **Pending** — needs API keys (one-shot, TUI, serve, export, sessions) |
+
+| Delivered | Browser tests + `Err` semantics; `AmbientConfig` + consolidation tests; session title fixes; PowerShell shell; daemon TCP (Windows) + VS Code TCP; Tauri `serve` autospawn; `missing_docs` on core/tools; proptest; docs (`BROWSER_CDP`, `COOKBOOK`, `i18n/es`) |
+
+**Go / no-go:** **GO** for continued public beta; promote to stable after manual smoke §3 on your target platforms.
+
+---
+
 **2026-05-03 — Post-push verification sweep (`main` @ `3cffa5a`)**
 
 | Gate | Result |
@@ -50,7 +83,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 **`3fa6d51` audit remediation closed (now also verified by tests):** OpenAI multi-tool SSE flush (regression-tested in `crates/harness-provider-openai`), **MCP dedicated stdout reader (regression-tested in `crates/harness-mcp`)**, MCP sampling paths tested, `WorkspaceRoot` jail boundary-tested, `src/cli/commands/project.rs` + `src/tui/{render,events}.rs` extracted, LSP framing hardened.
 
-**Next iteration (Phase 2 residuals):** `src/main.rs` stays **823 LOC** — optional further splits (e.g. cost/swarm match arms, `run_once` wrappers); **`src/tui`** now includes **`state` / `input` / `slash` / `render` / `events` / `driver`** (**`mod.rs` ~152 LOC**); coverage ≥60%; proptest/fuzz; `#![deny(missing_docs)]` on public crates.
+**Next iteration:** manual release smoke §3; optional tools (`DatabaseTool`, `NotebookTool`, `DockerTool`); Tauri Windows/Linux packaging; CDP doc screenshots; full i18n of user manual.
 
 ---
 
@@ -59,12 +92,14 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | Item | Status |
 |------|--------|
 | **License** | MIT (`LICENSE` + workspace `Cargo.toml`) |
-| **Automated gates** | Local + CI: `fmt`, `clippy --all-features`, `test --all`, `build`; `release-lto` locally / release workflow for tags |
-| **Docs / onboarding** | README: macOS/Linux + **Windows PowerShell**, install scripts (`install.sh`, `install.ps1`), optional-feature matrix |
-| **Interactive TUI** | Confirm per platform |
-| **`gh` integration** | Optional; all platforms |
+| **Automated gates** | **164 tests**, clippy clean; CI multi-OS; coverage ≥ 60% on PRs |
+| **P0 security** | **Closed** — see [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
+| **Threat model** | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) |
+| **Open backlog** | [`TODO.md`](../TODO.md) — severity-ranked + roadmap |
+| **Manual smoke §3** | **Pending** — blocks **stable** |
+| **Experimental modules** | `collab`, `bridges`, `diff_review` unwired (Phase C) |
 
-**Verdict:** **GO** for **public beta** — Windows is CI-gated at the same bar as macOS/Linux; optional features remain OS-dependent (see README **Optional features by platform**). Promote to “stable” only after broader real-world use and manual checks above.
+**Verdict:** **GO** for **public beta**. Promote to **stable** only after **REL-01** manual smoke §3 on target OSes (record above).
 
 ---
 

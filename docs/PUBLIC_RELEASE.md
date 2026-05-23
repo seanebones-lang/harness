@@ -30,8 +30,13 @@ Check at least one provider end-to-end:
 
 - [ ] **One-shot:** `XAI_API_KEY=… harness "list files in ."` (or another configured key)
 - [ ] **TUI:** `harness` — send a prompt; confirm token/cost line updates where applicable
-- [ ] **Web:** `harness serve --addr 127.0.0.1:8787` — chat round-trip in the browser
+- [ ] **Web:** `harness serve --addr 127.0.0.1:8787` — chat round-trip in the browser (token auto-loaded from `/api/health` on loopback)
+- [ ] **HTTP auth:** `curl -H "Authorization: Bearer $(cat ~/.harness/server.token)" http://127.0.0.1:8787/api/sessions` returns 200 (without token → 401)
+- [ ] **Daemon:** `harness daemon` + VS Code extension or `connect_daemon()` sends bearer token from `~/.harness/daemon.token`
 - [ ] **Sessions:** `harness export <id>` produces readable Markdown; `harness sessions` lists rows
+- [ ] **Plan mode:** `harness --plan` — destructive tool call prompts for approval
+
+See [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) before binding `serve` to non-loopback addresses.
 
 **GitHub (optional):** with `gh auth login`:
 
@@ -73,9 +78,11 @@ Record here when you run this checklist (update the table per release).
 
 ### Snapshot for current tree (fill in when cutting a release)
 
-- **Date:** 2026-05-03 (workspace verification pass)
-- **Recorded revision:** run `git log -1 --oneline` when you tag — should include this checklist and MIT license change.
-- **Go / no-go:** **GO** for public Beta under MIT — complete TUI + `gh` checks on a full dev machine before calling it stable.
+See **[`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md)** for the latest automated gate results (May 2026: **164 tests**, P0 closed, threat model published; manual smoke §3 still pending).
+
+- **Date:** update when you tag
+- **Recorded revision:** `git log -1 --oneline`
+- **Go / no-go:** **GO** for public beta under MIT — complete TUI + `gh` checks on a full dev machine before calling it stable.
 
 ---
 

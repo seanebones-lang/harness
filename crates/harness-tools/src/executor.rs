@@ -1,16 +1,29 @@
 use crate::confirm::ConfirmGate;
+use crate::confirm::ConfirmResult;
+use crate::policy::tool_requires_confirmation;
 use crate::registry::Tool as _;
 use crate::registry::ToolRegistry;
 use crate::tools::TestRunnerTool;
 use harness_provider_core::ToolCall;
+use std::collections::HashSet;
 use tracing::{debug, warn};
 
-/// Tools that require explicit confirmation in plan mode.
-const DESTRUCTIVE_TOOLS: &[&str] = &["write_file", "patch_file", "shell", "apply_patch"];
+/// When the confirm gate is active, which tool calls require user approval.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConfirmPolicy {
+    /// Confirm gate disabled (default).
+    #[default]
+    Off,
+    /// Pause for shell confirm patterns, new-file writes, MCP tools, and `always_ask` rules.
+    Smart,
+    /// Pause for all destructive operations (same as `--plan`).
+    Plan,
+}
 
 /// Tools that modify files (trigger autoformat + optional autotest).
 const FILE_WRITE_TOOLS: &[&str] = &["write_file", "patch_file", "apply_patch"];
 
+/// Runs registered tools on behalf of the agent, with optional confirm gate and hooks.
 #[derive(Clone)]
 pub struct ToolExecutor {
     registry: ToolRegistry,
@@ -24,9 +37,20 @@ pub struct ToolExecutor {
     autotest_scope: Option<String>,
     /// Trust rules: (tool, pattern) pairs that bypass the confirm gate.
     trusted: Vec<(String, String)>,
+    /// MCP-adapted tool names (require confirmation in plan mode).
+    mcp_tool_names: HashSet<String>,
+    /// Always-ask rules from config: (tool, pattern).
+    always_ask: Vec<(String, String)>,
+    /// Smart-mode shell patterns from `[shell].confirm_required`.
+    shell_confirm_patterns: Vec<String>,
+    /// Tool names that bypass confirmation even in plan/smart mode.
+    auto_approve: HashSet<String>,
+    /// Which calls require confirmation when the gate is enabled.
+    confirm_policy: ConfirmPolicy,
 }
 
 impl ToolExecutor {
+    /// Build an executor over the given tool registry.
     pub fn new(registry: ToolRegistry) -> Self {
         Self {
             registry,
@@ -35,6 +59,11 @@ impl ToolExecutor {
             autotest: false,
             autotest_scope: None,
             trusted: Vec::new(),
+            mcp_tool_names: HashSet::new(),
+            always_ask: Vec::new(),
+            shell_confirm_patterns: Vec::new(),
+            auto_approve: HashSet::new(),
+            confirm_policy: ConfirmPolicy::Off,
         }
     }
 
@@ -42,6 +71,100 @@ impl ToolExecutor {
     pub fn with_trusted(mut self, rules: Vec<(String, String)>) -> Self {
         self.trusted = rules;
         self
+    }
+
+    /// Attach always-ask rules from `[approval].always_ask`.
+    pub fn with_always_ask(mut self, rules: Vec<(String, String)>) -> Self {
+        self.always_ask = rules;
+        self
+    }
+
+    /// Shell patterns that trigger confirmation in smart mode.
+    pub fn with_shell_confirm_patterns(mut self, patterns: Vec<String>) -> Self {
+        self.shell_confirm_patterns = patterns;
+        self
+    }
+
+    /// Tool names from `[approval].auto_approve` that skip confirmation.
+    pub fn with_auto_approve(mut self, tools: Vec<String>) -> Self {
+        self.auto_approve = tools.into_iter().collect();
+        self
+    }
+
+    /// Set smart vs plan confirmation policy (requires `with_confirm_gate`).
+    pub fn with_confirm_policy(mut self, policy: ConfirmPolicy) -> Self {
+        self.confirm_policy = policy;
+        self
+    }
+
+    /// Mark MCP tool names that require confirmation in plan mode.
+    pub fn with_mcp_tool_names(mut self, names: HashSet<String>) -> Self {
+        self.mcp_tool_names = names;
+        self
+    }
+
+    fn first_arg_preview(args: &serde_json::Value) -> &str {
+        args.get("command")
+            .or_else(|| args.get("path"))
+            .or_else(|| args.get("action"))
+            .or_else(|| args.get("patch"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    }
+
+    fn matches_always_ask(&self, tool: &str, preview: &str) -> bool {
+        self.always_ask.iter().any(|(t, p)| {
+            let tool_match = t == tool || t == "*";
+            let pat_match = p == "*" || preview.contains(p.as_str());
+            tool_match && pat_match
+        })
+    }
+
+    async fn needs_confirmation(&self, tool: &str, args: &serde_json::Value) -> bool {
+        if self.auto_approve.contains(tool) {
+            return false;
+        }
+        if self.confirm_policy == ConfirmPolicy::Off {
+            return false;
+        }
+
+        let preview = Self::first_arg_preview(args);
+        if self.matches_always_ask(tool, preview) {
+            return true;
+        }
+
+        match self.confirm_policy {
+            ConfirmPolicy::Off => false,
+            ConfirmPolicy::Plan => {
+                self.mcp_tool_names.contains(tool) || tool_requires_confirmation(tool, args)
+            }
+            ConfirmPolicy::Smart => {
+                if self.mcp_tool_names.contains(tool) {
+                    return true;
+                }
+                if tool == "shell" {
+                    let cmd = args
+                        .get("command")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if self
+                        .shell_confirm_patterns
+                        .iter()
+                        .any(|pat| cmd.contains(pat.as_str()))
+                    {
+                        return true;
+                    }
+                }
+                if matches!(tool, "write_file" | "patch_file") {
+                    if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
+                        if matches!(tokio::fs::try_exists(path).await, Ok(false)) {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+        }
     }
 
     fn is_trusted(&self, tool: &str, first_arg: &str) -> bool {
@@ -74,6 +197,7 @@ impl ToolExecutor {
         self
     }
 
+    /// Execute a provider tool call and return string output for the agent loop.
     pub async fn execute(&self, call: &ToolCall) -> String {
         let args = match call.args() {
             Ok(v) => v,
@@ -88,22 +212,43 @@ impl ToolExecutor {
         // In plan mode, pause and wait for confirmation before destructive calls.
         // Trusted tool/pattern pairs bypass the confirm gate.
         if let Some(gate) = &self.confirm_gate {
-            if DESTRUCTIVE_TOOLS.contains(&call.function.name.as_str()) {
-                let first_arg = args
-                    .get("command")
-                    .or_else(|| args.get("path"))
-                    .or_else(|| args.get("action"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
+            if self.needs_confirmation(&call.function.name, &args).await {
+                let first_arg = Self::first_arg_preview(&args);
                 if !self.is_trusted(&call.function.name, first_arg) {
                     let preview = build_preview(&call.function.name, &args);
-                    let approved = gate.request(&call.function.name, preview).await;
-                    if !approved {
-                        return format!(
-                            "[plan mode] '{}' was skipped by user.",
-                            call.function.name
-                        );
+                    match gate
+                        .request(&call.function.name, preview, Some(args.clone()))
+                        .await
+                    {
+                        ConfirmResult::Deny => {
+                            return format!(
+                                "[plan mode] '{}' was skipped by user.",
+                                call.function.name
+                            );
+                        }
+                        ConfirmResult::ApplyContent { path, content } => {
+                            if let Err(e) = tokio::fs::write(&path, &content).await {
+                                return format!("Tool error writing {path}: {e}");
+                            }
+                            let mut result =
+                                format!("[plan mode] applied reviewed diff to {path}");
+                            if self.autoformat {
+                                tokio::spawn(autoformat(path.clone()));
+                            }
+                            if self.autotest {
+                                let scope = self.autotest_scope.clone();
+                                let test_args = serde_json::json!({ "scope": scope });
+                                if let Ok(report) = TestRunnerTool.execute(test_args).await {
+                                    if report.contains("FAIL") {
+                                        result = format!("{result}\n\n[autotest]\n{report}");
+                                    } else {
+                                        result = format!("{result}\n\n[autotest] {report}");
+                                    }
+                                }
+                            }
+                            return result;
+                        }
+                        ConfirmResult::Approve => {}
                     }
                 }
             }
@@ -145,10 +290,12 @@ impl ToolExecutor {
         result
     }
 
+    /// Underlying tool registry.
     pub fn registry(&self) -> &ToolRegistry {
         &self.registry
     }
 
+    /// Whether plan/approve confirmation is enabled.
     pub fn has_confirm_gate(&self) -> bool {
         self.confirm_gate.is_some()
     }
@@ -210,5 +357,71 @@ fn build_preview(tool_name: &str, args: &serde_json::Value) -> String {
             format!("patch {path}\n{old_preview}{new_preview}")
         }
         _ => serde_json::to_string_pretty(args).unwrap_or_default(),
+    }
+}
+
+#[cfg(test)]
+impl ToolExecutor {
+    async fn test_needs_confirmation(&self, tool: &str, args: &serde_json::Value) -> bool {
+        self.needs_confirmation(tool, args).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::ToolRegistry;
+    use serde_json::json;
+
+    fn executor_with_policy(policy: ConfirmPolicy) -> ToolExecutor {
+        ToolExecutor::new(ToolRegistry::new())
+            .with_confirm_policy(policy)
+            .with_shell_confirm_patterns(vec!["git push".into()])
+            .with_auto_approve(vec!["read_file".into()])
+    }
+
+    #[tokio::test]
+    async fn plan_mode_confirms_destructive_shell() {
+        let ex = executor_with_policy(ConfirmPolicy::Plan);
+        assert!(
+            ex.test_needs_confirmation(
+                "shell",
+                &json!({"command": "echo hello"})
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn smart_mode_skips_benign_shell() {
+        let ex = executor_with_policy(ConfirmPolicy::Smart);
+        assert!(
+            !ex.test_needs_confirmation(
+                "shell",
+                &json!({"command": "echo hello"})
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn smart_mode_confirms_shell_patterns() {
+        let ex = executor_with_policy(ConfirmPolicy::Smart);
+        assert!(
+            ex.test_needs_confirmation(
+                "shell",
+                &json!({"command": "git push origin main"})
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn auto_approve_skips_even_in_plan_mode() {
+        let ex = executor_with_policy(ConfirmPolicy::Plan);
+        assert!(
+            !ex.test_needs_confirmation("read_file", &json!({"path": "x"}))
+                .await
+        );
     }
 }

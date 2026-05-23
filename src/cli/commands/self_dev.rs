@@ -85,7 +85,9 @@ pub async fn run_self_dev(
         workspace: workspace.clone(),
     });
     registry.register(ShellTool::new(shell_cfg, workspace.clone()));
-    registry.register(SearchCodeTool);
+    registry.register(SearchCodeTool {
+        workspace: workspace.clone(),
+    });
     registry.register(RebuildSelfTool::new(src_dir.clone()));
     registry.register(ReloadSelfTool::new(src_dir.clone()));
 
@@ -113,6 +115,8 @@ pub async fn run_self_dev(
         tools,
         model,
         sd_cfg,
+        None,
+        None,
         None,
         None,
         None,

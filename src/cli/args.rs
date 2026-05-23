@@ -215,6 +215,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: SwarmAction,
     },
+    /// Write to Obsidian, Apple Notes, Calendar, or list GitHub Project items.
+    Bridge {
+        #[command(subcommand)]
+        action: BridgeAction,
+    },
     /// Export observability traces.
     Trace {
         /// Trace ID to export (omit for last trace).
@@ -278,6 +283,46 @@ pub enum SwarmAction {
         /// Task ID.
         id: String,
     },
+    /// Cancel a pending or running task.
+    Cancel {
+        /// Task ID (prefix ok).
+        id: String,
+    },
+    /// Wait until a task completes (or timeout).
+    Wait {
+        /// Task ID (prefix ok).
+        id: String,
+        /// Max seconds to wait (default 300).
+        #[arg(long, default_value = "300")]
+        timeout_secs: u64,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum BridgeAction {
+    /// Write a note to Obsidian (`[bridges.obsidian]` must be enabled).
+    Obsidian {
+        title: String,
+        /// Note body (or `-` to read from stdin).
+        content: String,
+    },
+    /// Create a note in Apple Notes.
+    Notes {
+        title: String,
+        content: String,
+    },
+    /// List calendar events for a date (`YYYY-MM-DD`).
+    CalendarList {
+        date: String,
+    },
+    /// Create a calendar event (`start`/`end` as AppleScript date strings).
+    CalendarCreate {
+        title: String,
+        start: String,
+        end: String,
+    },
+    /// List GitHub Project V2 items.
+    GithubProject,
 }
 
 #[derive(Subcommand)]

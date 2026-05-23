@@ -9,21 +9,39 @@ use tokio::process::Command;
 use crate::registry::Tool;
 use crate::workspace_root::WorkspaceRoot;
 
-/// On Windows, prefer Git Bash `sh`/`bash` (on PATH on GitHub runners and typical dev installs)
-/// so POSIX shell syntax matches Unix. Falls back to `cmd.exe /C` if neither exists.
+/// On Windows, prefer Git Bash `sh`/`bash`, then PowerShell, then `cmd.exe /C`.
 #[cfg(windows)]
-fn windows_shell_interpreter() -> (PathBuf, bool) {
+fn windows_shell_interpreter() -> (PathBuf, ShellMode) {
     if let Some(paths) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&paths) {
             for name in ["sh.exe", "bash.exe"] {
                 let p = dir.join(name);
                 if p.is_file() {
-                    return (p, true);
+                    return (p, ShellMode::PosixSh);
                 }
             }
         }
     }
-    (PathBuf::from("cmd.exe"), false)
+    for name in ["pwsh.exe", "powershell.exe"] {
+        if let Ok(output) = std::process::Command::new(name)
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg("exit 0")
+            .output()
+        {
+            if output.status.success() {
+                return (PathBuf::from(name), ShellMode::PowerShell);
+            }
+        }
+    }
+    (PathBuf::from("cmd.exe"), ShellMode::Cmd)
+}
+
+#[cfg(windows)]
+enum ShellMode {
+    PosixSh,
+    PowerShell,
+    Cmd,
 }
 
 /// Configuration forwarded from the main config at build time.
@@ -50,12 +68,14 @@ impl Default for ShellConfig {
     }
 }
 
+/// Shell command execution tool.
 pub struct ShellTool {
     config: ShellConfig,
     workspace: Arc<WorkspaceRoot>,
 }
 
 impl ShellTool {
+    /// Create a shell tool with safety config and workspace sandbox.
     pub fn new(config: ShellConfig, workspace: Arc<WorkspaceRoot>) -> Self {
         Self { config, workspace }
     }
@@ -96,14 +116,15 @@ impl Tool for ShellTool {
         ToolDefinition::new(
             "shell",
             "Run a shell command and return its stdout and stderr. \
-             Supports pipes, redirections, &&, ||, and all shell syntax. \
+             On Unix and Git Bash on Windows, full sh syntax is supported. \
+             On native Windows without Git Bash, PowerShell or cmd.exe is used. \
              Use for build, test, git, and other CLI operations.",
             json!({
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "Shell command to execute. Full sh syntax supported."
+                        "description": "Shell command to execute. POSIX sh on Unix/Git Bash; PowerShell/cmd on native Windows."
                     },
                     "cwd": {
                         "type": "string",
@@ -137,6 +158,18 @@ impl Tool for ShellTool {
             }
         }
 
+        // Patterns that require explicit user approval (use --plan in TUI or run manually).
+        for pattern in &self.config.confirm_required {
+            if cmd_lower.contains(pattern.to_lowercase().as_str()) {
+                return Err(anyhow::anyhow!(
+                    "Command requires confirmation (matches '{}'): {}. \
+                     Re-run with --plan to approve interactively, or execute manually.",
+                    pattern,
+                    command
+                ));
+            }
+        }
+
         if let Some(allow) = self.config.cmd_allowlist.as_ref().filter(|a| !a.is_empty()) {
             if let Some(tok) = command.split_whitespace().next() {
                 if tok.starts_with('/') && !allow.iter().any(|a| a.as_str() == tok) {
@@ -163,12 +196,18 @@ impl Tool for ShellTool {
         let mut cmd = {
             #[cfg(windows)]
             {
-                let (prog, is_posix) = windows_shell_interpreter();
+                let (prog, mode) = windows_shell_interpreter();
                 let mut c = Command::new(prog);
-                if is_posix {
-                    c.arg("-c").arg(command);
-                } else {
-                    c.arg("/C").arg(command);
+                match mode {
+                    ShellMode::PosixSh => {
+                        c.arg("-c").arg(command);
+                    }
+                    ShellMode::PowerShell => {
+                        c.arg("-NoProfile").arg("-Command").arg(command);
+                    }
+                    ShellMode::Cmd => {
+                        c.arg("/C").arg(command);
+                    }
                 }
                 c
             }
@@ -240,8 +279,22 @@ impl ShellTool {
             .append(true)
             .open(path)
         {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+            }
             let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
             let _ = writeln!(f, "[{ts}] {cmd}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn shell_config_defaults_include_denylist() {
+        let cfg = super::ShellConfig::default();
+        assert!(!cfg.denylist.is_empty());
     }
 }

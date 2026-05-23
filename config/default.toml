@@ -19,23 +19,36 @@ temperature = 0.7
 # base_url = "https://api.anthropic.com/v1"
 
 [agent]
+# Default matches `DEFAULT_SYSTEM` in src/agent.rs when this block is omitted.
 system_prompt = """
 You are a powerful coding assistant running in a terminal.
 
 Available tools:
   read_file, write_file     — read or overwrite files
-  patch_file                — surgical old→new text replacement (prefer this over write_file for edits)
+  patch_file                — surgical old→new text replacement (prefer over write_file for edits)
+  apply_patch               — apply a unified diff across multiple files atomically (prefer for multi-file edits)
   list_dir                  — list directory contents
-  shell                     — run shell commands (build, test, git, etc.)
+  shell                     — run shell commands (build, test, etc.)
+  git                       — typed git operations: status/diff/add/commit/branch/push/log/blame/restore
+  test_runner               — run project tests with structured pass/fail output
   search_code               — regex search across the codebase
   spawn_agent               — run a sub-agent with base tools for parallel tasks
-  spawn_swarm               — queue parallel background tasks (swarm list / result)
+  spawn_swarm               — queue parallel background tasks (harness swarm list / result)
+  find_definition           — LSP go-to-definition across the codebase
+  find_references           — LSP find all references to a symbol
+  rename_symbol             — LSP safe rename across files
+  diagnostics               — LSP errors/warnings for a file
   browser (when enabled)    — Chrome CDP: navigate, screenshot, click, fill forms
+  web_search (when enabled) — provider-native web search (no extra config needed)
+  bash (when enabled)       — provider-native sandboxed code execution
   MCP tools (when loaded)   — any tools registered via .harness/mcp.json
+  gh                        — GitHub CLI wrapper: PR/issue/CI workflow
 
 Guidelines:
-  - Prefer patch_file over write_file for targeted edits.
-  - Always run tests or build commands after changes to verify correctness.
+  - Prefer patch_file for single-file edits, apply_patch for multi-file changes.
+  - Use the git tool for all git operations instead of shell git commands.
+  - Always run test_runner after changes to verify correctness.
+  - Use web_search when you need up-to-date information or documentation.
   - Be concise. Prefer making changes over explaining them.
   - When editing multiple files, use spawn_agent for parallelism.
   - In plan mode (--plan flag), destructive calls pause for user approval.
@@ -58,6 +71,13 @@ embed_model = "nomic-embed-text"
 # relaxed = warn but allow paths outside the root. off = disable checks.
 sandbox = "strict"
 
+[approval]
+# auto = never pause (default). smart = pause for new-file writes + shell confirm patterns.
+# plan = pause for all destructive tool calls (same as harness --plan).
+# mode = "auto"
+# auto_approve = ["read_file", "list_dir"]
+# always_ask = ["shell:git push", "write_file"]
+
 # [shell]
 # Optional allowlist for argv0 when the command starts with an absolute path.
 # cmd_allowlist = ["/usr/bin/git", "/usr/bin/cargo"]
@@ -70,6 +90,8 @@ sandbox = "strict"
 # Path to your MCP server configuration.
 # Harness also checks .harness/mcp.json and ~/.harness/mcp.json automatically.
 # config_path = ".harness/mcp.json"
+# Optional: restrict which MCP server binaries may be spawned (basename or full path).
+# command_allowlist = ["npx", "node", "python3", "uvx"]
 
 [budget]
 # Spending limits — Harness warns at 80% and blocks at 100%.
@@ -140,14 +162,29 @@ sandbox = "strict"
 # max_concurrency = 4
 # db_path = "~/.harness/swarm.db"
 
-# [bridges]
-# obsidian_vault = ""
-# apple_notes_folder = "Harness"
-# github_owner = ""
-# github_project_number = 0
-
 # [collab]
 # enabled = false
-# bind = "127.0.0.1:9090"
+# max_users = 10
+
+# [bridges.obsidian]
+# enabled = false
+# vault = "MyVault"
+# folder = "Harness"
+
+# [bridges.notes]
+# enabled = false
+
+# [bridges.calendar]
+# enabled = false
+# calendar = "Harness"
+
+# [bridges.github_projects]
+# enabled = false
+# owner = "you"
+# project_number = 1
+
+# Daemon transport (Unix socket on macOS/Linux; loopback TCP on Windows).
+# [daemon]
+# transport = "auto"   # auto | unix | tcp
 
 # Phase E adds richer notification kinds when integrations call into src/notifications.rs.

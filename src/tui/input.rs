@@ -13,7 +13,9 @@ use crate::events::{try_emit, AgentEvent};
 use crate::{agent, background, checkpoint, cost, memory_project, notifications};
 
 use super::slash::detect_test_command;
-use super::{AppState, PendingConfirm};
+use super::AppState;
+use super::PendingConfirm;
+use harness_tools::ConfirmResult;
 
 pub(crate) fn handle_char(state: &Arc<Mutex<AppState>>, c: char) {
     state.lock().insert_char(c);
@@ -71,19 +73,28 @@ pub(crate) fn handle_voice(state: &Arc<Mutex<AppState>>) {
 }
 
 pub(crate) fn approve_confirm(state: &Arc<Mutex<AppState>>, pc: PendingConfirm) {
-    let _ = pc.reply.send(true);
+    finish_confirm(state, pc, ConfirmResult::Approve, "approved");
+}
+
+pub(crate) fn finish_confirm(
+    state: &Arc<Mutex<AppState>>,
+    pc: PendingConfirm,
+    result: ConfirmResult,
+    label: &str,
+) {
+    let tool = pc.tool_name.clone();
+    let _ = pc.reply.send(result);
     let mut st = state.lock();
     let first_arg = pc.preview.lines().next().unwrap_or("").to_string();
-    let key = (pc.tool_name.clone(), first_arg.clone());
+    let key = (tool.clone(), first_arg.clone());
     let count = st.approval_counts.entry(key).or_insert(0);
     *count += 1;
     if *count == 3 {
         st.push_event(format!(
-            "[trust] Approved 3x. Run: harness trust {} \"{}\"",
-            pc.tool_name, first_arg
+            "[trust] Approved 3x. Run: harness trust {tool} \"{first_arg}\""
         ));
     }
-    st.push_event(format!("[plan] approved: {}", pc.tool_name));
+    st.push_event(format!("[plan] {label}: {tool}"));
     st.status = "Approved — continuing…".to_string();
 }
 
@@ -235,7 +246,8 @@ pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
         " Ctrl+K            kill to end",
         " Alt+Left/Right    word jump",
         " Tab               @file autocomplete / slash autocomplete",
-        " y / n / a         plan overlay: approve / deny / always-allow",
+        " y / n / a         plan overlay: approve hunk / deny / always-allow",
+        " [ / ]             diff review: previous / next hunk",
         " Ctrl+C            quit",
     ] {
         st.push_event(line.to_string());
@@ -387,8 +399,10 @@ pub(crate) async fn handle_slash_command(
             let mut st = state.lock();
             st.plan_mode = !st.plan_mode;
             if st.plan_mode {
+                st.confirm_bar_label = Some("PLAN".into());
                 st.status = "Plan mode ON (restart with --plan to fully gate).".to_string();
             } else {
+                st.confirm_bar_label = None;
                 st.status = "Plan mode OFF.".to_string();
             }
         }

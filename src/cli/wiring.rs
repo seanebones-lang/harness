@@ -15,7 +15,8 @@ use harness_tools::tools::{
     SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool, SpawnSwarmTool,
     SwarmEnqueueRunner, TestRunnerTool, WriteFileTool,
 };
-use harness_tools::{SandboxMode, ToolExecutor, ToolRegistry, WorkspaceRoot};
+use harness_tools::{ConfirmGate, SandboxMode, ToolExecutor, ToolRegistry, WorkspaceRoot};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -37,6 +38,7 @@ pub fn tool_workspace(cfg: &crate::config::Config) -> Arc<WorkspaceRoot> {
 }
 
 /// Build the full tool executor: base tools + SpawnAgentTool + SpawnSwarmTool + MCP tools.
+#[allow(clippy::too_many_arguments)]
 pub async fn build_tools(
     provider: ArcProvider,
     model: String,
@@ -45,6 +47,7 @@ pub async fn build_tools(
     browser_url: &str,
     memory_store: Option<harness_memory::MemoryStore>,
     embed_model: Option<String>,
+    confirm_gate: Option<ConfirmGate>,
 ) -> ToolExecutor {
     let browser_url_owned = browser_url.to_string();
     let cfg_clone = cfg.clone();
@@ -70,6 +73,7 @@ pub async fn build_tools(
                     &cfg_clone,
                     browser_enabled,
                     &browser_url_owned,
+                    None,
                     None,
                 )
                 .await;
@@ -137,6 +141,7 @@ pub async fn build_tools(
         browser_enabled,
         browser_url,
         Some(swarm_enqueue),
+        confirm_gate,
     )
     .await
 }
@@ -148,6 +153,7 @@ pub async fn build_tools_inner(
     browser_enabled: bool,
     browser_url: &str,
     swarm_enqueue: Option<SwarmEnqueueRunner>,
+    confirm_gate: Option<ConfirmGate>,
 ) -> ToolExecutor {
     let workspace = tool_workspace(cfg);
 
@@ -167,11 +173,22 @@ pub async fn build_tools_inner(
     let sub_model = model.clone();
     let sub_shell_cfg = shell_cfg.clone();
     let sub_workspace = workspace.clone();
+    let sub_confirm = confirm_gate.clone();
+    let sub_confirm_policy = if confirm_gate.is_some() {
+        if cfg.approval.effective_mode() == "smart" {
+            harness_tools::ConfirmPolicy::Smart
+        } else {
+            harness_tools::ConfirmPolicy::Plan
+        }
+    } else {
+        harness_tools::ConfirmPolicy::Off
+    };
     let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |task: String| {
         let p: ArcProvider = sub_provider.clone();
         let m = sub_model.clone();
         let scfg = sub_shell_cfg.clone();
         let ws = sub_workspace.clone();
+        let gate = sub_confirm.clone();
         let sub_tools = {
             let mut r = ToolRegistry::new();
             r.register(ReadFileTool {
@@ -186,9 +203,17 @@ pub async fn build_tools_inner(
             r.register(ListDirTool {
                 workspace: ws.clone(),
             });
-            r.register(ShellTool::new(scfg, ws));
-            r.register(SearchCodeTool);
-            ToolExecutor::new(r)
+            r.register(ShellTool::new(scfg, ws.clone()));
+            r.register(SearchCodeTool {
+                workspace: ws.clone(),
+            });
+            let mut exec = ToolExecutor::new(r);
+            if let Some(g) = gate {
+                exec = exec
+                    .with_confirm_gate(g)
+                    .with_confirm_policy(sub_confirm_policy);
+            }
+            exec
         };
         Box::pin(async move {
             use harness_memory::Session;
@@ -233,8 +258,12 @@ pub async fn build_tools_inner(
         workspace: workspace.clone(),
     });
     registry.register(ShellTool::new(shell_cfg, workspace.clone()));
-    registry.register(SearchCodeTool);
-    registry.register(GitTool);
+    registry.register(SearchCodeTool {
+        workspace: workspace.clone(),
+    });
+    registry.register(GitTool {
+        workspace: workspace.clone(),
+    });
     registry.register(GhTool);
     registry.register(TestRunnerTool);
     registry.register(SpawnAgentTool::new(runner));
@@ -286,24 +315,63 @@ pub async fn build_tools_inner(
     }
 
     // Load MCP tools.
+    let mcp_allowlist = cfg.mcp.command_allowlist.as_deref();
+    let builtin_before: HashSet<String> = registry.names().into_iter().collect();
     if let Some(mcp_path) = harness_mcp::find_config() {
-        if let Err(e) =
-            harness_mcp::load_mcp_tools(&mcp_path, &mut registry, Some(provider.clone())).await
+        if let Err(e) = harness_mcp::load_mcp_tools(
+            &mcp_path,
+            &mut registry,
+            Some(provider.clone()),
+            mcp_allowlist,
+        )
+        .await
         {
             tracing::warn!("MCP load failed: {e}");
         }
     }
     if let Some(mcp_path) = &cfg.mcp.config_path {
         if mcp_path.exists() {
-            if let Err(e) =
-                harness_mcp::load_mcp_tools(mcp_path, &mut registry, Some(provider.clone())).await
+            if let Err(e) = harness_mcp::load_mcp_tools(
+                mcp_path,
+                &mut registry,
+                Some(provider.clone()),
+                mcp_allowlist,
+            )
+            .await
             {
                 tracing::warn!("MCP config load failed: {e}");
             }
         }
     }
+    let mcp_tool_names: HashSet<String> = registry
+        .names()
+        .into_iter()
+        .filter(|n| !builtin_before.contains(n))
+        .collect();
+
+    let confirm_policy = if confirm_gate.is_some() {
+        if cfg.approval.effective_mode() == "smart" {
+            harness_tools::ConfirmPolicy::Smart
+        } else {
+            harness_tools::ConfirmPolicy::Plan
+        }
+    } else {
+        harness_tools::ConfirmPolicy::Off
+    };
 
     let executor = ToolExecutor::new(registry);
+    let executor = if let Some(gate) = confirm_gate {
+        executor.with_confirm_gate(gate)
+    } else {
+        executor
+    };
+
+    let executor = executor
+        .with_mcp_tool_names(mcp_tool_names)
+        .with_always_ask(cfg.approval.parsed_always_ask())
+        .with_auto_approve(cfg.approval.auto_approve.clone().unwrap_or_default())
+        .with_shell_confirm_patterns(cfg.shell.effective_confirm_required())
+        .with_confirm_policy(confirm_policy);
 
     // Wire autotest if enabled in config.
     let executor = if cfg.autotest.enabled {
@@ -333,6 +401,9 @@ pub async fn connect_to_server(
     prompt: &str,
     session_id: Option<&str>,
 ) -> Result<()> {
+    let token = crate::auth_token::read_token_file("server.token").or_else(|_| {
+        std::env::var("HARNESS_SERVER_TOKEN").map_err(anyhow::Error::msg)
+    })?;
     let client = reqwest::Client::new();
     let mut body = serde_json::json!({ "prompt": prompt });
     if let Some(id) = session_id {
@@ -341,6 +412,7 @@ pub async fn connect_to_server(
 
     let resp = client
         .post(format!("{base_url}/api/chat"))
+        .header("Authorization", format!("Bearer {token}"))
         .json(&body)
         .send()
         .await

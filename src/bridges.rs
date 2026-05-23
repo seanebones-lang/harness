@@ -1,13 +1,6 @@
 #![allow(dead_code)]
-//! Ecosystem bridges: OS-level integrations for macOS apps and GitHub Projects.
-//!
-//! Gated by `[bridges]` config block. Each bridge is independently enabled.
-//!
-//! Available bridges:
-//! - **Obsidian**: write notes/snippets to the Obsidian vault via its URI scheme
-//! - **Apple Notes**: create/append notes via osascript
-//! - **Calendar**: query and create events via EventKit (osascript)
-//! - **GitHub Projects**: read/update project board items via `gh api graphql`
+//! External app bridges — Obsidian, Apple Notes, Calendar, GitHub Projects.
+//! CLI: `harness bridge …` when `[bridges.*]` enabled in config.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};

@@ -1064,6 +1064,32 @@ mod tests {
 
         server.await.unwrap();
     }
+
+    mod extract_text_proptest {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn plain_string_round_trip(s in ".*") {
+                let val = Value::String(s.clone());
+                prop_assert_eq!(extract_mcp_text_content(Some(&val)), s);
+            }
+
+            #[test]
+            fn text_parts_join_with_newlines(parts in prop::collection::vec(".*", 0..5)) {
+                let arr: Vec<Value> = parts
+                    .iter()
+                    .map(|p| json!({ "type": "text", "text": p }))
+                    .collect();
+                let expected = parts.join("\n");
+                prop_assert_eq!(
+                    extract_mcp_text_content(Some(&Value::Array(arr))),
+                    expected
+                );
+            }
+        }
+    }
 }
 
 /// Collect workspace roots from the current directory and common project markers.
@@ -1078,14 +1104,6 @@ fn collect_roots() -> Vec<Value> {
             .unwrap_or("workspace")
             .to_string();
         roots.push(json!({ "uri": uri, "name": name }));
-    }
-
-    // Include home dir as a secondary root
-    if let Some(home) = dirs::home_dir() {
-        roots.push(json!({
-            "uri": format!("file://{}", home.display()),
-            "name": "home"
-        }));
     }
 
     roots

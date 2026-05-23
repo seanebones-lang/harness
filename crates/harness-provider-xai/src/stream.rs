@@ -277,4 +277,24 @@ mod tests {
         assert!(matches!(&emitted[0], Delta::ToolCall(call) if call.id == "call_a"));
         assert!(matches!(&emitted[1], Delta::ToolCall(call) if call.id == "call_b"));
     }
+
+    mod sse_proptest {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn malformed_json_line_does_not_panic(garbage in prop::collection::vec(any::<u8>(), 0..40)) {
+                let line = format!("data: {}\n", String::from_utf8_lossy(&garbage));
+                let inner = stream::iter(vec![Ok::<Bytes, reqwest::Error>(Bytes::from(line))]);
+                let rt = tokio::runtime::Runtime::new().expect("runtime");
+                rt.block_on(async {
+                    let mut sse = SseStream::new(inner);
+                    while let Some(item) = sse.next().await {
+                        let _ = item;
+                    }
+                });
+            }
+        }
+    }
 }

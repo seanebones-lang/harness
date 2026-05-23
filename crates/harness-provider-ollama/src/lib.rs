@@ -208,17 +208,24 @@ fn parse_ollama_stream(
         stream: ByteStream,
         buf: String,
         done: bool,
+        pending_tools: Vec<ToolCall>,
     }
 
     let state = State {
         stream: Box::pin(byte_stream),
         buf: String::new(),
         done: false,
+        pending_tools: Vec::new(),
     };
 
     futures::stream::unfold(state, |mut s| async move {
         if s.done {
             return None;
+        }
+
+        if let Some(call) = s.pending_tools.first().cloned() {
+            s.pending_tools.remove(0);
+            return Some((Ok(Delta::ToolCall(call)), s));
         }
 
         loop {
@@ -231,25 +238,24 @@ fn parse_ollama_stream(
                 }
 
                 if let Ok(v) = serde_json::from_str::<Value>(&line) {
-                    // Tool calls — emit first one; subsequent calls handled next iteration
-                    if let Some(call) = v["message"]["tool_calls"]
-                        .as_array()
-                        .and_then(|a| a.first())
-                    {
-                        let id = call["id"].as_str().unwrap_or("tool_0").to_string();
-                        let name = call["function"]["name"].as_str().unwrap_or("").to_string();
-                        let args = call["function"]["arguments"].to_string();
-                        return Some((
-                            Ok(Delta::ToolCall(ToolCall {
+                    if let Some(calls) = v["message"]["tool_calls"].as_array() {
+                        for call in calls {
+                            let id = call["id"].as_str().unwrap_or("tool_0").to_string();
+                            let name = call["function"]["name"].as_str().unwrap_or("").to_string();
+                            let args = call["function"]["arguments"].to_string();
+                            s.pending_tools.push(ToolCall {
                                 id,
                                 kind: "function".into(),
                                 function: ToolCallFunction {
                                     name,
                                     arguments: args,
                                 },
-                            })),
-                            s,
-                        ));
+                            });
+                        }
+                        if let Some(call) = s.pending_tools.first().cloned() {
+                            s.pending_tools.remove(0);
+                            return Some((Ok(Delta::ToolCall(call)), s));
+                        }
                     }
 
                     // Text content
@@ -290,6 +296,33 @@ fn parse_ollama_stream(
                     return Some((Err(ProviderError::Other(e.to_string())), s));
                 }
                 None => {
+                    // Flush a final NDJSON line that may lack a trailing newline.
+                    let line = s.buf.trim().to_string();
+                    s.buf.clear();
+                    if !line.is_empty() {
+                        if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                            if let Some(calls) = v["message"]["tool_calls"].as_array() {
+                                for call in calls {
+                                    let id =
+                                        call["id"].as_str().unwrap_or("tool_0").to_string();
+                                    let name = call["function"]["name"]
+                                        .as_str()
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let args = call["function"]["arguments"].to_string();
+                                    s.pending_tools.push(ToolCall {
+                                        id,
+                                        kind: "function".into(),
+                                        function: ToolCallFunction { name, arguments: args },
+                                    });
+                                }
+                                if let Some(call) = s.pending_tools.first().cloned() {
+                                    s.pending_tools.remove(0);
+                                    return Some((Ok(Delta::ToolCall(call)), s));
+                                }
+                            }
+                        }
+                    }
                     s.done = true;
                     return Some((
                         Ok(Delta::Done {
@@ -301,4 +334,62 @@ fn parse_ollama_stream(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod ollama_stream_tests {
+    use super::*;
+    use futures::StreamExt;
+
+    fn ndjson(body: &str) -> bytes::Bytes {
+        bytes::Bytes::from(body.to_string())
+    }
+
+    async fn collect(body: bytes::Bytes) -> Vec<Delta> {
+        let stream = futures::stream::once(async move { Ok::<_, reqwest::Error>(body) });
+        let parsed = parse_ollama_stream(stream);
+        tokio::pin!(parsed);
+        let mut out = Vec::new();
+        while let Some(item) = parsed.next().await {
+            out.push(item.expect("delta"));
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn emits_all_tool_calls_from_one_line() {
+        let body = ndjson(
+            r#"{"message":{"tool_calls":[{"id":"a","function":{"name":"read_file","arguments":"{}"}},{"id":"b","function":{"name":"shell","arguments":"{\"command\":\"ls\"}"}}]}}"#,
+        );
+        let names: Vec<String> = collect(body)
+            .await
+            .into_iter()
+            .filter_map(|d| match d {
+                Delta::ToolCall(tc) => Some(tc.function.name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names, vec!["read_file", "shell"]);
+    }
+
+    #[tokio::test]
+    async fn streams_text_then_done() {
+        let body = ndjson(
+            "{\"message\":{\"content\":\"hello\"}}\n{\"done\":true,\"prompt_eval_count\":1,\"eval_count\":2}\n",
+        );
+        let mut text = String::new();
+        let mut usage = None;
+        for d in collect(body).await {
+            match d {
+                Delta::Text(t) => text.push_str(&t),
+                Delta::Usage {
+                    input_tokens,
+                    output_tokens,
+                } => usage = Some((input_tokens, output_tokens)),
+                _ => {}
+            }
+        }
+        assert_eq!(text, "hello");
+        assert_eq!(usage, Some((1, 2)));
+    }
 }

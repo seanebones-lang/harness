@@ -315,7 +315,11 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
         indicators.push_str("[⚠CU] ");
     }
     if state.plan_mode {
-        indicators.push_str("[PLAN] ");
+        if let Some(label) = state.confirm_bar_label.as_deref() {
+            indicators.push_str(&format!("[{label}] "));
+        } else {
+            indicators.push_str("[PLAN] ");
+        }
     }
     if state.recording_voice {
         indicators.push_str("[🎙REC] ");
@@ -548,25 +552,60 @@ fn draw_confirm_overlay(f: &mut ratatui::Frame, pc: &PendingConfirm, _theme: &Th
 
     f.render_widget(Clear, popup_area);
 
-    let title = format!(" Plan mode — {} ", pc.tool_name);
-    let preview_lines: Vec<Line> = pc
-        .preview
-        .lines()
-        .map(|l| {
-            let color = if l.starts_with("+ ") {
-                Color::Green
-            } else if l.starts_with("- ") {
-                Color::Red
-            } else if l.starts_with("$ ") {
-                Color::Yellow
-            } else {
-                Color::White
-            };
-            Line::from(Span::styled(format!(" {l}"), Style::default().fg(color)))
-        })
-        .collect();
+    let title = if let Some(diff) = &pc.file_diff {
+        format!(
+            " Diff review — {} ({}/{}) ",
+            diff.path.display(),
+            pc.hunk_index + 1,
+            diff.hunks.len().max(1)
+        )
+    } else {
+        format!(" Plan mode — {} ", pc.tool_name)
+    };
+
+    let preview_lines: Vec<Line> = if let Some(diff) = &pc.file_diff {
+        if let Some(hunk) = diff.hunks.get(pc.hunk_index) {
+            crate::diff_review::format_hunk_for_display(hunk)
+                .into_iter()
+                .map(|(op, line)| {
+                    let color = match op {
+                        '+' => Color::Green,
+                        '-' => Color::Red,
+                        _ => Color::White,
+                    };
+                    Line::from(Span::styled(format!(" {line}"), Style::default().fg(color)))
+                })
+                .collect()
+        } else {
+            vec![Line::from(pc.preview.clone())]
+        }
+    } else {
+        pc.preview
+            .lines()
+            .map(|l| {
+                let color = if l.starts_with("+ ") {
+                    Color::Green
+                } else if l.starts_with("- ") {
+                    Color::Red
+                } else if l.starts_with("$ ") {
+                    Color::Yellow
+                } else {
+                    Color::White
+                };
+                Line::from(Span::styled(format!(" {l}"), Style::default().fg(color)))
+            })
+            .collect()
+    };
 
     let mut content: Vec<Line> = preview_lines;
+    if let Some(diff) = &pc.file_diff {
+        let mut buf = crate::diff_review::StagingBuffer::default();
+        buf.entries.insert(diff.path.clone(), diff.clone());
+        content.push(Line::from(Span::styled(
+            format!("  {}", crate::diff_review::render_staging_summary(&buf)),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
     content.push(Line::from(Span::raw("")));
     content.push(Line::from(vec![
         Span::styled(
@@ -575,31 +614,34 @@ fn draw_confirm_overlay(f: &mut ratatui::Frame, pc: &PendingConfirm, _theme: &Th
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" approve   "),
+        Span::raw(" accept hunk   "),
         Span::styled(
             "n",
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" deny   "),
+        Span::raw(" reject hunk   "),
         Span::styled(
-            "a",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            "[",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" always allow   "),
+        Span::raw("/"),
         Span::styled(
-            "Esc",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            "]",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" skip   "),
+        Span::raw(" nav   "),
         Span::styled(
             "Enter",
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" approve"),
+        Span::raw(" approve all   "),
+        Span::styled(
+            "Esc",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" skip"),
     ]));
 
     let block = Block::default()
