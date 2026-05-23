@@ -1,4 +1,5 @@
 mod agent;
+mod auth_token;
 mod ambient;
 mod background;
 mod bridges;
@@ -16,6 +17,7 @@ mod notifications;
 mod observability;
 mod projects;
 mod provider_build;
+mod rate_limit;
 mod server;
 mod swarm;
 mod sync;
@@ -42,6 +44,7 @@ use cli::{
     handle_project_command, list_sessions, run_init, run_self_dev, run_status,
 };
 use cli::{CheckpointAction, Cli, Commands, CostAction, SwarmAction, SyncAction};
+use cli::args::BridgeAction;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -58,6 +61,8 @@ async fn main() -> Result<()> {
     fmt().with_env_filter(filter).with_target(false).init();
 
     let cfg = config::load(cli.config.as_deref())?;
+    swarm::configure(&cfg.swarm);
+    daemon::configure(&cfg.daemon);
 
     if let Some(Commands::Project { action }) = &cli.command {
         handle_project_command(action)?;
@@ -151,6 +156,27 @@ async fn main() -> Result<()> {
     let browser_enabled = cli.browser || cfg.browser.enabled.unwrap_or(false);
     let browser_url = cfg.browser.url.clone().unwrap_or(cli.browser_url);
 
+    // Plan/approve mode: CLI flag or `[approval].mode = "plan" | "smart"`.
+    let approval_mode = cfg.approval.effective_mode();
+    let confirm_active =
+        cli.plan || approval_mode == "plan" || approval_mode == "smart";
+    let interactive_tui = cli.command.is_none() && cli.prompt.is_none();
+    let (confirm_gate, confirm_rx) = if confirm_active && interactive_tui {
+        let (gate, rx) = harness_tools::confirm::channel();
+        (Some(gate), Some(rx))
+    } else {
+        (None, None)
+    };
+    let confirm_bar_label = if confirm_active && interactive_tui {
+        Some(if cli.plan || approval_mode == "plan" {
+            "PLAN"
+        } else {
+            "SMART"
+        })
+    } else {
+        None
+    };
+
     // Build tools (including MCP servers if config exists).
     let tools = build_tools(
         provider.clone(),
@@ -160,8 +186,11 @@ async fn main() -> Result<()> {
         &browser_url,
         memory_store.clone(),
         embed_model.clone(),
+        confirm_gate,
     )
     .await;
+
+    let run_opts = agent::RunOnceOptions::from_config(&cfg, cli.think);
 
     match cli.command {
         Some(Commands::Sessions) => {
@@ -184,6 +213,7 @@ async fn main() -> Result<()> {
                 cfg.agent.system_prompt.as_deref(),
                 &effective_prompt,
                 cli.resume.as_deref(),
+                run_opts.clone(),
             )
             .await?;
         }
@@ -220,12 +250,23 @@ async fn main() -> Result<()> {
                 Some(&system_pr),
                 &context,
                 None,
+                run_opts.clone(),
             )
             .await?;
         }
 
         Some(Commands::Serve { addr }) => {
             let addr: std::net::SocketAddr = addr.parse().context("invalid address")?;
+            if !addr.ip().is_loopback() {
+                tracing::warn!(
+                    %addr,
+                    "binding harness serve to a non-loopback address exposes the agent API — bearer token auth is required"
+                );
+            }
+            let auth_token = auth_token::server_token()?;
+            tracing::info!(
+                "HTTP auth token loaded from ~/.harness/server.token (send as Authorization: Bearer <token>)"
+            );
             let cfg_for_serve = cfg.clone();
             let inner = server::ServeRuntimeState {
                 provider,
@@ -238,6 +279,11 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| agent::DEFAULT_SYSTEM.to_string()),
                 config: cfg_for_serve,
             };
+            let collab_registry = if cfg.collab.enabled {
+                Some(crate::collab::new_registry())
+            } else {
+                None
+            };
             let state = server::ServerState {
                 inner: Arc::new(tokio::sync::RwLock::new(inner)),
                 session_store: Arc::new(session_store),
@@ -246,6 +292,8 @@ async fn main() -> Result<()> {
                 browser_enabled,
                 browser_url,
                 config_active_path: Arc::new(config::active_config_toml_path()),
+                auth_token,
+                collab: collab_registry,
             };
             server::serve(state, addr).await?;
         }
@@ -346,6 +394,7 @@ async fn main() -> Result<()> {
                 match daemon::send_request(&daemon::DaemonRequest {
                     id: 1,
                     method: "status".into(),
+                    token: String::new(),
                     params: serde_json::json!({}),
                 })
                 .await
@@ -497,6 +546,7 @@ async fn main() -> Result<()> {
                     cfg.agent.system_prompt.as_deref(),
                     &transcript,
                     cli.resume.as_deref(),
+                    run_opts.clone(),
                 )
                 .await?;
             }
@@ -573,6 +623,68 @@ async fn main() -> Result<()> {
                     Some(t) => println!("{}", t.result.as_deref().unwrap_or("(no result)")),
                     None => println!("Task {id} not found."),
                 },
+                SwarmAction::Cancel { id } => {
+                    if swarm::cancel_task(&id)? {
+                        println!("Cancelled task {id}.");
+                    } else {
+                        println!("Task {id} not found or already finished.");
+                    }
+                }
+                SwarmAction::Wait { id, timeout_secs } => {
+                    use std::time::Duration;
+                    match swarm::wait_task(&id, Some(Duration::from_secs(timeout_secs))).await? {
+                        Some(t) => println!("{} [{}]", t.id, t.status.as_str()),
+                        None => println!("Task {id} not found."),
+                    }
+                }
+            }
+            return Ok(());
+        }
+
+        Some(Commands::Bridge { action }) => {
+            use BridgeAction::*;
+            match action {
+                Obsidian { title, content } => {
+                    let body = if content == "-" {
+                        use std::io::Read;
+                        let mut s = String::new();
+                        std::io::stdin().read_to_string(&mut s)?;
+                        s
+                    } else {
+                        content
+                    };
+                    bridges::obsidian_write(&cfg.bridges.obsidian, &title, &body).await?;
+                    println!("Obsidian note queued: {title}");
+                }
+                Notes { title, content } => {
+                    bridges::notes_write(&cfg.bridges.notes, &title, &content).await?;
+                    println!("Apple Note created: {title}");
+                }
+                CalendarList { date } => {
+                    let events = bridges::calendar_query(&cfg.bridges.calendar, &date).await?;
+                    if events.is_empty() {
+                        println!("No events on {date}.");
+                    } else {
+                        for e in events {
+                            println!("{e}");
+                        }
+                    }
+                }
+                CalendarCreate { title, start, end } => {
+                    bridges::calendar_create_event(&cfg.bridges.calendar, &title, &start, &end)
+                        .await?;
+                    println!("Calendar event created: {title}");
+                }
+                GithubProject => {
+                    let items = bridges::github_project_list(&cfg.bridges.github_projects).await?;
+                    if items.is_empty() {
+                        println!("No project items (or bridge disabled / misconfigured).");
+                    } else {
+                        for item in items {
+                            println!("{item}");
+                        }
+                    }
+                }
             }
             return Ok(());
         }
@@ -773,18 +885,12 @@ async fn main() -> Result<()> {
                     cfg.agent.system_prompt.as_deref(),
                     &effective_prompt,
                     cli.resume.as_deref(),
+                    run_opts,
                 )
                 .await?;
             } else {
                 let ambient_tx = ambient_shutdown.as_ref().map(|(tx, _)| tx.clone());
-                // In plan mode, create a confirm gate channel and pass it to both the
-                // tools executor and the TUI (which will handle the confirmation prompts).
-                let (tools, confirm_rx) = if cli.plan {
-                    let (gate, rx) = harness_tools::confirm::channel();
-                    (tools.with_confirm_gate(gate), Some(rx))
-                } else {
-                    (tools, None)
-                };
+                // Confirm gate already attached in build_tools when plan mode is active.
                 let result = tui::run(
                     provider,
                     session_store,
@@ -794,8 +900,10 @@ async fn main() -> Result<()> {
                     model,
                     cfg,
                     cli.resume.as_deref(),
+                    cli.think,
                     ambient_tx,
                     confirm_rx,
+                    confirm_bar_label,
                 )
                 .await;
                 graceful_ambient_shutdown(ambient_shutdown).await;

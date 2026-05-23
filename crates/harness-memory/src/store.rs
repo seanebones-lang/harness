@@ -183,3 +183,65 @@ impl SessionStore {
         Ok(changed == 1)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harness_provider_core::Message;
+    use tempfile::tempdir;
+
+    #[test]
+    fn save_load_roundtrip() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::open(dir.path().join("sessions.db")).unwrap();
+        let mut session = Session::new("claude-sonnet-4-6").with_name("test session");
+        session.push(Message::user("hello"));
+        store.save(&session).unwrap();
+
+        let loaded = store.load(&session.id).unwrap().expect("session");
+        assert_eq!(loaded.id, session.id);
+        assert_eq!(loaded.name.as_deref(), Some("test session"));
+        assert_eq!(loaded.messages.len(), 1);
+    }
+
+    #[test]
+    fn find_by_id_prefix_and_name() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::open(dir.path().join("sessions.db")).unwrap();
+        let session = Session::new("gpt-5.5").with_name("My Chat");
+        store.save(&session).unwrap();
+
+        let by_prefix = store.find(&session.id[..8]).unwrap().expect("prefix");
+        assert_eq!(by_prefix.id, session.id);
+
+        let by_name = store.find("my chat").unwrap().expect("name");
+        assert_eq!(by_name.id, session.id);
+    }
+
+    #[test]
+    fn set_name_if_missing_only_when_empty() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::open(dir.path().join("sessions.db")).unwrap();
+        let session = Session::new("claude-sonnet-4-6");
+        store.save(&session).unwrap();
+
+        assert!(store.set_name_if_missing(&session.id, "Renamed").unwrap());
+        let loaded = store.load(&session.id).unwrap().unwrap();
+        assert_eq!(loaded.name.as_deref(), Some("Renamed"));
+
+        assert!(!store
+            .set_name_if_missing(&session.id, "Other")
+            .unwrap());
+    }
+
+    #[test]
+    fn delete_by_prefix() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::open(dir.path().join("sessions.db")).unwrap();
+        let session = Session::new("claude-sonnet-4-6");
+        store.save(&session).unwrap();
+
+        assert!(store.delete(&session.id[..8]).unwrap());
+        assert!(store.load(&session.id).unwrap().is_none());
+    }
+}

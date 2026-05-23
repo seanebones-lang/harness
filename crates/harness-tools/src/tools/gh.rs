@@ -22,6 +22,7 @@ use crate::registry::Tool;
 ///   issue_view N   — view issue #N
 ///   run_view N     — view workflow run #N
 ///   run_logs N     — fetch logs for workflow run #N
+/// GitHub CLI wrapper tool.
 pub struct GhTool;
 
 #[async_trait]

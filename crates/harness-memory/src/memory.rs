@@ -175,3 +175,50 @@ impl MemoryStore {
         Ok(scored)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+    use std::time::Duration;
+    use tempfile::tempdir;
+
+    #[test]
+    fn count_all_tracks_inserts() {
+        let dir = tempdir().unwrap();
+        let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
+        assert_eq!(store.count_all().unwrap(), 0);
+        store.insert("s1", "a", &[1.0, 0.0]).unwrap();
+        store.insert("s1", "b", &[0.0, 1.0]).unwrap();
+        assert_eq!(store.count_all().unwrap(), 2);
+    }
+
+    #[test]
+    fn recent_memories_returns_newest_first() {
+        let dir = tempdir().unwrap();
+        let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
+        store.insert("s", "first", &[1.0]).unwrap();
+        thread::sleep(Duration::from_millis(5));
+        store.insert("s", "second", &[1.0]).unwrap();
+        thread::sleep(Duration::from_millis(5));
+        store.insert("s", "third", &[1.0]).unwrap();
+
+        let recent = store.recent_memories(2).unwrap();
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].text, "third");
+        assert_eq!(recent[1].text, "second");
+    }
+
+    #[test]
+    fn delete_memories_removes_only_requested_ids() {
+        let dir = tempdir().unwrap();
+        let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
+        let id1 = store.insert("s", "keep", &[1.0]).unwrap();
+        let id2 = store.insert("s", "drop", &[1.0]).unwrap();
+        store.delete_memories(&[id2.clone()]).unwrap();
+        assert_eq!(store.count_all().unwrap(), 1);
+        let recent = store.recent_memories(5).unwrap();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].id, id1);
+    }
+}

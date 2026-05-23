@@ -44,6 +44,7 @@ use crate::agent::DEFAULT_SYSTEM;
 use crate::config::Config;
 
 mod driver;
+mod confirm_flow;
 mod events;
 mod input;
 mod render;
@@ -63,8 +64,10 @@ pub async fn run(
     model: String,
     cfg: Config,
     resume_id: Option<&str>,
+    initial_thinking_budget: Option<u32>,
     ambient_shutdown: Option<watch::Sender<()>>,
     confirm_rx: Option<mpsc::Receiver<ConfirmRequest>>,
+    confirm_bar_label: Option<&'static str>,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -82,10 +85,12 @@ pub async fn run(
     {
         let mut st = state.lock();
         st.plan_mode = has_confirm_gate;
+        st.confirm_bar_label = confirm_bar_label.map(str::to_string);
         st.computer_use_active = cfg.computer_use.is_enabled();
         st.budget_daily_usd = cfg.budget.daily_usd;
         st.budget_monthly_usd = cfg.budget.monthly_usd;
         st.notifications = cfg.notifications.clone();
+        st.thinking_budget = initial_thinking_budget;
     }
     let mut session = match resume_id {
         Some(id) => session_store
@@ -135,6 +140,9 @@ pub async fn run(
         &tools,
         &model,
         &system_prompt,
+        cfg.native_tools.web_search_enabled(),
+        cfg.native_tools.code_execution_enabled(),
+        cfg.native_tools.x_search_enabled(),
         ambient_shutdown,
         confirm_rx,
     )

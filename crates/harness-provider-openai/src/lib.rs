@@ -686,4 +686,58 @@ mod openai_sse_tests {
             .collect();
         assert_eq!(texts, vec!["real".to_string()]);
     }
+
+    mod sse_proptest {
+        use super::*;
+        use proptest::prelude::*;
+
+        fn collect_sync(body: bytes::Bytes) -> Vec<Delta> {
+            let rt = tokio::runtime::Runtime::new().expect("runtime");
+            rt.block_on(async { collect(body).await })
+        }
+
+        proptest! {
+            #[test]
+            fn text_sse_chunk_invariance(text in prop::collection::vec(0x20u8..=0x7e, 0..80)
+                .prop_map(|bytes| String::from_utf8(bytes).expect("ascii"))) {
+                let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+                let line = format!(
+                    r#"data: {{"choices":[{{"delta":{{"content":"{escaped}"}}}}]}}"#
+                );
+                let payload = sse_bytes(&[&line, "data: [DONE]"]);
+                let full = collect_sync(payload.clone());
+                let texts: String = full
+                    .into_iter()
+                    .filter_map(|d| match d {
+                        Delta::Text(t) => Some(t),
+                        _ => None,
+                    })
+                    .collect();
+                prop_assert_eq!(texts, text.clone());
+
+                if payload.len() > 1 {
+                    for split in 1..payload.len() {
+                        let (a, b) = payload.split_at(split);
+                        let stream = futures::stream::iter(vec![
+                            Ok::<_, reqwest::Error>(bytes::Bytes::copy_from_slice(a)),
+                            Ok(bytes::Bytes::copy_from_slice(b)),
+                        ]);
+                        let rt = tokio::runtime::Runtime::new().expect("runtime");
+                        let chunked: String = rt.block_on(async {
+                            let parsed = parse_openai_sse(stream);
+                            tokio::pin!(parsed);
+                            let mut out = String::new();
+                            while let Some(item) = parsed.next().await {
+                                if let Ok(Delta::Text(t)) = item {
+                                    out.push_str(&t);
+                                }
+                            }
+                            out
+                        });
+                        prop_assert_eq!(chunked, text.clone());
+                    }
+                }
+            }
+        }
+    }
 }

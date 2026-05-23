@@ -2,6 +2,8 @@
 
 This guide walks through installing Harness on every OS the project **tests in CI** and supports in the field: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
 
+**Status (May 2026):** Public **beta** — **164 automated tests**, P0 security closed. See [`TODO.md`](../TODO.md) for open work and [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for latest gates.
+
 **Quick links:** [macOS](#macos) · [Linux](#linux) · [Windows](#windows-native) · [WSL2](#windows-subsystem-for-linux-wsl2) · [After installing](#after-installing) · [Updating](#updating) · [Uninstall](#uninstall)
 
 ---
@@ -269,8 +271,8 @@ harness doctor
 | Question | Answer |
 |----------|--------|
 | PowerShell vs Command Prompt? | Use **PowerShell** for the install script; `harness.exe` runs from either once on PATH. |
-| Why Git for Windows? | The **`shell` tool** behaves best when `sh`/`bash` from Git is on PATH; otherwise Harness may fall back to **`cmd.exe /C`**, which is not POSIX. |
-| VS Code extension / daemon socket? | The optional VS Code integration expects a **Unix domain socket** under the user profile; native Windows is awkward for that. Prefer **WSL2** or Linux/macOS for extension + daemon workflows (see [README](../README.md) “Optional features”). |
+| Why Git for Windows? | The **`shell` tool** behaves best when `sh`/`bash` from Git is on PATH. Without Git, Harness tries **PowerShell**, then **`cmd.exe /C`** (not POSIX). |
+| VS Code extension / daemon? | **macOS/Linux:** Unix socket at `~/.harness/daemon.sock`. **Windows native:** loopback **TCP** — daemon writes `~/.harness/daemon.port`; VS Code extension connects to `127.0.0.1:<port>`. Run **`harness daemon`** first. **WSL2** uses the Linux socket path. |
 | Computer use / `cliclick`? | **Not supported** on native Windows the same way as macOS/Linux. |
 
 ### Windows — troubleshooting
@@ -281,7 +283,7 @@ harness doctor
 | MSVC / linker errors (`link.exe` missing) | Install VS Build Tools with **C++** workload; run `rustup default stable-msvc`. |
 | `running scripts is disabled` | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. |
 | `harness` not found | Confirm `%USERPROFILE%\.local\bin` on **User** PATH and open a **new** terminal. |
-| `shell` tool behaves oddly | Add Git’s `usr\bin` to PATH ahead of system32; use WSL2 for a real Linux shell. |
+| `shell` tool behaves oddly | Add Git’s `usr\bin` to PATH for POSIX `sh`; otherwise PowerShell is used, then `cmd.exe`. WSL2 gives a full Linux shell. |
 | Antivirus blocks build | Exclude the repo `target\` folder temporarily or allow `rustc`/`cargo`. |
 
 ---
@@ -361,11 +363,12 @@ Short reference; full table in [README](../README.md).
 | Feature | macOS | Linux | Windows native |
 |--------|:-----:|:-----:|:--------------:|
 | Core CLI / TUI | Yes | Yes | Yes |
-| `shell` tool best experience | `sh -c` | `sh -c` | Git `sh` on PATH, or use WSL2 |
+| `shell` tool best experience | `sh -c` | `sh -c` | Git `sh` → PowerShell → `cmd.exe`; WSL2 = Linux |
 | Desktop notifications | Yes | Needs libnotify stack | Limited |
 | Voice / Whisper | sox / afrecord | sox | Not first-class |
 | Computer use (dangerous) | cliclick | xdotool | Not supported |
-| VS Code extension + daemon socket | Yes | Yes | Prefer WSL2 |
+| VS Code extension + daemon | Unix socket | Unix socket | Native: TCP via `daemon.port`; WSL: Unix socket |
+| Tauri desktop app | Yes | Partial | Partial — spawns `harness serve` |
 
 ---
 

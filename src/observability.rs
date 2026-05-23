@@ -1,4 +1,5 @@
 //! OpenTelemetry observability for Harness.
+//! Local JSONL traces are wired; OTLP export is experimental (see tests).
 //!
 //! Instruments agent turns, tool calls, embed operations, and MCP calls
 //! with OTLP spans. Traces can be exported to:
@@ -211,7 +212,6 @@ fn write_local_trace(span: &Span) -> Result<()> {
 }
 
 async fn export_otlp(span: &Span, endpoint: &str) -> Result<()> {
-    // Hand-built JSON resembling OTLP/HTTP JSON; traceId/spanId are not OTLP hex lengths — collectors may reject.
     let payload = serde_json::json!({
         "resourceSpans": [{
             "resource": { "attributes": [{"key": "service.name", "value": {"stringValue": "harness"}}] },
@@ -314,4 +314,60 @@ fn now_us() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_micros() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{routing::post, Json, Router};
+    use std::sync::{Arc, Mutex};
+
+    fn sample_span() -> Span {
+        Span {
+            trace_id: "trace-test".into(),
+            span_id: "span-test".into(),
+            parent_span_id: None,
+            name: "agent.turn".into(),
+            start_ts_us: 1_000,
+            end_ts_us: 2_000,
+            duration_ms: 1,
+            status: SpanStatus::Ok,
+            attributes: HashMap::from([(
+                "model".into(),
+                serde_json::Value::String("test".into()),
+            )]),
+            events: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn otlp_export_posts_to_v1_traces() {
+        let captured: Arc<Mutex<Option<serde_json::Value>>> = Arc::new(Mutex::new(None));
+        let captured2 = captured.clone();
+        let app = Router::new().route(
+            "/v1/traces",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let captured2 = captured2.clone();
+                async move {
+                    *captured2.lock().unwrap() = Some(body);
+                    "ok"
+                }
+            }),
+        );
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+
+        export_otlp(&sample_span(), &format!("http://{addr}"))
+            .await
+            .expect("export");
+
+        let body = captured.lock().unwrap().clone().expect("body captured");
+        assert!(body.get("resourceSpans").is_some());
+    }
 }

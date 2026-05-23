@@ -8,7 +8,9 @@ use walkdir::WalkDir;
 use crate::registry::Tool;
 use crate::workspace_root::WorkspaceRoot;
 
+/// Read a file from the workspace.
 pub struct ReadFileTool {
+    /// Workspace root for path resolution.
     pub workspace: Arc<WorkspaceRoot>,
 }
 
@@ -55,7 +57,9 @@ impl Tool for ReadFileTool {
     }
 }
 
+/// Write a file in the workspace.
 pub struct WriteFileTool {
+    /// Workspace root for path resolution.
     pub workspace: Arc<WorkspaceRoot>,
 }
 
@@ -105,7 +109,9 @@ impl Tool for WriteFileTool {
 ///
 /// Why not just use WriteFileTool? Diffs are far more token-efficient for
 /// targeted edits in large files, and they make the agent's intent explicit.
+/// Surgical search-and-replace patch tool.
 pub struct PatchFileTool {
+    /// Workspace root for path resolution.
     pub workspace: Arc<WorkspaceRoot>,
 }
 
@@ -257,7 +263,9 @@ fn trim_context(lines: &[String], ctx: usize) -> Vec<String> {
     out
 }
 
+/// List directory entries in the workspace.
 pub struct ListDirTool {
+    /// Workspace root for path resolution.
     pub workspace: Arc<WorkspaceRoot>,
 }
 
@@ -312,5 +320,91 @@ impl Tool for ListDirTool {
         } else {
             Ok(entries.join("\n"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace_root::SandboxMode;
+    use serde_json::json;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+
+    fn workspace() -> (tempfile::TempDir, Arc<WorkspaceRoot>) {
+        let dir = tempdir().unwrap();
+        let ws = Arc::new(
+            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("workspace"),
+        );
+        (dir, ws)
+    }
+
+    #[tokio::test]
+    async fn read_file_returns_numbered_lines() {
+        let (dir, ws) = workspace();
+        std::fs::write(dir.path().join("hello.txt"), "alpha\nbeta\n").unwrap();
+        let tool = ReadFileTool {
+            workspace: ws.clone(),
+        };
+        let out = tool
+            .execute(json!({"path": "hello.txt"}))
+            .await
+            .expect("read");
+        assert!(out.contains("alpha"));
+        assert!(out.contains("   1 |"));
+    }
+
+    #[tokio::test]
+    async fn read_file_rejects_path_outside_workspace() {
+        let (_dir, ws) = workspace();
+        let tool = ReadFileTool { workspace: ws };
+        let err = tool
+            .execute(json!({"path": "../escape.txt"}))
+            .await
+            .expect_err("escape");
+        assert!(err.to_string().contains("escapes workspace root"));
+    }
+
+    #[tokio::test]
+    async fn write_and_patch_file_roundtrip() {
+        let (dir, ws) = workspace();
+        let write = WriteFileTool {
+            workspace: ws.clone(),
+        };
+        write
+            .execute(json!({
+                "path": "edit.rs",
+                "content": "fn main() {\n    println!(\"hi\");\n}\n"
+            }))
+            .await
+            .expect("write");
+
+        let patch = PatchFileTool { workspace: ws };
+        let out = patch
+            .execute(json!({
+                "path": "edit.rs",
+                "old_content": "println!(\"hi\");",
+                "new_content": "println!(\"bye\");"
+            }))
+            .await
+            .expect("patch");
+        assert!(out.contains("Patched"));
+        let content = std::fs::read_to_string(dir.path().join("edit.rs")).unwrap();
+        assert!(content.contains("bye"));
+        assert!(!content.contains(r#"println!("hi")"#));
+    }
+
+    #[tokio::test]
+    async fn list_dir_lists_workspace_entries() {
+        let (dir, ws) = workspace();
+        std::fs::write(dir.path().join("a.txt"), "a").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let tool = ListDirTool { workspace: ws };
+        let out = tool
+            .execute(json!({"path": "."}))
+            .await
+            .expect("list");
+        assert!(out.contains("a.txt"));
+        assert!(out.contains("sub/"));
     }
 }

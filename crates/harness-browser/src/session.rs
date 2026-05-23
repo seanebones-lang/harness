@@ -276,3 +276,22 @@ impl BrowserSession {
         &self.devtools_url
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn connect_to_closed_port_returns_err_without_panic() {
+        let result = BrowserSession::connect("http://127.0.0.1:19222").await;
+        assert!(result.is_err());
+        let err = result.err().expect("connect should fail");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("Chrome DevTools HTTP unreachable")
+                || msg.contains("connection refused")
+                || msg.contains("Connect"),
+            "unexpected error: {msg}"
+        );
+    }
+}

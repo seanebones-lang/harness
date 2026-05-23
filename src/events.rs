@@ -14,6 +14,13 @@ pub enum AgentEvent {
     },
     /// Agent recalled memories; injected N entries into context.
     MemoryRecall { count: usize },
+    /// Context compaction replaced older messages with a summary block.
+    ContextCompacted {
+        /// Message count before compaction.
+        messages_before: usize,
+        /// Message count after compaction.
+        messages_after: usize,
+    },
     /// Sub-agent spawned for a task.
     SubAgentSpawned { task: String },
     /// Sub-agent finished.

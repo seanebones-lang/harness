@@ -1,12 +1,12 @@
 /**
  * Harness VS Code Extension
- * 
- * Connects to the Harness daemon via Unix socket (or HTTP fallback),
- * provides a side-panel chat webview, Cmd+I inline edit, and status bar.
+ *
+ * Connects to the Harness daemon via Unix socket (macOS/Linux) or loopback TCP (Windows).
  */
 
 import * as vscode from 'vscode';
 import * as net from 'net';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -22,21 +22,60 @@ interface HarnessEvent {
   output?: number;
 }
 
+interface DaemonResponse {
+  id: number;
+  result?: unknown;
+  error?: string;
+  stream?: string;
+  text?: string;
+}
+
 // ── Connection ────────────────────────────────────────────────────────────────
 
 class HarnessDaemonClient {
   private socket: net.Socket | null = null;
   private socketPath: string;
   private connected = false;
+  private frameBuffer: Buffer = Buffer.alloc(0);
+  private requestId = 0;
+  private authToken: string | null = null;
 
   constructor(socketPath: string) {
     this.socketPath = socketPath.replace('~', os.homedir());
   }
 
+  private daemonPortFile(): string {
+    return path.join(os.homedir(), '.harness', 'daemon.port');
+  }
+
+  private daemonTokenFile(): string {
+    return path.join(os.homedir(), '.harness', 'daemon.token');
+  }
+
+  private loadAuthToken(): string {
+    if (this.authToken) {
+      return this.authToken;
+    }
+    try {
+      this.authToken = fs.readFileSync(this.daemonTokenFile(), 'utf8').trim();
+    } catch {
+      this.authToken = '';
+    }
+    return this.authToken;
+  }
+
   async connect(): Promise<boolean> {
+    if (process.platform === 'win32') {
+      return this.connectTcp();
+    }
+    return this.connectUnix();
+  }
+
+  private async connectUnix(): Promise<boolean> {
     return new Promise((resolve) => {
       this.socket = net.createConnection({ path: this.socketPath }, () => {
         this.connected = true;
+        this.frameBuffer = Buffer.alloc(0);
         resolve(true);
       });
       this.socket.on('error', () => {
@@ -46,13 +85,86 @@ class HarnessDaemonClient {
     });
   }
 
+  private async connectTcp(): Promise<boolean> {
+    try {
+      const portText = fs.readFileSync(this.daemonPortFile(), 'utf8').trim();
+      const port = parseInt(portText, 10);
+      if (!Number.isFinite(port)) {
+        return false;
+      }
+      return await new Promise((resolve) => {
+        this.socket = net.createConnection({ host: '127.0.0.1', port }, () => {
+          this.connected = true;
+          this.frameBuffer = Buffer.alloc(0);
+          resolve(true);
+        });
+        this.socket.on('error', () => {
+          this.connected = false;
+          resolve(false);
+        });
+      });
+    } catch {
+      return false;
+    }
+  }
+
   isConnected(): boolean {
     return this.connected;
   }
 
   disconnect() {
     this.socket?.destroy();
+    this.socket = null;
     this.connected = false;
+    this.frameBuffer = Buffer.alloc(0);
+  }
+
+  private writeFrame(payload: object): void {
+    if (!this.socket || !this.connected) {
+      throw new Error('Not connected to daemon');
+    }
+    const json = Buffer.from(JSON.stringify(payload), 'utf8');
+    const header = Buffer.alloc(4);
+    header.writeUInt32LE(json.length, 0);
+    this.socket.write(Buffer.concat([header, json]));
+  }
+
+  private readFrames(onFrame: (resp: DaemonResponse) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.socket) {
+        reject(new Error('Not connected to daemon'));
+        return;
+      }
+
+      const handler = (chunk: Buffer) => {
+        this.frameBuffer = Buffer.concat([this.frameBuffer, chunk]);
+        while (this.frameBuffer.length >= 4) {
+          const len = this.frameBuffer.readUInt32LE(0);
+          if (this.frameBuffer.length < 4 + len) {
+            break;
+          }
+          const body = this.frameBuffer.subarray(4, 4 + len);
+          this.frameBuffer = this.frameBuffer.subarray(4 + len);
+          try {
+            const resp = JSON.parse(body.toString('utf8')) as DaemonResponse;
+            onFrame(resp);
+            if (resp.error || resp.stream === 'done' || (resp.result && !resp.stream)) {
+              this.socket?.off('data', handler);
+              resolve();
+              return;
+            }
+          } catch {
+            // ignore malformed frames
+          }
+        }
+      };
+
+      this.socket.on('data', handler);
+      this.socket.once('error', (err) => {
+        this.socket?.off('data', handler);
+        reject(err);
+      });
+    });
   }
 
   async sendPrompt(
@@ -64,34 +176,28 @@ class HarnessDaemonClient {
       throw new Error('Not connected to daemon');
     }
 
-    const request = JSON.stringify({
-      action: 'chat',
-      prompt,
-      session_id: sessionId,
-    }) + '\n';
+    const id = ++this.requestId;
+    this.writeFrame({
+      id,
+      method: 'chat',
+      token: this.loadAuthToken(),
+      params: {
+        prompt,
+        session_id: sessionId ?? null,
+      },
+    });
 
-    this.socket.write(request);
-
-    return new Promise((resolve, reject) => {
-      let buf = '';
-      const handler = (data: Buffer) => {
-        buf += data.toString();
-        const lines = buf.split('\n');
-        buf = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const event: HarnessEvent = JSON.parse(line);
-            onEvent(event);
-            if (event.type === 'done' || event.type === 'error') {
-              this.socket?.off('data', handler);
-              resolve();
-            }
-          } catch { /* ignore parse errors */ }
-        }
-      };
-      this.socket!.on('data', handler);
-      this.socket!.once('error', reject);
+    await this.readFrames((resp) => {
+      if (resp.error) {
+        onEvent({ type: 'error', message: resp.error });
+        return;
+      }
+      if (resp.stream === 'chunk' && resp.text) {
+        onEvent({ type: 'text_chunk', content: resp.text });
+      }
+      if (resp.stream === 'done') {
+        onEvent({ type: 'done' });
+      }
     });
   }
 }

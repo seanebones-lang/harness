@@ -521,12 +521,25 @@ fn parse_anthropic_sse(
                                 if let Some(u) = usage["input_tokens"].as_u64() {
                                     s.input_tokens = u as u32;
                                 }
-                                // Prompt caching stats
+                                // Prompt caching stats — emit as soon as message_start arrives
+                                // (message_delta may also carry output_tokens, which would
+                                // otherwise take the Usage branch and skip CacheUsage).
                                 if let Some(u) = usage["cache_creation_input_tokens"].as_u64() {
                                     s.cache_creation_tokens = u as u32;
                                 }
                                 if let Some(u) = usage["cache_read_input_tokens"].as_u64() {
                                     s.cache_read_tokens = u as u32;
+                                }
+                                if s.cache_creation_tokens > 0 || s.cache_read_tokens > 0 {
+                                    let cc = s.cache_creation_tokens;
+                                    let cr = s.cache_read_tokens;
+                                    return Some((
+                                        Ok(Delta::CacheUsage {
+                                            cache_creation_tokens: cc,
+                                            cache_read_tokens: cr,
+                                        }),
+                                        s,
+                                    ));
                                 }
                             }
                             _ => {}
@@ -553,4 +566,88 @@ fn parse_anthropic_sse(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod anthropic_sse_tests {
+    use super::*;
+    use futures::StreamExt;
+
+    fn sse_bytes(lines: &[&str]) -> bytes::Bytes {
+        let mut s = String::new();
+        for line in lines {
+            s.push_str(line);
+            if !line.ends_with('\n') {
+                s.push('\n');
+            }
+        }
+        bytes::Bytes::from(s)
+    }
+
+    async fn collect(body: bytes::Bytes) -> Vec<Delta> {
+        let stream = futures::stream::once(async move { Ok::<_, reqwest::Error>(body) });
+        let parsed = parse_anthropic_sse(stream);
+        tokio::pin!(parsed);
+        let mut out = Vec::new();
+        while let Some(item) = parsed.next().await {
+            out.push(item.expect("delta"));
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn streams_text_delta() {
+        let body = sse_bytes(&[
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}"#,
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}"#,
+            r#"data: {"type":"message_start","message":{"usage":{"input_tokens":10}}}"#,
+        ]);
+        let text: String = collect(body)
+            .await
+            .into_iter()
+            .filter_map(|d| match d {
+                Delta::Text(t) => Some(t),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "Hi");
+    }
+
+    #[tokio::test]
+    async fn emits_tool_use_block() {
+        let body = sse_bytes(&[
+            r#"data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"tu_1","name":"shell","input":{}}}"#,
+            r#"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"ls\"}"}}"#,
+            r#"data: {"type":"content_block_stop","index":1}"#,
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}"#,
+        ]);
+        let tools: Vec<String> = collect(body)
+            .await
+            .into_iter()
+            .filter_map(|d| match d {
+                Delta::ToolCall(tc) => Some(tc.function.name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tools, vec!["shell"]);
+    }
+
+    #[tokio::test]
+    async fn emits_cache_usage_from_message_start() {
+        let body = sse_bytes(&[
+            r#"data: {"type":"message_start","message":{"usage":{"input_tokens":100,"cache_creation_input_tokens":50,"cache_read_input_tokens":25}}}"#,
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}"#,
+        ]);
+        let mut cache = None;
+        for d in collect(body).await {
+            if let Delta::CacheUsage {
+                cache_creation_tokens,
+                cache_read_tokens,
+            } = d
+            {
+                cache = Some((cache_creation_tokens, cache_read_tokens));
+            }
+        }
+        assert_eq!(cache, Some((50, 25)));
+    }
 }

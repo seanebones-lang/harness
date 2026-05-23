@@ -1,11 +1,5 @@
 #![allow(dead_code)]
-//! Collaborative WebSocket sessions: multiple users sharing a harness session.
-//!
-//! Adds a `/ws/session/:id` WebSocket route to the server.
-//! All connected clients see the same chat stream (agent events broadcast).
-//! Events: UserJoined, UserLeft, UserTyping, AgentEvent (rebroadcast).
-//!
-//! Enable with `[collab]` config block.
+//! Collaborative multi-user sessions over WebSocket when `[collab].enabled = true`.
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -103,6 +97,28 @@ impl CollabSession {
         self.broadcast(CollabEvent::UserLeft {
             user_id: user_id.to_string(),
         });
+    }
+}
+
+/// Join a session and return a broadcast receiver for live events.
+pub fn join_session(
+    registry: &CollabRegistry,
+    session_id: &str,
+    user_id: &str,
+) -> broadcast::Receiver<CollabEvent> {
+    let mut reg = registry.lock();
+    let session = reg
+        .entry(session_id.to_string())
+        .or_insert_with(|| CollabSession::new(session_id));
+    session.user_joined(user_id);
+    session.subscribe()
+}
+
+/// Leave a session and notify peers.
+pub fn leave_session(registry: &CollabRegistry, session_id: &str, user_id: &str) {
+    let mut reg = registry.lock();
+    if let Some(session) = reg.get_mut(session_id) {
+        session.user_left(user_id);
     }
 }
 

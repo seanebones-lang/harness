@@ -39,6 +39,21 @@ pub struct Config {
     /// Tool sandbox / filesystem jail (`[tools]` in config).
     #[serde(default)]
     pub tools: ToolsConfig,
+    /// Parallel swarm settings (`[swarm]`).
+    #[serde(default)]
+    pub swarm: crate::swarm::SwarmConfig,
+    /// Collaborative sessions (`[collab]`).
+    #[serde(default)]
+    pub collab: crate::collab::CollabConfig,
+    /// External app bridges (`[bridges]`).
+    #[serde(default)]
+    pub bridges: crate::bridges::BridgesConfig,
+    /// OpenTelemetry / local traces (`[observability]`).
+    #[serde(default)]
+    pub observability: crate::observability::ObservabilityConfig,
+    /// Editor daemon transport (`[daemon]`).
+    #[serde(default)]
+    pub daemon: crate::daemon::DaemonConfig,
 }
 
 /// Tools and sandbox settings.
@@ -109,15 +124,12 @@ pub struct NativeToolsConfig {
 }
 
 impl NativeToolsConfig {
-    #[allow(dead_code)]
     pub fn web_search_enabled(&self) -> bool {
         self.web_search.unwrap_or(false)
     }
-    #[allow(dead_code)]
     pub fn code_execution_enabled(&self) -> bool {
         self.code_execution.unwrap_or(false)
     }
-    #[allow(dead_code)]
     pub fn x_search_enabled(&self) -> bool {
         self.x_search.unwrap_or(false)
     }
@@ -193,9 +205,26 @@ pub struct ApprovalConfig {
 
 impl ApprovalConfig {
     /// "auto" (default), "smart", or "plan".
-    #[allow(dead_code)]
     pub fn effective_mode(&self) -> &str {
         self.mode.as_deref().unwrap_or("auto")
+    }
+
+    /// Parse `always_ask` entries (`tool:pattern` or bare tool name).
+    pub fn parsed_always_ask(&self) -> Vec<(String, String)> {
+        self.always_ask
+            .as_ref()
+            .map(|list| {
+                list.iter()
+                    .map(|s| {
+                        if let Some((tool, pat)) = s.split_once(':') {
+                            (tool.trim().to_string(), pat.trim().to_string())
+                        } else {
+                            (s.trim().to_string(), "*".to_string())
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -211,6 +240,8 @@ pub struct BrowserConfig {
 pub struct McpConfigSection {
     /// Path to mcp.json (defaults to .harness/mcp.json or ~/.harness/mcp.json).
     pub config_path: Option<PathBuf>,
+    /// When set, only MCP servers whose `command` (or basename) is listed are spawned.
+    pub command_allowlist: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
@@ -365,5 +396,36 @@ pub fn write_config_toml(path: &Path, cfg: &Config) -> anyhow::Result<()> {
         .join(format!(".{fname}.{nano}.write_tmp"));
     std::fs::write(&tmp, text)?;
     std::fs::rename(&tmp, path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approval_effective_mode_defaults_to_auto() {
+        let cfg = ApprovalConfig::default();
+        assert_eq!(cfg.effective_mode(), "auto");
+    }
+
+    #[test]
+    fn approval_parsed_always_ask_splits_tool_pattern() {
+        let cfg = ApprovalConfig {
+            always_ask: Some(vec![
+                "shell:git push".into(),
+                "write_file".into(),
+            ]),
+            ..Default::default()
+        };
+        let parsed = cfg.parsed_always_ask();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0], ("shell".into(), "git push".into()));
+        assert_eq!(parsed[1], ("write_file".into(), "*".into()));
+    }
 }

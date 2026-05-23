@@ -1,20 +1,30 @@
+//! Message, tool, and chat request types for provider implementations.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
+/// Conversation role for a chat message.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
+    /// System prompt message.
     System,
+    /// User turn.
     User,
+    /// Assistant model output.
     Assistant,
+    /// Tool execution result.
     Tool,
 }
 
+/// A single chat message in provider wire format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
+    /// Message author role.
     pub role: Role,
+    /// Text or multipart content.
     pub content: MessageContent,
     /// Present when role == Tool; the tool_call_id this result belongs to.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -22,6 +32,7 @@ pub struct Message {
 }
 
 impl Message {
+    /// Build a system message.
     pub fn system(text: impl Into<String>) -> Self {
         Self {
             role: Role::System,
@@ -30,6 +41,7 @@ impl Message {
         }
     }
 
+    /// Build a user message.
     pub fn user(text: impl Into<String>) -> Self {
         Self {
             role: Role::User,
@@ -38,6 +50,7 @@ impl Message {
         }
     }
 
+    /// Build an assistant message.
     pub fn assistant(text: impl Into<String>) -> Self {
         Self {
             role: Role::Assistant,
@@ -46,6 +59,7 @@ impl Message {
         }
     }
 
+    /// Build a tool result message tied to a tool call id.
     pub fn tool_result(tool_call_id: impl Into<String>, result: impl Into<String>) -> Self {
         Self {
             role: Role::Tool,
@@ -55,14 +69,18 @@ impl Message {
     }
 }
 
+/// Plain text or multipart message body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MessageContent {
+    /// Single text block.
     Text(String),
+    /// Text + image parts.
     Parts(Vec<ContentPart>),
 }
 
 impl MessageContent {
+    /// Return the primary text content, if any.
     pub fn as_str(&self) -> &str {
         match self {
             MessageContent::Text(s) => s,
@@ -144,10 +162,13 @@ fn mime_for_path(path: &str) -> &'static str {
     }
 }
 
+/// One part of a multipart message (text or image).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContentPart {
+    /// Part type (`text` or `image_url`).
     #[serde(rename = "type")]
     pub kind: String,
+    /// Text payload when `kind == "text"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     /// Base64-encoded image data (for type = "image_url").
@@ -155,6 +176,7 @@ pub struct ContentPart {
     pub image_url: Option<ImageUrl>,
 }
 
+/// Image reference embedded in a multipart message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageUrl {
     /// Data URI: "data:image/png;base64,..." or an https:// URL.
@@ -162,6 +184,7 @@ pub struct ImageUrl {
 }
 
 impl ContentPart {
+    /// Text content part.
     pub fn text(t: impl Into<String>) -> Self {
         Self {
             kind: "text".into(),
@@ -170,6 +193,7 @@ impl ContentPart {
         }
     }
 
+    /// Base64 image content part.
     pub fn image_base64(mime: &str, data: &str) -> Self {
         Self {
             kind: "image_url".into(),
@@ -186,12 +210,15 @@ impl ContentPart {
 /// OpenAI-format tool definition (Grok accepts this natively).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
+    /// Always `"function"` for Harness tools.
     #[serde(rename = "type")]
     pub kind: String, // always "function"
+    /// Function name, description, and JSON Schema parameters.
     pub function: FunctionDef,
 }
 
 impl ToolDefinition {
+    /// Build an OpenAI-format function tool definition.
     pub fn new(name: impl Into<String>, description: impl Into<String>, parameters: Value) -> Self {
         Self {
             kind: "function".into(),
@@ -204,36 +231,64 @@ impl ToolDefinition {
     }
 }
 
+/// Function metadata inside a [`ToolDefinition`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionDef {
+    /// Tool name sent to the model.
     pub name: String,
+    /// Human-readable tool description.
     pub description: String,
+    /// JSON Schema for tool arguments.
     pub parameters: Value,
 }
 
 /// A tool call the model wants to make.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
+    /// Provider-assigned tool call id.
     pub id: String,
+    /// Always `"function"` for Harness.
     #[serde(rename = "type")]
     pub kind: String,
+    /// Function name and JSON arguments string.
     pub function: ToolCallFunction,
 }
 
+/// Function invocation requested by the model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallFunction {
+    /// Function/tool name.
     pub name: String,
+    /// JSON-encoded arguments object.
     pub arguments: String, // JSON string
 }
 
 impl ToolCall {
+    /// Parse `function.arguments` as JSON.
     pub fn args(&self) -> anyhow::Result<Value> {
         Ok(serde_json::from_str(&self.function.arguments)?)
     }
 }
 
+/// Encode pending tool calls as an assistant message for conversation history.
+///
+/// Wire format: `__tool_calls__:` + JSON array of [`ToolCall`] (OpenAI-compatible shape).
+/// Providers decode this prefix when building API requests.
+pub fn tool_calls_to_message(calls: &[ToolCall]) -> Message {
+    let encoded = format!(
+        "__tool_calls__:{}",
+        serde_json::to_string(calls).unwrap_or_default()
+    );
+    Message {
+        role: Role::Assistant,
+        content: MessageContent::Text(encoded),
+        tool_call_id: None,
+    }
+}
+
 // ── Streaming delta ───────────────────────────────────────────────────────────
 
+/// Incremental item emitted while streaming a chat completion.
 #[derive(Debug, Clone)]
 pub enum Delta {
     /// A chunk of assistant text.
@@ -242,7 +297,9 @@ pub enum Delta {
     ToolCall(ToolCall),
     /// Token usage for the completed request (emitted just before Done).
     Usage {
+        /// Prompt/input tokens billed.
         input_tokens: u32,
+        /// Completion/output tokens billed.
         output_tokens: u32,
     },
     /// Prompt-cache statistics (Anthropic only). Emitted alongside Usage.
@@ -253,35 +310,51 @@ pub enum Delta {
         cache_read_tokens: u32,
     },
     /// Model stopped generating; stream is done.
-    Done { stop_reason: StopReason },
+    Done {
+        /// Why generation stopped.
+        stop_reason: StopReason,
+    },
 }
 
+/// Reason the model stopped generating tokens.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StopReason {
+    /// Natural end of turn.
     EndTurn,
+    /// Model requested tool calls.
     ToolUse,
+    /// Hit `max_tokens` limit.
     MaxTokens,
+    /// Provider-specific stop reason string.
     Other(String),
 }
 
 // ── Request ───────────────────────────────────────────────────────────────────
 
+/// Outbound chat completion request.
 #[derive(Debug, Clone)]
 pub struct ChatRequest {
+    /// Target model id.
     pub model: String,
+    /// Conversation history.
     pub messages: Vec<Message>,
+    /// Tool definitions available to the model.
     pub tools: Vec<ToolDefinition>,
+    /// Maximum tokens to generate.
     pub max_tokens: u32,
+    /// Sampling temperature.
     pub temperature: f32,
+    /// Optional system prompt (may also be sent as a system message).
     pub system: Option<String>,
     /// Enable extended thinking. When Some(budget), the model will use up to
     /// `budget` tokens for internal reasoning (billed as output tokens).
     /// When None, adaptive thinking is used on Opus 4.7 (model decides).
     pub thinking_budget: Option<u32>,
-    /// Enable provider-side native tools (web_search, code_execution, x_search).
-    /// These are appended to the tool list sent to the provider.
+    /// Enable provider-side native web search tool.
     pub native_web_search: bool,
+    /// Enable provider-side sandboxed code execution tool.
     pub native_code_execution: bool,
+    /// Enable provider-side X (Twitter) search tool.
     pub native_x_search: bool,
     /// Constrain response to a JSON Schema (strict structured output).
     /// When set, providers use their native structured-output mechanism:
@@ -309,6 +382,7 @@ fn default_strict() -> bool {
 }
 
 impl ResponseSchema {
+    /// Build a strict JSON schema constraint.
     pub fn new(name: impl Into<String>, schema: Value) -> Self {
         Self {
             name: name.into(),
@@ -319,6 +393,7 @@ impl ResponseSchema {
 }
 
 impl ChatRequest {
+    /// Create a request with Harness defaults for the given model.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
@@ -341,16 +416,19 @@ impl ChatRequest {
         self
     }
 
+    /// Attach conversation messages.
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
         self.messages = messages;
         self
     }
 
+    /// Attach tool definitions.
     pub fn with_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
         self.tools = tools;
         self
     }
 
+    /// Set the system prompt string.
     pub fn with_system(mut self, system: impl Into<String>) -> Self {
         self.system = Some(system.into());
         self
@@ -374,5 +452,100 @@ impl ChatRequest {
         self.native_code_execution = code_execution;
         self.native_x_search = x_search;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn message_user_roundtrip() {
+        let msg = Message::user("hello");
+        let json = serde_json::to_string(&msg).expect("serialize");
+        let back: Message = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.role, Role::User);
+        assert_eq!(back.content.as_str(), "hello");
+        assert!(back.tool_call_id.is_none());
+    }
+
+    #[test]
+    fn message_tool_result_roundtrip() {
+        let msg = Message::tool_result("call_1", "ok");
+        let back: Message = serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(back.role, Role::Tool);
+        assert_eq!(back.tool_call_id.as_deref(), Some("call_1"));
+    }
+
+    #[test]
+    fn tool_call_args_parse() {
+        let call = ToolCall {
+            id: "tc1".into(),
+            kind: "function".into(),
+            function: ToolCallFunction {
+                name: "shell".into(),
+                arguments: r#"{"command":"ls"}"#.into(),
+            },
+        };
+        let args = call.args().expect("parse args");
+        assert_eq!(args["command"], "ls");
+    }
+
+    #[test]
+    fn tool_definition_roundtrip() {
+        let def = ToolDefinition::new(
+            "read_file",
+            "Read a file",
+            json!({
+                "type": "object",
+                "properties": { "path": { "type": "string" } },
+                "required": ["path"]
+            }),
+        );
+        let back: ToolDefinition =
+            serde_json::from_str(&serde_json::to_string(&def).unwrap()).unwrap();
+        assert_eq!(back.function.name, "read_file");
+        assert_eq!(back.kind, "function");
+    }
+
+    #[test]
+    fn response_schema_roundtrip() {
+        let schema = ResponseSchema::new(
+            "answer",
+            json!({
+                "type": "object",
+                "properties": { "ok": { "type": "boolean" } },
+                "required": ["ok"]
+            }),
+        );
+        let back: ResponseSchema =
+            serde_json::from_str(&serde_json::to_string(&schema).unwrap()).unwrap();
+        assert_eq!(back.name, "answer");
+        assert!(back.strict);
+    }
+
+    #[test]
+    fn role_deserializes_lowercase() {
+        let role: Role = serde_json::from_str("\"assistant\"").unwrap();
+        assert_eq!(role, Role::Assistant);
+    }
+
+    #[test]
+    fn tool_calls_to_message_roundtrip_prefix() {
+        let calls = vec![ToolCall {
+            id: "call_1".into(),
+            kind: "function".into(),
+            function: ToolCallFunction {
+                name: "read_file".into(),
+                arguments: r#"{"path":"src/main.rs"}"#.into(),
+            },
+        }];
+        let msg = tool_calls_to_message(&calls);
+        let text = msg.content.as_str();
+        assert!(text.starts_with("__tool_calls__:"));
+        let json = text.strip_prefix("__tool_calls__:").unwrap();
+        let back: Vec<ToolCall> = serde_json::from_str(json).unwrap();
+        assert_eq!(back[0].function.name, "read_file");
     }
 }
