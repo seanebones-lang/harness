@@ -14,7 +14,9 @@ use std::sync::Arc;
 use crate::registry::Tool;
 use crate::workspace_root::WorkspaceRoot;
 
+/// Unified diff patch application tool.
 pub struct ApplyPatchTool {
+    /// Workspace root for path resolution.
     pub workspace: Arc<WorkspaceRoot>,
 }
 
@@ -45,7 +47,7 @@ impl Tool for ApplyPatchTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing patch"))?;
 
-        let changes = parse_unified_diff(patch_text)?;
+        let changes = parse_unified_diff(patch_text, &self.workspace)?;
 
         if changes.is_empty() {
             return Ok("No changes found in patch.".to_string());
@@ -137,7 +139,10 @@ impl Tool for ApplyPatchTool {
 // Returns a list of (file_path, new_file_content, is_deletion) triples.
 // `is_deletion` is true when the `+++` header is `/dev/null` (file removal).
 
-fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String, bool)>> {
+fn parse_unified_diff(
+    patch: &str,
+    workspace: &WorkspaceRoot,
+) -> anyhow::Result<Vec<(String, String, bool)>> {
     let mut result: Vec<(String, String, bool)> = Vec::new();
     let mut lines: std::iter::Peekable<std::str::Lines> = patch.lines().peekable();
 
@@ -156,10 +161,15 @@ fn parse_unified_diff(patch: &str) -> anyhow::Result<Vec<(String, String, bool)>
             let minus_path = strip_diff_prefix(minus_line.trim_start_matches("--- ").trim());
             let plus_path = strip_diff_prefix(plus_line.trim_start_matches("+++ ").trim());
             let is_deletion = plus_path == "/dev/null";
-            let path = if is_deletion { minus_path } else { plus_path };
+            let raw_path = if is_deletion { minus_path } else { plus_path };
+            if raw_path.is_empty() || raw_path == "/dev/null" {
+                anyhow::bail!("patch has no resolvable file path (---/+++ headers)");
+            }
+            let resolved = workspace.resolve(raw_path)?;
+            let path = resolved.to_string_lossy().into_owned();
 
             // Read current file content (may not exist for new files).
-            let original = std::fs::read_to_string(path).unwrap_or_default();
+            let original = std::fs::read_to_string(&resolved).unwrap_or_default();
             let mut file_lines: Vec<String> = original.lines().map(|l| l.to_string()).collect();
 
             // Apply hunks for this file.
@@ -272,4 +282,59 @@ fn parse_hunk_header(header: &str) -> anyhow::Result<(i64, i64, i64, i64)> {
     let (ol, oc) = parse_range(parts[0])?;
     let (nl, nc) = parse_range(parts[1])?;
     Ok((ol, oc, nl, nc))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace_root::{SandboxMode, WorkspaceRoot};
+    use serde_json::json;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+
+    fn workspace_with_file(name: &str, content: &str) -> (tempfile::TempDir, Arc<WorkspaceRoot>) {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join(name), content).unwrap();
+        let ws = Arc::new(
+            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("workspace"),
+        );
+        (dir, ws)
+    }
+
+    #[test]
+    fn parse_unified_diff_applies_single_hunk() {
+        let (dir, ws) = workspace_with_file("foo.rs", "line1\nline2\nline3\n");
+        let patch = "--- a/foo.rs\n+++ b/foo.rs\n@@ -1,3 +1,3 @@\n line1\n-line2\n+line2 patched\n line3\n";
+        let changes = parse_unified_diff(patch, &ws).expect("parse");
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].1.contains("line2 patched"));
+        assert!(!changes[0].2);
+
+        let tool = ApplyPatchTool { workspace: ws };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            tool.execute(json!({"patch": patch}))
+                .await
+                .expect("apply");
+        });
+        let updated = std::fs::read_to_string(dir.path().join("foo.rs")).unwrap();
+        assert!(updated.contains("line2 patched"));
+    }
+
+    #[test]
+    fn parse_rejects_paths_outside_workspace() {
+        let dir = tempdir().unwrap();
+        let ws = WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap();
+        let patch = "--- a/../outside.txt\n+++ b/../outside.txt\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+        let err = parse_unified_diff(patch, &ws).expect_err("escape");
+        assert!(err.to_string().contains("escapes workspace root"));
+    }
+
+    #[test]
+    fn parse_empty_patch_returns_no_changes() {
+        let dir = tempdir().unwrap();
+        let ws = WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap();
+        let changes = parse_unified_diff("", &ws).expect("parse");
+        assert!(changes.is_empty());
+    }
 }

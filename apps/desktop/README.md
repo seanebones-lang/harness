@@ -7,7 +7,7 @@ Native wrapper around the Harness web UI (`harness serve` on `http://127.0.0.1:8
 - Rust toolchain
 - Node.js 18+ (for `@tauri-apps/cli`)
 - **`harness` on `PATH`** (install from repo root: `cargo build --profile release-lto` then copy the binary)
-- For development: run `harness serve` **or** rely on auto-spawn of `harness daemon` on app launch
+- For development: the app auto-spawns **`harness serve --addr 127.0.0.1:8787`** on launch if `/api/health` is not already reachable
 
 ## Icons
 
@@ -27,5 +27,11 @@ npm run build    # release .app / installers
 ```
 
 Global shortcut: **Cmd+Shift+H** (Windows/Linux: **Ctrl+Shift+H**) toggles the window. Tray icon click does the same.
+
+## Related docs
+
+- [`README.md`](../../README.md) — install and platform matrix
+- [`docs/INSTALL.md`](../../docs/INSTALL.md) — per-OS setup
+- [`TODO.md`](../../TODO.md) — severity-ranked backlog; Windows/Linux packaging (REL-03)
 
 This crate is **not** part of the repo-root Cargo workspace; it uses its own `Cargo.lock` under `src-tauri/`.

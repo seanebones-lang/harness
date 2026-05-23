@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+//! **Status:** EXPERIMENTAL — staging buffer for plan-mode diff review; not wired in TUI path today.
 //! Inline diff reviewer: shows hunk-by-hunk diffs with per-hunk accept/reject/edit in the TUI.
 //!
 //! Usage:

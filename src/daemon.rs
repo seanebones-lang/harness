@@ -1,7 +1,7 @@
-//! Harness daemon: long-lived process listening on a Unix socket.
+//! Harness daemon: long-lived process for VS Code / desktop integrations.
 //!
-//! The daemon holds all expensive resources — SQLite, provider clients, LSP servers,
-//! ambient memory consolidation — and accepts JSON-RPC requests over a Unix socket.
+//! On macOS/Linux the daemon listens on a Unix socket (`~/.harness/daemon.sock`).
+//! On Windows it binds loopback TCP and writes the port to `~/.harness/daemon.port`.
 //!
 //! # Protocol
 //!
@@ -28,10 +28,13 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+#[cfg(windows)]
+use tokio::net::{TcpListener, TcpStream};
+#[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
 
-/// Default socket path.
+/// Default Unix socket path (macOS/Linux).
 pub fn socket_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -39,22 +42,86 @@ pub fn socket_path() -> PathBuf {
         .join("daemon.sock")
 }
 
+/// TCP port file written on Windows when the daemon binds loopback.
+#[cfg(windows)]
+pub fn tcp_port_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".harness")
+        .join("daemon.port")
+}
+
+/// Connect to the running daemon transport for this platform.
+pub async fn connect_daemon() -> Result<DaemonConn> {
+    let _token = crate::auth_token::read_token_file("daemon.token")?;
+    #[cfg(unix)]
+    {
+        let stream = UnixStream::connect(socket_path()).await?;
+        Ok(DaemonConn::Unix(stream))
+    }
+    #[cfg(windows)]
+    {
+        let port_text = std::fs::read_to_string(tcp_port_path())
+            .map_err(|e| anyhow::anyhow!("daemon port file missing: {e}"))?;
+        let port: u16 = port_text.trim().parse()?;
+        let stream = TcpStream::connect(format!("127.0.0.1:{port}")).await?;
+        Ok(DaemonConn::Tcp(stream))
+    }
+}
+
+/// Active daemon connection (Unix socket or loopback TCP).
+pub enum DaemonConn {
+    #[cfg(unix)]
+    Unix(UnixStream),
+    #[cfg(windows)]
+    Tcp(TcpStream),
+}
+
+impl DaemonConn {
+    async fn read_frame(&mut self) -> Result<serde_json::Value> {
+        match self {
+            #[cfg(unix)]
+            DaemonConn::Unix(s) => read_frame(s).await,
+            #[cfg(windows)]
+            DaemonConn::Tcp(s) => read_frame(s).await,
+        }
+    }
+
+    async fn write_frame(&mut self, msg: &impl Serialize) -> Result<()> {
+        match self {
+            #[cfg(unix)]
+            DaemonConn::Unix(s) => write_frame(s, msg).await,
+            #[cfg(windows)]
+            DaemonConn::Tcp(s) => write_frame(s, msg).await,
+        }
+    }
+}
+
 /// Check if a daemon is currently listening on the socket.
 pub async fn is_running() -> bool {
-    let path = socket_path();
-    if !path.exists() {
-        return false;
+    #[cfg(unix)]
+    {
+        let path = socket_path();
+        if !path.exists() {
+            return false;
+        }
+        return tokio::net::UnixStream::connect(&path).await.is_ok();
     }
-    // Try a quick connect.
-    tokio::net::UnixStream::connect(&path).await.is_ok()
+    #[cfg(windows)]
+    {
+        connect_daemon().await.is_ok()
+    }
 }
 
 // ── Wire protocol ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonRequest {
     pub id: u64,
     pub method: String,
+    /// Bearer token matching `~/.harness/daemon.token`.
+    #[serde(default)]
+    pub token: String,
     #[serde(default)]
     pub params: serde_json::Value,
 }
@@ -74,7 +141,10 @@ pub struct DaemonResponse {
 }
 
 /// Write a length-prefixed JSON frame to a stream.
-pub async fn write_frame(stream: &mut UnixStream, msg: &impl Serialize) -> Result<()> {
+pub async fn write_frame<S: AsyncWrite + Unpin>(
+    stream: &mut S,
+    msg: &impl Serialize,
+) -> Result<()> {
     let json = serde_json::to_vec(msg)?;
     let len = json.len() as u32;
     stream.write_all(&len.to_le_bytes()).await?;
@@ -83,7 +153,7 @@ pub async fn write_frame(stream: &mut UnixStream, msg: &impl Serialize) -> Resul
 }
 
 /// Read a length-prefixed JSON frame from a stream.
-pub async fn read_frame(stream: &mut UnixStream) -> Result<serde_json::Value> {
+pub async fn read_frame<S: AsyncRead + Unpin>(stream: &mut S) -> Result<serde_json::Value> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
     let len = u32::from_le_bytes(len_buf) as usize;
@@ -99,10 +169,13 @@ pub async fn read_frame(stream: &mut UnixStream) -> Result<serde_json::Value> {
 
 /// Connect to a running daemon and send a single request, returning the response.
 pub async fn send_request(req: &DaemonRequest) -> Result<DaemonResponse> {
-    let path = socket_path();
-    let mut stream = UnixStream::connect(&path).await?;
-    write_frame(&mut stream, req).await?;
-    let val = read_frame(&mut stream).await?;
+    let mut req = req.clone();
+    if req.token.is_empty() {
+        req.token = crate::auth_token::read_token_file("daemon.token")?;
+    }
+    let mut stream = connect_daemon().await?;
+    stream.write_frame(&req).await?;
+    let val = stream.read_frame().await?;
     Ok(serde_json::from_value(val)?)
 }
 
@@ -114,22 +187,22 @@ pub async fn stream_chat(
     model: &str,
     mut on_chunk: impl FnMut(&str),
 ) -> Result<()> {
-    let path = socket_path();
-    let mut stream = UnixStream::connect(&path).await?;
+    let mut stream = connect_daemon().await?;
 
     let req = DaemonRequest {
         id: 1,
         method: "chat".into(),
+        token: crate::auth_token::read_token_file("daemon.token").unwrap_or_default(),
         params: serde_json::json!({
             "session_id": session_id,
             "prompt": prompt,
             "model": model,
         }),
     };
-    write_frame(&mut stream, &req).await?;
+    stream.write_frame(&req).await?;
 
     loop {
-        let val = read_frame(&mut stream).await?;
+        let val = stream.read_frame().await?;
         let resp: DaemonResponse = serde_json::from_value(val)?;
 
         if let Some(text) = &resp.text {
@@ -168,53 +241,99 @@ pub async fn run_daemon(
     system_prompt: String,
     mut shutdown_rx: tokio::sync::watch::Receiver<()>,
 ) -> Result<()> {
-    let sock_path = socket_path();
-    // Remove stale socket file if it exists.
-    let _ = std::fs::remove_file(&sock_path);
-    std::fs::create_dir_all(sock_path.parent().unwrap_or(std::path::Path::new(".")))?;
-
-    let listener = UnixListener::bind(&sock_path)?;
-    tracing::info!(socket = %sock_path.display(), "daemon listening");
+    std::fs::create_dir_all(
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".harness"),
+    )?;
 
     let session_store: ArcSessionStore = std::sync::Arc::new(session_store);
     let memory_store: ArcMemoryStore = memory_store.map(std::sync::Arc::new);
     let tools: ArcTools = std::sync::Arc::new(tools);
 
-    loop {
-        tokio::select! {
-            accept = listener.accept() => {
-                match accept {
-                    Ok((stream, _)) => {
-                        let p = provider.clone();
-                        let ss = session_store.clone();
-                        let ms = memory_store.clone();
-                        let em = embed_model.clone();
-                        let t = tools.clone();
-                        let m = model.clone();
-                        let sys = system_prompt.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) = handle_connection(stream, p, ss, ms, em, t, m, sys).await {
-                                tracing::warn!("daemon connection error: {e}");
-                            }
-                        });
+    let auth_token = crate::auth_token::daemon_token()?;
+    tracing::info!("daemon auth token loaded from ~/.harness/daemon.token");
+
+    #[cfg(unix)]
+    {
+        let sock_path = socket_path();
+        let _ = std::fs::remove_file(&sock_path);
+        let listener = UnixListener::bind(&sock_path)?;
+        tracing::info!(socket = %sock_path.display(), "daemon listening (unix)");
+
+        loop {
+            tokio::select! {
+                accept = listener.accept() => {
+                    match accept {
+                        Ok((stream, _)) => {
+                            spawn_handler(
+                                stream,
+                                provider.clone(),
+                                session_store.clone(),
+                                memory_store.clone(),
+                                embed_model.clone(),
+                                tools.clone(),
+                                model.clone(),
+                                system_prompt.clone(),
+                                auth_token.clone(),
+                            );
+                        }
+                        Err(e) => tracing::warn!("daemon accept error: {e}"),
                     }
-                    Err(e) => tracing::warn!("daemon accept error: {e}"),
+                }
+                _ = shutdown_rx.changed() => {
+                    tracing::info!("daemon shutting down");
+                    break;
                 }
             }
-            _ = shutdown_rx.changed() => {
-                tracing::info!("daemon shutting down");
-                break;
-            }
         }
+
+        let _ = std::fs::remove_file(&sock_path);
     }
 
-    let _ = std::fs::remove_file(&sock_path);
+    #[cfg(windows)]
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let port = listener.local_addr()?.port();
+        std::fs::write(tcp_port_path(), port.to_string())?;
+        tracing::info!(port, "daemon listening (tcp loopback)");
+
+        loop {
+            tokio::select! {
+                accept = listener.accept() => {
+                    match accept {
+                        Ok((stream, _)) => {
+                            spawn_handler(
+                                stream,
+                                provider.clone(),
+                                session_store.clone(),
+                                memory_store.clone(),
+                                embed_model.clone(),
+                                tools.clone(),
+                                model.clone(),
+                                system_prompt.clone(),
+                                auth_token.clone(),
+                            );
+                        }
+                        Err(e) => tracing::warn!("daemon accept error: {e}"),
+                    }
+                }
+                _ = shutdown_rx.changed() => {
+                    tracing::info!("daemon shutting down");
+                    break;
+                }
+            }
+        }
+
+        let _ = std::fs::remove_file(tcp_port_path());
+    }
+
     Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn handle_connection(
-    mut stream: UnixStream,
+fn spawn_handler<S>(
+    stream: S,
     provider: harness_provider_core::ArcProvider,
     session_store: ArcSessionStore,
     memory_store: ArcMemoryStore,
@@ -222,10 +341,59 @@ async fn handle_connection(
     tools: ArcTools,
     model: String,
     system_prompt: String,
-) -> Result<()> {
+    auth_token: String,
+) where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        if let Err(e) = handle_connection(
+            stream,
+            provider,
+            session_store,
+            memory_store,
+            embed_model,
+            tools,
+            model,
+            system_prompt,
+            auth_token,
+        )
+        .await
+        {
+            tracing::warn!("daemon connection error: {e}");
+        }
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn handle_connection<S>(
+    mut stream: S,
+    provider: harness_provider_core::ArcProvider,
+    session_store: ArcSessionStore,
+    memory_store: ArcMemoryStore,
+    embed_model: Option<String>,
+    tools: ArcTools,
+    model: String,
+    system_prompt: String,
+    auth_token: String,
+) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let val = read_frame(&mut stream).await?;
     let req: DaemonRequest = serde_json::from_value(val)?;
     let id = req.id;
+
+    if !crate::auth_token::verify(Some(&req.token), &auth_token) {
+        let resp = DaemonResponse {
+            id,
+            result: None,
+            error: Some("unauthorized — set token from ~/.harness/daemon.token".into()),
+            stream: None,
+            text: None,
+        };
+        write_frame(&mut stream, &resp).await?;
+        return Ok(());
+    }
 
     match req.method.as_str() {
         "chat" => {
@@ -296,8 +464,14 @@ async fn handle_connection(
                 }
             }
 
-            // Save session.
-            if let Ok(final_session) = handle.await? {
+            // Save session with auto-generated title when missing.
+            if let Ok(mut final_session) = handle.await? {
+                if let Some(title) =
+                    crate::agent::suggest_session_name(&provider, &final_session).await
+                {
+                    let _ = session_store.set_name_if_missing(&final_session.id, &title);
+                    final_session.name = Some(title);
+                }
                 let _ = session_store.save(&final_session);
             }
         }
@@ -345,4 +519,25 @@ async fn handle_connection(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::duplex;
+
+    #[tokio::test]
+    async fn frame_round_trip_over_duplex() {
+        let (mut client, mut server) = duplex(8192);
+        let req = DaemonRequest {
+            id: 1,
+            method: "status".into(),
+            token: String::new(),
+            params: serde_json::json!({}),
+        };
+        write_frame(&mut client, &req).await.unwrap();
+        let val = read_frame(&mut server).await.unwrap();
+        let decoded: DaemonRequest = serde_json::from_value(val).unwrap();
+        assert_eq!(decoded.method, "status");
+    }
 }

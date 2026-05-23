@@ -2,15 +2,19 @@
 
 Rust coding agent. Multi-provider (Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, Ollama Qwen3-Coder). Fast, low-memory, multi-agent.
 
+**Release:** Public **beta** GO — **164 tests**, P0 security closed. **Stable** blocked on manual smoke §3 ([`TODO.md`](TODO.md) **REL-01**).
+
 ## Build & Test
 
 ```bash
 cargo build                        # dev build
 cargo build --profile selfdev      # fast self-modification build
 cargo build --profile release-lto  # distribution build (thin LTO, stripped)
-cargo test                         # workspace integration + crates (root + tests/* ; no API keys)
+cargo test --all                   # workspace integration + crates (root + tests/* ; no API keys)
 cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt --all
+
+# PR coverage gate (see .github/workflows/coverage.yml): ≥ 60% line coverage
 
 # Optional: [.githooks/commit-msg](.githooks/commit-msg) drops `Co-authored-by`, `Co-developed-by`,
 # and `Made-with:` trailer lines locally (avoid polluting attribution when IDE aids compose messages).
@@ -76,6 +80,9 @@ harness self-dev --src . --model claude-sonnet-4-6
 # Diagnostics
 harness doctor
 
+# VS Code / editor integration (Unix socket on macOS/Linux; TCP on Windows)
+harness daemon
+
 # Shell completions
 harness completions bash > ~/.bash_completion.d/harness
 harness completions zsh > ~/.zsh/completions/_harness
@@ -113,6 +120,8 @@ harness/
 │   ├── diff_review.rs              inline diff review + staging buffer (E4)
 │   ├── observability.rs            OpenTelemetry tracing + OTLP export (E7)
 │   ├── swarm.rs                    parallel sub-agent swarm + SQLite registry (E9)
+│   ├── ambient.rs                  background memory consolidation (`AmbientConfig`, `ArcProvider`)
+│   ├── daemon.rs                   editor IPC: Unix socket (macOS/Linux) or loopback TCP (Windows)
 │   ├── bridges.rs                  Obsidian / Apple Notes / Calendar / GitHub Projects (E12)
 │   └── collab.rs                   collaborative WebSocket sessions (E13)
 ├── crates/
@@ -133,8 +142,16 @@ harness/
 ├── extensions/vscode/              VS Code extension (TypeScript, E14)
 ├── apps/desktop/                   Tauri 2 desktop shell (macOS .app, E15)
 ├── config/default.toml             Annotated default configuration
+├── docs/BROWSER_CDP.md             Chrome CDP / browser tool setup
+├── docs/COOKBOOK.md                Example prompts and tool patterns
+├── docs/INSTALL.md                 Per-OS install guide
+├── docs/PUBLIC_RELEASE.md          Release checklist
+├── docs/RELEASE_STATUS.md          Latest go/no-go log
 ├── docs/SHORTCUTS.md               TUI keyboard shortcuts cheat sheet
 ├── docs/MIGRATION.md               Phase D→E breaking changes
+├── docs/i18n/USER_MANUAL.es.md     Spanish manual (partial)
+├── TODO.md                         Open backlog + recently completed items
+├── CONTRIBUTING.md                 Contributor guide
 ├── tests/smoke_test.rs             Integration tests (no API key required)
 └── scripts/install.sh              Install from source to ~/.local/bin
 ```
@@ -200,8 +217,9 @@ Auto-builds providers from env keys when no `[providers]` block is configured. S
 Built-in tools:
 - `ReadFileTool`, `WriteFileTool`, `ListDirTool`
 - `PatchFileTool` — surgical old→new text replacement with diff output
-- `ShellTool` — runs `sh -c <command>`, configurable timeout
+- `ShellTool` — runs `sh -c <command>` on Unix; on Windows tries Git `sh`/`bash`, then **PowerShell**, then `cmd.exe /C`
 - `SearchCodeTool` — regex over gitignore-aware file walk
+- `GitTool` — structured git ops (`status`, `diff`, `log`, `commit`, …) — prefer over raw shell git
 - `SpawnAgentTool` — runs a sub-agent with base tools only
 - `RebuildSelfTool`, `ReloadSelfTool` — self-modification
 - `GhTool` — `gh` CLI wrapper (pr_list, pr_view, pr_diff, pr_checks, pr_comment, issue_list, run_view, run_logs)
@@ -216,7 +234,9 @@ Chrome/Chromium automation over **Chrome DevTools Protocol**.
 | `BrowserSession` | Connects to a running browser (`BrowserSession::connect(url)`); finds pages/targets (`find_or_open_target`). |
 | `BrowserTool` | Provider-facing `Tool` (`name: "browser"`); exposes CDP actions via an `action` enum (navigate, screenshot, click, …). Lazily connects `BrowserSession` on first use. |
 
-Requirements: Chrome (or Chromium) launched with `--remote-debugging-port=9222` (see `config/default.toml` `[browser]`). Configure the CDP endpoint in `[browser].url` or CLI `--browser-url` (defaults in `Cli` mirror local dev setups).
+Requirements: Chrome (or Chromium) launched with `--remote-debugging-port=9222` (see `config/default.toml` `[browser]`). Configure the CDP endpoint in `[browser].url` or CLI `--browser-url` (defaults in `Cli` mirror local dev setups). User-facing setup: [`docs/BROWSER_CDP.md`](docs/BROWSER_CDP.md).
+
+**Error semantics:** `BrowserTool::execute` returns `Err` when Chrome is unreachable or the action is unknown (validated before connect). Unit tests in `crates/harness-browser/` cover connect failures, unknown actions, and CDP JSON serde.
 
 ### `harness-voice`
 
@@ -268,13 +288,21 @@ New MCP 2.0 features:
 
 `BridgesConfig` — Obsidian vault write, Apple Notes (osascript), Calendar events (EventKit osascript), GitHub Projects (gh graphql). Gated by `[bridges]` config block.
 
-### `collab` (E13)
+### `collab` (E13 — **EXPERIMENTAL, not wired**)
 
-`CollabConfig`, `CollabEvent`, `CollabSession`, `CollabRegistry` — multi-user shared sessions over WebSocket. Events: `UserJoined`, `UserLeft`, `Typing`, `Message`. Wire-up is via `server.rs` when `[collab]` is enabled.
+`CollabConfig`, `CollabEvent`, `CollabSession`, `CollabRegistry` — multi-user shared sessions over WebSocket. **Module compiles but is not connected to `server.rs` or the TUI.** Do not enable in production docs until C.1 lands.
 
 ### `diff_review` (E4)
 
 `StagingBuffer`, `FileDiff`, `DiffHunk` — inline diff viewer with LCS-based diffing, `AutoTrustPatterns` for glob-based auto-approval.
+
+### `ambient` (`src/ambient.rs`)
+
+Background memory consolidation after turns. Uses **`ArcProvider`** (any backend), **`AmbientConfig`** (interval, thresholds, optional fast model), and **`consolidate()`** to merge new facts into vector memory. Embed failures are skipped rather than aborting the loop. Tests use **`FakeProvider`** in-process.
+
+### `daemon` (`src/daemon.rs`)
+
+Editor IPC for the VS Code extension. **macOS/Linux:** Unix domain socket at `~/.harness/daemon.sock`. **Windows:** loopback **TCP** with port written to `~/.harness/daemon.port`. `connect_daemon()` picks transport at runtime. Optional `[daemon] transport` stub in `config/default.toml` (not fully wired yet).
 
 ## Agent loop (`src/agent.rs`)
 
@@ -328,12 +356,14 @@ See `docs/SHORTCUTS.md` for full keyboard reference.
 ## HTTP API (`src/server.rs`)
 
 ```
-POST /api/chat          body: {prompt, session_id?}   → SSE AgentEvent stream
-GET  /api/sessions      → [{id, name, updated_at}]
-GET  /api/sessions/:id  → full Session JSON
-GET  /api/health        → {status, model}
-WS   /ws/session/:id    → collaborative session events (E13)
+POST /api/chat          body: {prompt, session_id?}   → SSE AgentEvent stream (Bearer auth)
+GET  /api/sessions      → [{id, name, updated_at}]    (Bearer auth)
+GET  /api/sessions/:id  → full Session JSON           (Bearer auth)
+GET  /api/health        → {status, model, auth_token} (loopback bootstrap)
+WS   /ws/session/:id    → collaborative events (E13 — not implemented)
 ```
+
+Protected routes require `Authorization: Bearer $(cat ~/.harness/server.token)`. See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
 SSE event types: `text_chunk`, `tool_start`, `tool_result`, `memory_recall`,
 `cache_usage`, `token_usage`, `sub_agent_spawned`, `sub_agent_done`, `done`, `error`.
@@ -400,7 +430,28 @@ github_owner = ""
 [collab]
 enabled = false
 bind = "127.0.0.1:9090"
+
+# Optional — commented in config/default.toml today:
+# [daemon]
+# transport = "auto"   # auto | unix | tcp
 ```
+
+## Documentation map
+
+| Doc | Purpose |
+|-----|---------|
+| [`README.md`](README.md) | Install, daily workflow, platform matrix |
+| [`TODO.md`](TODO.md) | **Open backlog (severity-ranked) + roadmap** |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to contribute, CI gates |
+| [`docs/PEER_REVIEW_AUDIT.md`](docs/PEER_REVIEW_AUDIT.md) | Security audit + remediation log |
+| [`docs/INSTALL.md`](docs/INSTALL.md) | Per-OS install + troubleshooting |
+| [`docs/BROWSER_CDP.md`](docs/BROWSER_CDP.md) | Browser tool setup |
+| [`docs/COOKBOOK.md`](docs/COOKBOOK.md) | Example prompts |
+| [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) | Release checklist + manual smoke §3 |
+| [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) | Latest verification log |
+| [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | HTTP/daemon/tool trust boundaries |
+
+Public API crates enforce **`#![deny(missing_docs)]`**: `harness-provider-core`, `harness-tools`.
 
 ## Adding a new tool
 

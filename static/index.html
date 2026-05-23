@@ -1400,6 +1400,9 @@
 
   function applyHealthPayload(h) {
     lastHealth = h;
+    if (h && h.auth_token) {
+      localStorage.setItem("harness_auth_token", h.auth_token);
+    }
     updateStatusTooltip();
     if (setupOpen) refreshSetupPanel();
   }
@@ -1526,6 +1529,12 @@
     const controller = new AbortController();
     let externalAbortHandler = null;
 
+    const authToken = localStorage.getItem("harness_auth_token");
+    const headers = { ...(options.headers || {}) };
+    if (authToken && !headers["Authorization"]) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
     if (externalSignal) {
       if (externalSignal.aborted) {
         controller.abort();
@@ -1537,7 +1546,7 @@
 
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
+      const response = await fetch(url, { ...options, headers, signal: controller.signal });
       return response;
     } catch (err) {
       if (controller.signal.aborted && !(externalSignal && externalSignal.aborted)) {

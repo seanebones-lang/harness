@@ -16,3 +16,6 @@ futures = { workspace = true }
 reqwest = { workspace = true }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 base64 = "0.22"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

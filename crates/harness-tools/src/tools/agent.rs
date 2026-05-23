@@ -19,11 +19,13 @@ pub type SubAgentRunner = Arc<
         + Sync,
 >;
 
+/// Spawn a sub-agent with a subset of tools.
 pub struct SpawnAgentTool {
     runner: SubAgentRunner,
 }
 
 impl SpawnAgentTool {
+    /// Create the tool with a runtime-specific sub-agent runner.
     pub fn new(runner: SubAgentRunner) -> Self {
         Self { runner }
     }
@@ -66,5 +68,28 @@ impl Tool for SpawnAgentTool {
             format!("{task}\n\nAdditional context:\n{context}")
         };
         (self.runner)(full_prompt).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn spawn_agent_invokes_runner_with_context() {
+        let runner: SubAgentRunner = Arc::new(move |prompt| {
+            Box::pin(async move { Ok(format!("done:{prompt}")) })
+        });
+        let tool = SpawnAgentTool::new(runner);
+        let out = tool
+            .execute(json!({
+                "task": "summarize",
+                "context": "file foo.rs"
+            }))
+            .await
+            .expect("spawn");
+        assert!(out.contains("summarize"));
+        assert!(out.contains("file foo.rs"));
     }
 }

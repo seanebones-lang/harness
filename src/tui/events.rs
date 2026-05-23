@@ -40,6 +40,14 @@ pub(crate) fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent)
         AgentEvent::MemoryRecall { count } => {
             st.push_event(format!("memory: recalled {count} entries"));
         }
+        AgentEvent::ContextCompacted {
+            messages_before,
+            messages_after,
+        } => {
+            st.push_event(format!(
+                "compact: {messages_before} → {messages_after} messages"
+            ));
+        }
         AgentEvent::SubAgentSpawned { task } => {
             let p: String = task.chars().take(60).collect();
             st.push_event(format!("swarm ↓ {p}…"));

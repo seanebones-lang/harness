@@ -24,9 +24,11 @@
 
 use anyhow::Result;
 use axum::extract::ConnectInfo;
+use axum::http::{header::AUTHORIZATION, Request, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     response::{
         sse::{Event, KeepAlive, Sse},
         Html, Json,
@@ -49,7 +51,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 
 use crate::agent;
-use crate::events::{channel as agent_event_channel, AgentEvent};
+use crate::events::{channel as agent_event_channel, try_emit, AgentEvent};
 use crate::projects;
 
 // ── Shared server state ───────────────────────────────────────────────────────
@@ -72,6 +74,8 @@ pub struct ServerState {
     pub browser_enabled: bool,
     pub browser_url: String,
     pub config_active_path: Arc<PathBuf>,
+    /// Bearer token required for mutating / sensitive API routes.
+    pub auth_token: String,
 }
 
 // ── Request / response types ──────────────────────────────────────────────────
@@ -80,6 +84,8 @@ pub struct ServerState {
 struct ChatRequest {
     prompt: String,
     session_id: Option<String>,
+    /// Optional bearer token (prefer `Authorization: Bearer` header).
+    token: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -108,6 +114,9 @@ struct HealthResponse {
     keys: HealthKeyHints,
     /// Expanded path to the active Harness config file for this workspace.
     config_path: String,
+    /// Loopback-only bootstrap token for the bundled web UI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auth_token: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -169,18 +178,52 @@ const PROJECT_TEST_TIMEOUT: Duration = Duration::from_secs(300);
 // ── Router ────────────────────────────────────────────────────────────────────
 
 pub fn router(state: ServerState) -> Router {
-    Router::new()
-        .route("/", get(ui))
-        .route("/api/health", get(health))
-        .route("/api/setup/state", get(setup_state))
-        .route("/api/setup/persist", post(persist_setup))
+    let shared = Arc::new(state);
+    let protected = Router::new()
         .route("/api/sessions", get(list_sessions))
         .route("/api/projects", get(list_projects))
         .route("/api/projects/:id/action", post(project_action))
         .route("/api/projects/:id/files", get(project_files))
         .route("/api/sessions/:id", get(get_session))
         .route("/api/chat", post(chat))
-        .with_state(Arc::new(state))
+        .route("/api/setup/persist", post(persist_setup))
+        .layer(middleware::from_fn_with_state(
+            shared.clone(),
+            require_auth,
+        ));
+
+    Router::new()
+        .route("/", get(ui))
+        .route("/api/health", get(health))
+        .route("/api/setup/state", get(setup_state))
+        .merge(protected)
+        .with_state(shared)
+}
+
+async fn require_auth(
+    State(state): State<Arc<ServerState>>,
+    req: Request<axum::body::Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let token = req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer ").map(str::trim));
+    if !crate::auth_token::verify(token, &state.auth_token) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    Ok(next.run(req).await)
+}
+
+fn extract_bearer(headers: &axum::http::HeaderMap, body_token: Option<&str>) -> Option<String> {
+    headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer ").map(str::trim))
+        .map(|s| s.to_string())
+        .or_else(|| body_token.map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty())
 }
 
 pub async fn serve(state: ServerState, addr: SocketAddr) -> Result<()> {
@@ -288,6 +331,7 @@ async fn persist_setup(
         &state.browser_url,
         mem,
         state.embed_model.clone(),
+        None,
     )
     .await;
 
@@ -329,8 +373,12 @@ async fn ui() -> Html<&'static str> {
     Html(UI_HTML)
 }
 
-async fn health(State(state): State<Arc<ServerState>>) -> Json<HealthResponse> {
+async fn health(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<ServerState>>,
+) -> Json<HealthResponse> {
     let g = state.inner.read().await;
+    let loopback = addr.ip().is_loopback();
     Json(HealthResponse {
         status: "ok",
         model: g.model.clone(),
@@ -341,6 +389,11 @@ async fn health(State(state): State<Arc<ServerState>>) -> Json<HealthResponse> {
             openai_env: nonempty_env("OPENAI_API_KEY"),
         },
         config_path: state.config_active_path.display().to_string(),
+        auth_token: if loopback {
+            Some(state.auth_token.clone())
+        } else {
+            None
+        },
     })
 }
 
@@ -453,9 +506,17 @@ async fn project_action(
             }
         }
         "test" => {
+            let custom_cmd = req.command.is_some();
             let cmd = req
                 .command
                 .unwrap_or_else(|| default_test_command(&project.path));
+            if custom_cmd && !is_allowed_test_command(&cmd) {
+                return Ok(Json(ProjectActionResponse {
+                    ok: false,
+                    message: "custom test command not allowed; use a known prefix (cargo test, npm test, pytest, go test, make test)".into(),
+                    output: None,
+                }));
+            }
             let output = run_shell_in_project(&project.path, &cmd)
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -516,11 +577,22 @@ fn error_sse(msg: impl std::fmt::Display) -> Sse<BoxSseStream> {
 
 async fn chat(
     State(state): State<Arc<ServerState>>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ChatRequest>,
 ) -> Sse<BoxSseStream> {
+    if !crate::auth_token::verify(
+        extract_bearer(&headers, req.token.as_deref()).as_deref(),
+        &state.auth_token,
+    ) {
+        return error_sse("unauthorized — send Authorization: Bearer <token>");
+    }
+
     let (tx, rx) = agent_event_channel();
 
     let rt = state.inner.read().await;
+    let native_web = rt.config.native_tools.web_search_enabled();
+    let native_code = rt.config.native_tools.code_execution_enabled();
+    let native_x = rt.config.native_tools.x_search_enabled();
 
     // Resolve or create session
     let mut session = match req.session_id.as_deref() {
@@ -547,7 +619,7 @@ async fn chat(
     let session_id_str = session.id.clone();
 
     tokio::spawn(async move {
-        let _ = agent::drive_agent(
+        if let Err(e) = agent::drive_agent_full(
             &provider,
             &tools,
             mem.as_ref(),
@@ -555,8 +627,16 @@ async fn chat(
             &mut session,
             &sys,
             Some(&tx),
+            None,
+            native_web,
+            native_code,
+            native_x,
+            None,
         )
-        .await;
+        .await
+        {
+            try_emit(Some(&tx), AgentEvent::Error(format!("Agent error: {e}")));
+        }
 
         if let Some(title) = agent::suggest_session_name(&provider, &session).await {
             let _ = store.set_name_if_missing(&session.id, &title);
@@ -602,6 +682,14 @@ async fn chat(
             }
             AgentEvent::MemoryRecall { count } => {
                 format!(r#"{{"type":"memory_recall","count":{count}}}"#)
+            }
+            AgentEvent::ContextCompacted {
+                messages_before,
+                messages_after,
+            } => {
+                format!(
+                    r#"{{"type":"context_compacted","messages_before":{messages_before},"messages_after":{messages_after}}}"#
+                )
             }
             AgentEvent::SubAgentSpawned { task } => {
                 format!(
@@ -768,6 +856,21 @@ fn default_test_command(path: &FsPath) -> String {
     }
 }
 
+fn is_allowed_test_command(cmd: &str) -> bool {
+    const ALLOWED: &[&str] = &[
+        "cargo test",
+        "npm test",
+        "yarn test",
+        "pnpm test",
+        "go test",
+        "pytest",
+        "make test",
+        "echo ",
+    ];
+    let cmd = cmd.trim();
+    ALLOWED.iter().any(|prefix| cmd.starts_with(prefix))
+}
+
 fn collect_files(
     root: &FsPath,
     dir: &FsPath,
@@ -841,6 +944,7 @@ mod tests {
             browser_enabled: false,
             browser_url: String::new(),
             config_active_path: Arc::new(PathBuf::from("/tmp/harness-test-config.toml")),
+            auth_token: "test-token".to_string(),
         };
 
         let app = router(state);
@@ -914,8 +1018,11 @@ mod tests {
         store.save(&session).expect("save session");
 
         let client = reqwest::Client::new();
-        let sessions = client
-            .get(format!("{base_url}/api/sessions"))
+        let auth = |req: reqwest::RequestBuilder| {
+            req.header("Authorization", "Bearer test-token")
+        };
+
+        let sessions = auth(client.get(format!("{base_url}/api/sessions")))
             .send()
             .await
             .expect("GET /api/sessions should succeed");
@@ -927,11 +1034,10 @@ mod tests {
             "saved session should be listed"
         );
 
-        let loaded = client
-            .get(format!(
+        let loaded = auth(client.get(format!(
                 "{base_url}/api/sessions/{}",
                 urlencoding::encode(&session.id)
-            ))
+            )))
             .send()
             .await
             .expect("GET /api/sessions/:id should succeed");

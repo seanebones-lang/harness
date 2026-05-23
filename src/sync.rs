@@ -153,11 +153,7 @@ pub async fn get_or_create_passphrase() -> Result<String> {
 }
 
 fn generate_passphrase() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("hrns-{:x}-{:x}", t.as_secs(), t.subsec_nanos() ^ 0xdeadbeef)
+    uuid::Uuid::new_v4().to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -190,8 +186,25 @@ fn tar_dir(dir: &Path) -> Result<Vec<u8>> {
 
 fn untar_dir(data: &[u8], parent: &Path) -> Result<()> {
     std::fs::create_dir_all(parent)?;
+    let parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
     let mut archive = tar::Archive::new(data);
-    archive.unpack(parent)?;
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?;
+        validate_tar_entry_path(&path)?;
+        entry.unpack_in(&parent)?;
+    }
+    Ok(())
+}
+
+fn validate_tar_entry_path(path: &Path) -> Result<()> {
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        anyhow::bail!("tar entry path {:?} is not allowed", path);
+    }
     Ok(())
 }
 
@@ -408,4 +421,34 @@ pub async fn status() -> Result<()> {
         println!("Recent syncs:\n{log}");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn validate_tar_entry_path_rejects_parent_dir() {
+        let err = validate_tar_entry_path(std::path::Path::new("../escape.txt")).unwrap_err();
+        assert!(err.to_string().contains("not allowed"));
+    }
+
+    #[test]
+    fn validate_tar_entry_path_rejects_absolute() {
+        let err = validate_tar_entry_path(std::path::Path::new("/etc/passwd")).unwrap_err();
+        assert!(err.to_string().contains("not allowed"));
+    }
+
+    #[test]
+    fn untar_extracts_valid_entries() {
+        let dir = tempdir().unwrap();
+        let mem = dir.path().join("memdir");
+        std::fs::create_dir_all(&mem).unwrap();
+        std::fs::write(mem.join("fact.md"), b"hello").unwrap();
+        let tar_bytes = tar_dir(&mem).unwrap();
+        let dest = tempdir().unwrap();
+        untar_dir(&tar_bytes, dest.path()).unwrap();
+        assert!(dest.path().join("memory").join("fact.md").exists());
+    }
 }

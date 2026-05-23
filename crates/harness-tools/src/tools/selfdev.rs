@@ -14,12 +14,14 @@ use crate::registry::Tool;
 
 // ── RebuildSelfTool ───────────────────────────────────────────────────────────
 
+/// Rebuild the harness binary in self-dev mode.
 pub struct RebuildSelfTool {
     src_dir: PathBuf,
     profile: String,
 }
 
 impl RebuildSelfTool {
+    /// Point at the harness source tree to build.
     pub fn new(src_dir: PathBuf) -> Self {
         Self {
             src_dir,
@@ -27,6 +29,7 @@ impl RebuildSelfTool {
         }
     }
 
+    /// Override the cargo profile (default: `selfdev`).
     pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
         self.profile = profile.into();
         self
@@ -104,12 +107,14 @@ impl Tool for RebuildSelfTool {
 
 // ── ReloadSelfTool ────────────────────────────────────────────────────────────
 
+/// Hot-reload the harness binary after self-dev rebuild.
 pub struct ReloadSelfTool {
     src_dir: PathBuf,
     profile: String,
 }
 
 impl ReloadSelfTool {
+    /// Point at the harness source tree containing the built binary.
     pub fn new(src_dir: PathBuf) -> Self {
         Self {
             src_dir,

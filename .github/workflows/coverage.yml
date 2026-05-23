@@ -1,6 +1,7 @@
 name: Coverage
 
 on:
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -15,8 +16,10 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       - name: Generate coverage
+        run: cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 60
+      - name: Upload lcov
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
-      - name: Upload
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: lcov.info

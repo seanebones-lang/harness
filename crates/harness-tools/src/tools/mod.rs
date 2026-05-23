@@ -1,11 +1,14 @@
 pub mod agent;
 pub mod apply_patch;
 pub mod computer;
+/// File read/write/list/patch tools.
 pub mod filesystem;
 pub mod gh;
 pub mod git;
+/// Regex code search over the workspace.
 pub mod search;
 pub mod selfdev;
+/// Shell command execution.
 pub mod shell;
 pub mod swarm_tool;
 pub mod test_runner;
