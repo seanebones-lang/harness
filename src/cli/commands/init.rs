@@ -15,7 +15,7 @@ pub fn run_init(project: bool, force: bool) -> Result<()> {
     } else {
         let config_contents = r#"[provider]
 # api_key = "sk-ant-..."   # or set ANTHROPIC_API_KEY env var
-model = "claude-sonnet-4-6"
+model = "grok-4.3"
 max_tokens = 8192
 temperature = 0.7
 
