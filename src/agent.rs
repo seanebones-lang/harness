@@ -1012,7 +1012,7 @@ mod tests {
     #[test]
     fn context_limit_varies_by_model_family() {
         assert_eq!(context_limit_for_model("gpt-5.5"), 1_000_000);
-        assert_eq!(context_limit_for_model("claude-sonnet-4-6"), 200_000);
+        assert_eq!(context_limit_for_model("grok-4.3"), 200_000);
         assert_eq!(context_limit_for_model("qwen3-coder:30b"), 256_000);
         assert_eq!(context_limit_for_model("unknown-model"), 128_000);
     }
@@ -1027,7 +1027,7 @@ mod tests {
                 stop_reason: StopReason::EndTurn,
             },
         ]]));
-        let mut session = Session::new("claude-sonnet-4-6");
+        let mut session = Session::new("grok-4.3");
         for i in 0..8 {
             session.push(Message::user(format!("question {i}")));
             session.push(Message::assistant(format!("answer {i}")));
