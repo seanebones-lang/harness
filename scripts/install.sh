@@ -117,7 +117,7 @@ build_from_source() {
         src_dir="$src_dir/harness"
     fi
 
-    (cd "$src_dir" && cargo build --release --profile release-lto)
+    (cd "$src_dir" && cargo build --profile release-lto)
 
     mkdir -p "$INSTALL_DIR"
     if [[ "$TARGET" == *"windows"* ]]; then
