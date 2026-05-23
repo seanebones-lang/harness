@@ -287,15 +287,15 @@ New MCP 2.0 features:
 
 ### `swarm` (E9)
 
-`TaskEntry`, `TaskStatus`, SQLite persistence at `~/.harness/swarm.db`, `tokio::sync::Semaphore` for concurrency. CLI: `harness swarm list`, `harness swarm status <id>`, `harness swarm result <id>`.
+`TaskEntry`, `TaskStatus`, SQLite at `~/.harness/swarm.db`, `[swarm]` config (`max_concurrency`, `db_path`). CLI: `harness swarm run|list|status|result|cancel|wait`.
 
 ### `bridges` (E12)
 
-`BridgesConfig` — Obsidian vault write, Apple Notes (osascript), Calendar events (EventKit osascript), GitHub Projects (gh graphql). Gated by `[bridges]` config block.
+`BridgesConfig` — Obsidian, Apple Notes, Calendar, GitHub Projects. CLI: `harness bridge …` when `[bridges.*]` enabled.
 
-### `collab` (E13 — **EXPERIMENTAL, not wired**)
+### `collab` (E13)
 
-`CollabConfig`, `CollabEvent`, `CollabSession`, `CollabRegistry` — multi-user shared sessions over WebSocket. **Module compiles but is not connected to `server.rs` or the TUI.** Do not enable in production docs until C.1 lands.
+`CollabConfig`, `CollabEvent`, `CollabRegistry` — WebSocket at `/ws/session/:id?token=…` when `[collab].enabled` on `harness serve`.
 
 ### `diff_review` (E4)
 
