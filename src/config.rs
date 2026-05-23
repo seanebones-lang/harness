@@ -403,3 +403,29 @@ pub fn write_config_toml(path: &Path, cfg: &Config) -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approval_effective_mode_defaults_to_auto() {
+        let cfg = ApprovalConfig::default();
+        assert_eq!(cfg.effective_mode(), "auto");
+    }
+
+    #[test]
+    fn approval_parsed_always_ask_splits_tool_pattern() {
+        let cfg = ApprovalConfig {
+            always_ask: Some(vec![
+                "shell:git push".into(),
+                "write_file".into(),
+            ]),
+            ..Default::default()
+        };
+        let parsed = cfg.parsed_always_ask();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0], ("shell".into(), "git push".into()));
+        assert_eq!(parsed[1], ("write_file".into(), "*".into()));
+    }
+}

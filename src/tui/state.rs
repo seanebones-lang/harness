@@ -65,6 +65,8 @@ pub(crate) struct AppState {
     pub(crate) show_welcome: bool,
     /// Plan mode toggle.
     pub(crate) plan_mode: bool,
+    /// Status-bar label when confirm gate is active (`PLAN` or `SMART`).
+    pub(crate) confirm_bar_label: Option<String>,
     /// @file tab-completion candidates.
     pub(crate) tab_completions: Vec<String>,
     pub(crate) tab_completion_idx: usize,
@@ -186,6 +188,7 @@ impl AppState {
             pending_confirm: None,
             show_welcome,
             plan_mode: false,
+            confirm_bar_label: None,
             tab_completions: Vec::new(),
             tab_completion_idx: 0,
             fork_mode: false,

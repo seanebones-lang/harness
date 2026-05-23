@@ -144,11 +144,9 @@ _None — E-03 closed May 2026._
 | ID | Task |
 |----|------|
 | **SWARM-01/02** | ✅ `cancel`/`wait`; `[swarm]` in Config |
-| **TST-10/11/12** | Proptest MCP/LSP; coverage 70%; checkpoint tests |
+| **TST-10/11/12** | Proptest MCP/LSP; coverage 70%; checkpoint tests ✅ |
 | **OBS-01** | ✅ OTLP mock HTTP integration test |
 | **REL-02** | VS Code Windows E2E |
-| **REL-04** | ✅ `[daemon].transport` in Config |
-| **CFG-01** | Approval effective_mode |
 
 ### 🟢 Low / ⚪ Optional
 
@@ -227,23 +225,22 @@ New providers; cross-platform desktop; enterprise features; performance; i18n.
 | Context compaction silent | ✅ `ContextCompacted` event |
 | Malformed patch panics | ⚠️ Monitor — prefer Result over unwrap in parser |
 
-### 5.4 Dead code & doc drift (unchanged — Phase C work)
+### 5.4 Dead code & doc drift (updated May 2026)
 
 | Module / flag | Status |
 |---------------|--------|
-| `src/collab.rs` | Compiled; **EXPERIMENTAL** doc; not wired to server |
-| `src/bridges.rs` | Implemented; **EXPERIMENTAL** doc; no callers |
-| `src/diff_review.rs` | `#![allow(dead_code)]`; not in TUI path |
-| `src/observability.rs` | Partial CLI only; OTLP untested |
-| `Swarm::cancel/wait` | Documented as **not implemented**; use `register_task` / `get_task` |
-| `[collab]`, `[swarm]`, `[bridges]` in `default.toml` | Comment stubs; not in `Config` struct |
-| `[approval].effective_mode()` | Dead code in `config.rs:196` |
+| `src/collab.rs` | ✅ Wired when `[collab].enabled` |
+| `src/bridges.rs` | ✅ `harness bridge` CLI |
+| `src/diff_review.rs` | ✅ Plan-mode TUI overlay (E-03) |
+| `src/observability.rs` | Local JSONL + OTLP mock test |
+| Swarm cancel/wait | ✅ Implemented |
+| `[collab]`, `[swarm]`, `[bridges]`, `[daemon]`, `[approval]` | ✅ In `Config` + `default.toml` |
 
 ### 5.5 Test coverage snapshot
 
 | Area | Tests | Gap |
 |------|------:|-----|
-| Workspace total | **164** | — |
+| Workspace total | **185** | — |
 | `harness-tools` (incl. tool modules) | 32+ | Strong |
 | `harness-mcp` | 10 | Good |
 | `harness-provider-openai` | 9 | Good |

@@ -12,7 +12,7 @@
 | Area | Status |
 |------|--------|
 | **Release verdict** | **Public beta GO** — stable blocked on manual smoke §3 |
-| **Automated gates** | `cargo test --all` (**176 tests**), `clippy -D warnings`, CI multi-OS, coverage ≥ 60% on PRs |
+| **Automated gates** | `cargo test --all` (**185 tests**), `clippy -D warnings`, CI multi-OS, coverage ≥ 60% on PRs |
 | **P0 security** | **Closed** — tar-slip sync, HTTP/daemon bearer auth, confirm gate, tool sandboxing, git force-push guard |
 | **Agent loop** | Max 50 tool rounds; integration tests; `ContextCompacted` event; model-aware compaction |
 | **Providers** | Anthropic, xAI, OpenAI, Ollama, MLX; router with fallback; SSE tests for Anthropic/Ollama |
@@ -47,11 +47,11 @@ _None — E-03 closed May 2026._
 | **SWARM-02** | Wire `[swarm]` block in `Config` (today comment stub in `default.toml`) | ✅ `max_concurrency`, `db_path` |
 | **TST-10** | Proptest: MCP NDJSON classifier, LSP async read path | Partial proptest exists elsewhere |
 | **TST-11** | Raise coverage gate **60% → 70%** | [`coverage.yml`](.github/workflows/coverage.yml) |
-| **TST-12** | `checkpoint.rs` unit tests | Git stash integration untested |
+| **TST-12** | `checkpoint.rs` unit tests | ✅ git stash round-trip in temp repo |
 | **OBS-01** | OTLP export integration test (Jaeger/Tempo or mock) | ✅ mock axum `/v1/traces` test |
 | **REL-02** | VS Code extension **E2E on native Windows** | Protocol + token fixed; no automated E2E |
 | **REL-04** | Wire `[daemon] transport` in TOML → `Config` | ✅ `auto` / `unix` / `tcp` |
-| **CFG-01** | Wire `[approval].effective_mode()` or remove dead code | `config.rs` |
+| **CFG-01** | Wire `[approval].effective_mode()` or remove dead code | ✅ `auto` / `smart` / `plan` + `auto_approve` |
 | **CFG-02** | Add `[collab]` / `[bridges]` to `Config` struct **or** remove from `default.toml` | ✅ wired in `Config` + `default.toml` |
 
 ### 🟢 Low (polish / docs)
@@ -119,7 +119,8 @@ _None — E-03 closed May 2026._
 
 - **AGT-06** — `tool_calls_to_message` in `harness-provider-core` (shared wire format)
 - **OBS-01** — OTLP export integration test (mock axum `/v1/traces`)
-- **REL-04** — `[daemon].transport` wired (`auto` / `unix` / `tcp`)
+- **CFG-01** — `[approval]` wired: `mode` (`auto`/`smart`/`plan`), `auto_approve`, `always_ask`
+- **TST-12** — `checkpoint.rs` git stash integration tests
 - **E-03** — Diff review hunk overlay in plan-mode TUI (`write_file` / `patch_file`)
 
 ### Phase C follow-up (2026-05-22)

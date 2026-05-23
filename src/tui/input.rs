@@ -399,8 +399,10 @@ pub(crate) async fn handle_slash_command(
             let mut st = state.lock();
             st.plan_mode = !st.plan_mode;
             if st.plan_mode {
+                st.confirm_bar_label = Some("PLAN".into());
                 st.status = "Plan mode ON (restart with --plan to fully gate).".to_string();
             } else {
+                st.confirm_bar_label = None;
                 st.status = "Plan mode OFF.".to_string();
             }
         }

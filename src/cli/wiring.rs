@@ -174,6 +174,15 @@ pub async fn build_tools_inner(
     let sub_shell_cfg = shell_cfg.clone();
     let sub_workspace = workspace.clone();
     let sub_confirm = confirm_gate.clone();
+    let sub_confirm_policy = if confirm_gate.is_some() {
+        if cfg.approval.effective_mode() == "smart" {
+            harness_tools::ConfirmPolicy::Smart
+        } else {
+            harness_tools::ConfirmPolicy::Plan
+        }
+    } else {
+        harness_tools::ConfirmPolicy::Off
+    };
     let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |task: String| {
         let p: ArcProvider = sub_provider.clone();
         let m = sub_model.clone();
@@ -200,7 +209,9 @@ pub async fn build_tools_inner(
             });
             let mut exec = ToolExecutor::new(r);
             if let Some(g) = gate {
-                exec = exec.with_confirm_gate(g);
+                exec = exec
+                    .with_confirm_gate(g)
+                    .with_confirm_policy(sub_confirm_policy);
             }
             exec
         };
@@ -338,6 +349,16 @@ pub async fn build_tools_inner(
         .filter(|n| !builtin_before.contains(n))
         .collect();
 
+    let confirm_policy = if confirm_gate.is_some() {
+        if cfg.approval.effective_mode() == "smart" {
+            harness_tools::ConfirmPolicy::Smart
+        } else {
+            harness_tools::ConfirmPolicy::Plan
+        }
+    } else {
+        harness_tools::ConfirmPolicy::Off
+    };
+
     let executor = ToolExecutor::new(registry);
     let executor = if let Some(gate) = confirm_gate {
         executor.with_confirm_gate(gate)
@@ -347,7 +368,10 @@ pub async fn build_tools_inner(
 
     let executor = executor
         .with_mcp_tool_names(mcp_tool_names)
-        .with_always_ask(cfg.approval.parsed_always_ask());
+        .with_always_ask(cfg.approval.parsed_always_ask())
+        .with_auto_approve(cfg.approval.auto_approve.clone().unwrap_or_default())
+        .with_shell_confirm_patterns(cfg.shell.effective_confirm_required())
+        .with_confirm_policy(confirm_policy);
 
     // Wire autotest if enabled in config.
     let executor = if cfg.autotest.enabled {

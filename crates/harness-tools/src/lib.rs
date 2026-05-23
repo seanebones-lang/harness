@@ -14,7 +14,7 @@ pub mod tools;
 pub mod workspace_root;
 
 pub use confirm::{ConfirmGate, ConfirmRequest, ConfirmResult};
-pub use executor::ToolExecutor;
+pub use executor::{ConfirmPolicy, ToolExecutor};
 pub use policy::{tool_requires_checkpoint, tool_requires_confirmation, BUILTIN_DESTRUCTIVE_TOOLS};
 pub use registry::ToolRegistry;
 pub use workspace_root::{ArcWorkspace, SandboxMode, WorkspaceRoot};
