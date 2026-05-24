@@ -155,17 +155,16 @@ async fn main() -> Result<()> {
 
             match config::write_config_toml(&config_path, &new_cfg) {
                 Ok(_) => {
-                    println!("\n✓ Saved to {}", config_path.display());
-                    println!("Restart harness to use the new key.");
+                    println!("\n✓ Key saved. Starting harness...");
                 }
                 Err(e) => {
-                    eprintln!("Failed to write config: {}", e);
-                    println!("\n→ Add this to your shell profile:");
+                    eprintln!("Could not write config file: {}", e);
+                    eprintln!("You can still set the key via environment variable:");
                     println!("   export {}=\"your-key\"", env_var);
                 }
             }
         }
-        std::process::exit(0);
+        // Continue instead of exiting so the program can use the new key
     }
 
     // Handle partial config: xAI not present but others are
