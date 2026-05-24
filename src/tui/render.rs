@@ -16,6 +16,37 @@ use crate::highlight::Highlighter;
 use super::theme::Theme;
 use super::{AppState, PendingConfirm};
 
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    if width == 0 {
+        return vec![text.to_string()];
+    }
+    let mut lines = Vec::new();
+    for raw_line in text.lines() {
+        if raw_line.len() <= width {
+            lines.push(raw_line.to_string());
+            continue;
+        }
+        let mut current = String::new();
+        for word in raw_line.split_whitespace() {
+            if current.len() + word.len() + 1 > width {
+                if !current.is_empty() {
+                    lines.push(current);
+                }
+                current = word.to_string();
+            } else {
+                if !current.is_empty() {
+                    current.push(' ');
+                }
+                current.push_str(word);
+            }
+        }
+        if !current.is_empty() {
+            lines.push(current);
+        }
+    }
+    lines
+}
+
 pub(crate) fn draw_all(
     f: &mut ratatui::Frame,
     state: &mut AppState,
@@ -135,16 +166,27 @@ fn draw_chat(
         ))));
 
         if msg.role == "assistant" {
+            let content_width = area.width.saturating_sub(4) as usize;
             let rendered = hl.render_message(&msg.content, Style::default().fg(Color::White));
             for line in rendered {
-                items.push(ListItem::new(prefix_line(line, "│ ")));
+                // Wrap highlighted lines too
+                let plain = line.spans.iter().map(|s| s.content.as_ref()).collect::<String>();
+                for wrapped in wrap_text(&plain, content_width) {
+                    items.push(ListItem::new(Line::from(Span::styled(
+                        format!("│ {wrapped}"),
+                        Style::default().fg(Color::White),
+                    ))));
+                }
             }
         } else {
+            let content_width = area.width.saturating_sub(4) as usize;
             for raw in msg.content.lines() {
-                items.push(ListItem::new(Line::from(Span::styled(
-                    format!("│ {raw}"),
-                    Style::default().fg(Color::White),
-                ))));
+                for wrapped in wrap_text(raw, content_width) {
+                    items.push(ListItem::new(Line::from(Span::styled(
+                        format!("│ {wrapped}"),
+                        Style::default().fg(Color::White),
+                    ))));
+                }
             }
         }
         items.push(ListItem::new(Line::from(Span::raw(""))));
@@ -160,11 +202,14 @@ fn draw_chat(
                 .fg(theme.streaming_color)
                 .add_modifier(Modifier::BOLD),
         ))));
+        let content_width = area.width.saturating_sub(4) as usize;
         for line in state.streaming.lines() {
-            items.push(ListItem::new(Line::from(Span::styled(
-                format!("│ {line}"),
-                Style::default().fg(theme.streaming_color),
-            ))));
+            for wrapped in wrap_text(line, content_width) {
+                items.push(ListItem::new(Line::from(Span::styled(
+                    format!("│ {wrapped}"),
+                    Style::default().fg(theme.streaming_color),
+                ))));
+            }
         }
     }
 
@@ -189,6 +234,8 @@ fn draw_chat(
         )
     };
 
+    let total_items = items.len();
+
     let list = List::new(items)
         .block(
             Block::default()
@@ -198,6 +245,12 @@ fn draw_chat(
         )
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+    if total_items > 0 {
+        let selected = state.chat_scroll.selected().unwrap_or(0);
+        if selected == 0 || selected >= total_items.saturating_sub(5) {
+            state.chat_scroll.select(Some(total_items.saturating_sub(1)));
+        }
+    }
 
     f.render_stateful_widget(list, area, &mut state.chat_scroll);
 }
