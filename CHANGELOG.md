@@ -7,14 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1-beta] - 2026-05-24
+
 ### Added
-- `harness update` command (prints install instructions)
-- Professional release workflow with checksums
-- One-liner install script with prebuilt binary support
+- `harness setup` — interactive provider and API key configuration
+- `harness update` — prints platform-specific upgrade instructions
+- TUI and web UI screenshots in README
+- Windows prebuilt in release workflow
+- Ollama fallback when no cloud API keys are configured
+- MCP inbound request handling for `sampling/createMessage`
+- Default MCP command allowlist in config
+
+### Fixed
+- Empty `ProviderRouter` panic when no providers configured
+- Prebuilt download URL mismatch (`install.sh` ↔ GitHub Releases artifact names)
+- XAI API key missing `.unwrap()` panic in `build_arc_provider`
+- Stale default Claude model ID (`claude-sonnet-4-6`)
+- AppleScript injection in calendar bridge paths
+- Constant-time bearer token comparison
+- Removed committed merge artifacts (`main.rs.orig`, `main.rs.rej`)
 
 ### Changed
-- Improved README with clear install instructions and positioning
-- Better release process documentation
+- Install scripts warn when `~/.cargo/bin` and `~/.local/bin` both contain harness
+- First-run wizard reloads config after saving keys
+- `/api/setup/state` no longer exposes filesystem config path
 
 ## [0.1.0] - 2026-05-23
 

@@ -428,6 +428,15 @@ mod tests {
         assert_eq!(task.result.as_deref(), Some("finished"));
     }
 
+    #[test]
+    fn get_task_matches_id_prefix() {
+        let _db = TestDb::new();
+        let id = register_task("prefix test").expect("register");
+        let short = id.chars().take(8).collect::<String>();
+        let found = get_task(&short).expect("get by prefix").expect("found");
+        assert_eq!(found.id, id);
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn cancel_pending_task() {
         let _db = TestDb::new();

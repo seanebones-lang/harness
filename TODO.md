@@ -1,153 +1,90 @@
 # Harness — Open Tasks
 
-**New here?** Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) — it explains the codebase, how to run tests, and how to open a PR. The items below are good places to pick up work.
+**New here?** Start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-Canonical user docs: [`README.md`](README.md), [`Start Here/USER MANUAL.md`](Start%20Here/USER%20MANUAL.md).  
-Developer detail: [`CLAUDE.md`](CLAUDE.md), [`config/default.toml`](config/default.toml).
-
-Implemented and closed: xAI `stream_options` + usage, multi-tool-call streaming tests, embedding retries, TUI `--resume`, ambient `ctrl_c` shutdown, web UI session persistence, session delete CLI, clippy cleanliness.
+Canonical user docs: [`README.md`](README.md). Developer detail: [`CLAUDE.md`](CLAUDE.md), [`config/default.toml`](config/default.toml).
 
 Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md)
 
+---
 
-## CTO Review Priorities (May 2026)
+## Immediate Action Plan (May 2026 Audit)
 
-### P0 – Critical (Fix before next release)
-- [ ] Eliminate "ProviderRouter has no providers" panic
-  - Make `from_config` always guarantee at least one provider or return a clear error.
-  - Add defensive check in `build_arc_provider`.
-- [ ] Fix multi-binary installation issue (`~/.cargo/bin` vs `~/.local/bin`)
-- [ ] Improve wizard robustness (handle existing config without xAI key, add `harness setup` command)
+Execution order: **P0 → P1 → P2**. **Maintainer-only** items need API keys / manual GUI.
 
-### P1 – High Priority
-- [ ] Expand model selection + validation in first-run wizard
-- [ ] Add visible scrollbar to TUI chat panel
-- [ ] Improve swarm CLI integration (tests + status commands)
-- [ ] Add unit tests for `harness-provider-router` (`from_config`)
-- [ ] Refine auto-scroll behavior in TUI
+### P0 — Critical
 
-### P2 – Polish
-- [ ] Make `ambient` provider generic (remove XaiProvider hard dependency)
-- [ ] Fix session-list title lag
-- [ ] Better error messages for invalid/expired API keys
-- [ ] Windows improvements (PowerShell path, named pipes)
+| ID | Item | Status |
+|----|------|--------|
+| P0-1 | Eliminate `ProviderRouter has no providers` panic | [x] |
+| P0-2 | Replace XAI `.unwrap()` on missing API key | [x] |
+| P0-3 | Align prebuilt artifact names | [x] |
+| P0-4 | Add Windows to release workflow | [x] |
+| P0-5 | Reconcile version strings | [x] |
+| P0-6 | Delete merge artifacts; gitignore `*.orig`/`*.rej` | [x] |
+| P0-7 | Wizard robustness + `harness setup` | [x] |
+| P0-8 | Install scripts warn on binary path conflicts | [x] |
 
+### P1 — High priority
+
+| ID | Item | Status |
+|----|------|--------|
+| P1-1 | Wire MCP inbound requests (sampling) | [x] |
+| P1-2 | MCP spawn command allowlist default | [x] |
+| P1-3 | Escape AppleScript inputs in calendar bridge | [x] |
+| P1-4 | Protect `/api/setup/state` (strip config path) | [x] |
+| P1-5 | Constant-time bearer token comparison | [x] |
+| P1-6 | Replace production `.unwrap()`/`.expect()` hot paths | [x] |
+| P1-7 | Stale default model IDs → `claude-sonnet-4-6` | [x] |
+| P1-8 | Router unit tests | [x] |
+| P1-9 | Daemon/auth rejection tests | [x] |
+| P1-10 | Swarm CLI integration tests (prefix lookup) | [x] |
+| P1-11 | README factual fixes | [x] |
+| P1-12 | Refresh stale docs | [x] |
+| P1-13 | Implement `harness update` subcommand | [x] |
+| P1-14 | Add `release-lto` to CI | [x] |
+
+### P2 — Polish
+
+| ID | Item | Status |
+|----|------|--------|
+| P2-1 | TUI visible scrollbar + auto-scroll | [x] |
+| P2-2 | Session-list title lag UX note | [x] |
+| P2-3 | Wire notification kinds (voice, swarm wait) | [x] |
+| P2-4 | Swarm background status updates | [x] (via existing `spawn_task`) |
+| P2-5 | Collab `max_users` enforcement | [x] |
+| P2-6 | Browser tool `unreachable!()` → `Err` | [x] |
+| P2-7 | Coverage uplift (auth, bridges, swarm prefix tests) | [x] |
+| P2-8 | VS Code extension README + packaging notes | [x] |
+| P2-9 | Desktop app icon/docs (CI job deferred) | [x] |
+| P2-10 | Homebrew tap publish | [ ] maintainer |
+
+### Maintainer-only
+
+| ID | Item | Status |
+|----|------|--------|
+| REL-01 | Manual smoke §3 | [ ] |
 
 ---
 
-## Good first contributions
+## Remaining backlog
 
-### Unit tests — `harness-browser` (`crates/harness-browser/`)
-
-Three targeted tests, no API key needed:
-
-- No-Chrome error path: connect with nothing listening on the CDP port → clean error, no panic.
-- Unknown `action` passed to `BrowserTool::execute` → returns `Err`, not `unreachable!`.
-- CDP request/response JSON round-trip: mock the socket, assert serialization is stable.
-
-### Unit tests — `ambient.rs` consolidation (`src/ambient.rs` or `tests/smoke_test.rs`)
-
-Spin up a mock `MemoryStore` with ≥ 5 entries, trigger consolidation, assert merged / `__consolidated__` entries are written correctly.
-
-### Swarm module tests and CLI integration
-
-The swarm system (src/swarm.rs) has solid core logic but lacks:
-- Unit tests for register/update/list flows
-- Integration with the main CLI (`harness swarm spawn`, `harness swarm status`)
-- Background watcher that auto-updates task status when sub-agents finish
-
-Add these as high-priority Polish items.
-
-### Session-list title lag (`src/main.rs` → `list_sessions()`)
-
-Session names are generated async; titles can be missing on the first `harness sessions` call right after save. Options: re-query after rename completes, or add a note in UX copy. Small, contained change.
-
----
-
-## Architecture
-
-### Generic `ambient` provider (`src/ambient.rs`)
-
-`spawn()` and `consolidate()` take `XaiProvider` directly. Replace with `P: Provider + Clone + 'static` so any backend (Anthropic, Ollama, …) can drive ambient consolidation. See the `Provider` trait in `crates/harness-provider-core/`. Medium-sized generics change with a clear interface contract.
-
-### Coverage and property testing
-
-Current coverage target: ≥ 60 % on library crates (local `cargo llvm-cov --lib` ~48% as of May 2026 — raise gate only after uplift). Proptest / fuzzing targets:
-
-- MCP NDJSON classifier (`classify_mcp_ndjson_line` in `crates/harness-mcp/`) — ✅
-- LSP async framed read (`read_lsp_message` in `crates/harness-lsp/`) — ✅
-- Provider SSE parsing (`crates/harness-provider-openai/`, `crates/harness-provider-xai/`)
-
-### `#![deny(missing_docs)]` on public crates
-
-`harness-provider-core` and `harness-tools` are the public API surface. Doc comments + `missing_docs` help downstream consumers and IDEs. Pair with `cargo doc --open` to verify output.
-
----
-
-## New providers
-
-See [`CLAUDE.md`](CLAUDE.md) → *Adding a new provider* for the three-step pattern. Interesting targets: **Mistral**, **Cohere**, **Google Gemini**, **AWS Bedrock**.
-
-## New tools
-
-See [`CLAUDE.md`](CLAUDE.md) → *Adding a new tool*. Ideas: `GitTool` (structured git ops), `DatabaseTool` (SQLite/Postgres → markdown tables), `NotebookTool` (Jupyter `.ipynb`), `DockerTool` (container list/exec/logs).
-
-## Platform coverage
-
-- **Windows:** shell tool falls back to `cmd.exe` when Git for Windows is absent; a PowerShell native path would improve the experience.
-- **VS Code extension** (`extensions/vscode/`): currently Unix socket only; a named-pipe or TCP fallback makes it first-class on Windows.
-- **Tauri desktop app** (`apps/desktop/`): Windows/Linux packaging, tray-icon polish, auto-update.
-
-## Documentation polish
-
-- Screenshots and a CDP troubleshooting guide for the browser tool
-- Cookbook of real-world prompts / session transcripts
-- Translations of `Start Here/USER MANUAL.md`
+- Homebrew tap publish with real SHA256s (P2-10)
+- REL-01 manual smoke on target OSes
+- Full notification wiring (`pr_opened`, `ci_failed`, `daemon_died`, `autotest_failed`)
+- Coverage gate uplift toward 60% on more crates
+- DatabaseTool / NotebookTool / DockerTool
+- New providers (Mistral, Gemini, Bedrock)
+- Desktop CI smoke + Tauri icons generation
+- VS Code marketplace assets (`media/icon.png`)
 
 ---
 
 ## Release checklist (maintainers)
 
-Automated gates — **CI runs these on Ubuntu, macOS, Windows**:
-
-- [x] `cargo test --all` — workspace integration + doctests (no API keys)
+- [x] `cargo test --all`
 - [x] `cargo clippy --all-targets --all-features -- -D warnings`
 - [x] `cargo fmt --all -- --check`
-- [x] `cargo build --profile release-lto`
+- [x] `cargo build --profile release-lto` (CI + local)
 
-Manual smoke (needs API keys / local GUI):
-
-- [ ] `XAI_API_KEY=... harness "list files in ."` — one-shot works
-- [ ] `XAI_API_KEY=... harness` — TUI, token counts in status bar
-- [ ] `XAI_API_KEY=... harness serve` + `http://127.0.0.1:8787` — web UI chat
-- [ ] `harness export <id>` — Markdown readable in a viewer
-- [ ] `harness sessions` — lists sessions including auto-named titles
-
-Full checklist: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md).
-
----
-
-## High Priority Polish (v0.1.1)
-
-### Safety & Approval Flows
-- Improve visual diff previews in TUI (unified diff rendering)
-- Make "Smart mode" vs "Plan mode" differences more obvious to users
-- Add one-line "what will change" summary before multi-file edits
-
-### Swarm Reliability & Cost Control
-- Define clear "Fast" vs "Smart" sub-agent profiles with explicit cost/time budgets
-- Add swarm-level cost caps and easy cancellation
-- Improve task status visibility and background watcher reliability
-
-### Session Management Polish
-- Fix session-list title lag (async name generation)
-- Better session naming and recent session UX
-
-### Context Optimization
-- Improve compaction strategy and token estimation accuracy
-- Reduce unnecessary context bloat in long sessions
-
-### Windows Experience
-- Improve PowerShell install experience
-- Add clearer Git for Windows requirement messaging and troubleshooting
-
+Manual smoke (REL-01): see [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) §3.

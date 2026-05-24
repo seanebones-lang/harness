@@ -132,7 +132,6 @@ struct SetupStateResponse {
     has_anthropic_key: bool,
     has_xai_key: bool,
     has_openai_key: bool,
-    config_path: String,
 }
 
 #[derive(Serialize)]
@@ -242,11 +241,17 @@ async fn collab_ws(
     if !crate::auth_token::verify(query.token.as_deref(), &state.auth_token) {
         return Err(StatusCode::UNAUTHORIZED);
     }
+    let max_users = {
+        let g = state.inner.read().await;
+        g.config.collab.max_users
+    };
     let user_id = query
         .user_id
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| format!("u{:08x}", uuid::Uuid::new_v4().as_u128() as u32));
-    Ok(ws.on_upgrade(move |socket| handle_collab_ws(socket, session_id, user_id, registry)))
+    Ok(ws.on_upgrade(move |socket| {
+        handle_collab_ws(socket, session_id, user_id, registry, max_users)
+    }))
 }
 
 async fn handle_collab_ws(
@@ -254,8 +259,17 @@ async fn handle_collab_ws(
     session_id: String,
     user_id: String,
     registry: CollabRegistry,
+    max_users: usize,
 ) {
-    let mut rx = collab::join_session(&registry, &session_id, &user_id);
+    let mut rx = match collab::join_session(&registry, &session_id, &user_id, max_users) {
+        Ok(rx) => rx,
+        Err(e) => {
+            let _ = socket
+                .send(WsMessage::Text(format!("error: {e}")))
+                .await;
+            return;
+        }
+    };
     loop {
         tokio::select! {
             msg = socket.recv() => {
@@ -384,7 +398,6 @@ async fn setup_state(State(state): State<Arc<ServerState>>) -> Json<SetupStateRe
                 .is_empty()
             || nonempty_env("XAI_API_KEY"),
         has_openai_key: config_key_nonempty(cfg, "openai") || nonempty_env("OPENAI_API_KEY"),
-        config_path: state.config_active_path.display().to_string(),
     })
 }
 
@@ -448,7 +461,8 @@ async fn persist_setup(
         state.embed_model.clone(),
         None,
     )
-    .await;
+    .await
+    .map_err(|e| bad_persist(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     crate::config::write_config_toml(path.as_path(), &cfg).map_err(|e| {
         bad_persist(

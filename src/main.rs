@@ -42,7 +42,8 @@ use cli::args::BridgeAction;
 use cli::{
     build_prompt_with_image, build_tools, connect_to_server, delete_session, export_session,
     graceful_ambient_shutdown, handle_doctor_command, handle_models_command,
-    handle_project_command, list_sessions, run_init, run_self_dev, run_status,
+    handle_project_command, list_sessions, maybe_run_first_time_wizard, run_init, run_self_dev,
+    run_setup_interactive, run_status, run_update,
 };
 use cli::{CheckpointAction, Cli, Commands, CostAction, SwarmAction, SyncAction};
 
@@ -60,7 +61,7 @@ async fn main() -> Result<()> {
     };
     fmt().with_env_filter(filter).with_target(false).init();
 
-    let cfg = config::load(cli.config.as_deref())?;
+    let mut cfg = config::load(cli.config.as_deref())?;
     swarm::configure(&cfg.swarm);
     daemon::configure(&cfg.daemon);
 
@@ -69,7 +70,22 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Detect available API keys (priority: xAI > Anthropic > OpenAI > Ollama)
+    if let Some(Commands::Setup { force }) = &cli.command {
+        run_setup_interactive(&cfg, *force)?;
+        return Ok(());
+    }
+
+    if matches!(cli.command, Some(Commands::Update)) {
+        run_update()?;
+        return Ok(());
+    }
+
+    maybe_run_first_time_wizard(&cfg)?;
+    cfg = config::load(cli.config.as_deref())?;
+    swarm::configure(&cfg.swarm);
+    daemon::configure(&cfg.daemon);
+
+    // Detect available API keys (router priority: anthropic > xai > openai > ollama > mlx)
     let has_xai = cfg.provider.api_key.is_some()
         || std::env::var("XAI_API_KEY")
             .map(|k| !k.is_empty())
@@ -82,119 +98,8 @@ async fn main() -> Result<()> {
         .unwrap_or(false);
     let has_ollama = cfg.providers.contains_key("ollama");
 
-    // Improved first-run wizard with better partial-config handling
-    let no_keys_at_all = !has_xai && !has_anthropic && !has_openai && !has_ollama
-        && cfg.providers.is_empty()
-        && !harness_provider_mlx::mlx_runtime_available();
-
-    if no_keys_at_all {
-        eprintln!("harness: No API keys configured.");
-        eprintln!();
-        eprintln!("Would you like to set one up now? (y/n)");
-
-        let mut input = String::new();
-        if std::io::stdin().read_line(&mut input).is_ok() && input.trim().to_lowercase().starts_with('y') {
-            println!();
-            println!("Recommended: xAI (Grok 4.3) — fast and cost-efficient.");
-            println!();
-            println!("Which provider?");
-            println!("  [1] xAI (Grok)         ← Recommended");
-            println!("  [2] Anthropic (Claude)");
-            println!("  [3] OpenAI");
-            println!("  [4] Ollama (local)");
-            println!();
-            print!("Enter choice [1-4]: ");
-            std::io::stdout().flush().ok();
-
-            let mut choice = String::new();
-            std::io::stdin().read_line(&mut choice).ok();
-
-            let provider_choice = choice.trim();
-            let (provider_name, env_var) = match provider_choice {
-                "1" => ("xai", "XAI_API_KEY"),
-                "2" => ("anthropic", "ANTHROPIC_API_KEY"),
-                "3" => ("openai", "OPENAI_API_KEY"),
-                "4" => {
-                    println!("\n→ Make sure Ollama is running:");
-                    println!("   ollama run qwen3-coder:30b");
-                    std::process::exit(0);
-                }
-                _ => {
-                    println!("Invalid choice.");
-                    std::process::exit(1);
-                }
-            };
-
-            // Ask for model (with recommended defaults)
-            let default_model = match provider_name {
-                "xai" => "grok-4.3",
-                "anthropic" => "claude-sonnet-4-6",
-                "openai" => "gpt-5.5",
-                _ => "grok-4.3",
-            };
-            println!();
-            println!("Recommended model for {}: {}", provider_name, default_model);
-            print!("Enter model (or press Enter for default): ");
-            std::io::stdout().flush().ok();
-
-            let mut model_input = String::new();
-            std::io::stdin().read_line(&mut model_input).ok();
-            let chosen_model = if model_input.trim().is_empty() {
-                default_model.to_string()
-            } else {
-                model_input.trim().to_string()
-            };
-
-            println!();
-            print!("Enter your {} key: ", env_var);
-            std::io::stdout().flush().ok();
-
-            let mut key = String::new();
-            std::io::stdin().read_line(&mut key).ok();
-            let key = key.trim().to_string();
-
-            if key.is_empty() {
-                eprintln!("No key provided. Exiting.");
-                std::process::exit(1);
-            }
-
-            // Persist to config
-            let config_path = config::active_config_toml_path();
-            let mut new_cfg = cfg.clone();
-
-            new_cfg.providers
-                .entry(provider_name.to_string())
-                .or_default()
-                .api_key = Some(key.clone());
-            new_cfg.providers
-                .entry(provider_name.to_string())
-                .or_default()
-                .model = Some(chosen_model.clone());
-
-            new_cfg.provider.api_key = Some(key.clone());
-            new_cfg.provider.model = Some(chosen_model);
-            new_cfg.providers
-                .entry(provider_name.to_string())
-                .or_default()
-                .api_key = Some(key);
-
-            match config::write_config_toml(&config_path, &new_cfg) {
-                Ok(_) => {
-                    println!("\n✓ Key saved. Starting harness...");
-                }
-                Err(e) => {
-                    eprintln!("Could not write config file: {}", e);
-                    eprintln!("You can still set the key via environment variable:");
-                    println!("   export {}=\"your-key\"", env_var);
-                }
-            }
-        }
-        // Continue instead of exiting so the program can use the new key
-    }
-
-    // Handle partial config: xAI not present but others are
     if !has_xai && (has_anthropic || has_openai || has_ollama) {
-        eprintln!("Note: xAI key not found (current default). Other providers detected.");
+        eprintln!("Note: xAI key not found. Using another configured provider.");
     }
 
     let model = cli
@@ -205,7 +110,7 @@ async fn main() -> Result<()> {
             if has_xai {
                 "grok-4.3".to_string()
             } else if has_anthropic {
-                "claude-3-5-sonnet-20241022".to_string()
+                "claude-sonnet-4-6".to_string()
             } else if has_openai {
                 "gpt-5.5".to_string()
             } else {
@@ -291,11 +196,13 @@ async fn main() -> Result<()> {
         embed_model.clone(),
         confirm_gate,
     )
-    .await;
+    .await?;
 
     let run_opts = agent::RunOnceOptions::from_config(&cfg, cli.think);
 
     match cli.command {
+        Some(Commands::Setup { .. }) | Some(Commands::Update) => return Ok(()),
+
         Some(Commands::Sessions) => {
             list_sessions(&session_store)?;
         }
@@ -652,6 +559,7 @@ async fn main() -> Result<()> {
                     run_opts.clone(),
                 )
                 .await?;
+                notifications::voice_response_done(&cfg.notifications);
             }
             return Ok(());
         }
@@ -736,7 +644,12 @@ async fn main() -> Result<()> {
                 SwarmAction::Wait { id, timeout_secs } => {
                     use std::time::Duration;
                     match swarm::wait_task(&id, Some(Duration::from_secs(timeout_secs))).await? {
-                        Some(t) => println!("{} [{}]", t.id, t.status.as_str()),
+                        Some(t) => {
+                            println!("{} [{}]", t.id, t.status.as_str());
+                            if t.status == swarm::TaskStatus::Done {
+                                notifications::swarm_complete(&cfg.notifications, 1, 0);
+                            }
+                        }
                         None => println!("Task {id} not found."),
                     }
                 }
@@ -1019,4 +932,3 @@ async fn main() -> Result<()> {
     graceful_ambient_shutdown(ambient_shutdown).await;
     Ok(())
 }
-use std::io::Write;

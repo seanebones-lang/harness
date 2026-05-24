@@ -30,11 +30,11 @@ See how Harness compares to Aider, Claude Code, Cursor, and others: [`docs/COMPA
 
 Harness is a fast, private, terminal-first Rust coding agent. Multi-provider (xAI Grok, Claude, OpenAI, local), semantic memory, sub-agents, cost tracking, and MCP support.
 
-Default model: **grok-4.3** (xAI). Falls back to Anthropic → OpenAI → local Ollama based on which API keys are set.
+Default model depends on configured API keys: router priority is **Anthropic → xAI → OpenAI → Ollama → MLX** (first available). Install wizard recommends xAI (Grok); `[provider].model` in config overrides the default.
 
 **Status:** Beta — fine for daily use.
 
-**v0.1.0-beta** released May 23, 2026 — first public release.
+**v0.1.1-beta** — current release (see [`CHANGELOG.md`](CHANGELOG.md)).
 
 **Full docs & troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md)
 
@@ -130,6 +130,7 @@ See [`CLAUDE.md`](CLAUDE.md) for module-level detail and contributor hooks (`cor
 | xAI       | `grok-4.3` ($1.25/$2.50/M) | `grok-4-1-fast-reasoning` ($0.20/$0.50/M) | same |
 | OpenAI    | `gpt-5.5` ($5/$30/M)             | `gpt-5.4-mini` ($0.75/$4.50/M) | same |
 | Ollama    | `qwen3-coder:30b` (local)        | same                         | same                 |
+| MLX       | `mlx-community/Qwen3-Coder-30B` (Apple Silicon) | same | same |
 
 Switch models interactively:
 ```bash
@@ -211,7 +212,7 @@ Full cheat sheet: [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md). Phase E highlights:
 | **Desktop notifications** | Notification Center | **libnotify** (e.g. `libnotify-bin`) | Varies / may be limited | See [`config/default.toml`](config/default.toml). |
 | **Voice (`harness voice`, Ctrl+S)** | `sox` / `afrecord` + Whisper or `whisper-cli` | `sox rec` + backends | Not first-class | Prefer OpenAI Whisper API or local tooling you already use. |
 | **Computer use** | **`cliclick`** (`brew install cliclick`) | **`xdotool`** | **Not supported** | Opus 4.7+ only; dangerous — see [`config/default.toml`](config/default.toml). |
-| **VS Code extension** | Yes | Yes | **Unix socket** — use **WSL** or wait for a Windows transport | Default socket `~/.harness/daemon.sock`. |
+| **VS Code extension + daemon** | Unix socket | Unix socket | **Loopback TCP** (`~/.harness/daemon.port`) | Run `harness daemon` first; extension reads socket or port file. |
 
 ---
 
@@ -453,7 +454,7 @@ monthly_usd = 50.00
 enabled = true
 
 [native_tools]
-web_search = true               # provider-native web search
+web_search = false              # provider-native web search (see config/default.toml)
 
 [browser]
 enabled = false                 # or use CLI --browser ; needs Chrome remote debugging port
@@ -478,7 +479,7 @@ system_prompt = "..."           # customize agent persona
 ```
 src/main.rs              CLI, subcommands, tool wiring
 src/agent.rs             core agentic loop + memory injection
-src/tui.rs               ratatui two-panel TUI
+src/tui/mod.rs           ratatui two-panel TUI (+ render.rs, driver.rs)
 src/server.rs            axum HTTP/SSE server
 src/cost_db.rs           SQLite cost tracking
 src/memory_project.rs    .harness/memory/ project facts
@@ -489,11 +490,13 @@ crates/
   harness-provider-openai/      GPT-5.x
   harness-provider-xai/         Grok 4.x
   harness-provider-ollama/      Local Ollama (Qwen3-Coder)
+  harness-provider-mlx/         Apple Silicon MLX (local)
   harness-provider-router/      Smart multi-provider router with env-key detection
   harness-provider-core/        Shared types (ChatRequest, Delta, Provider trait)
   harness-tools/                Tool trait + shell/gh/computer/file/search/patch/spawn
   harness-memory/               SQLite session store + vector memory
   harness-mcp/                  MCP stdio protocol client
+  harness-lsp/                  LSP client (go-to-def, rename, diagnostics)
   harness-browser/              Chrome CDP browser tool
   harness-voice/                Whisper audio transcription + Realtime API duplex
   harness-term-graphics/        Inline terminal images (Kitty / iTerm2 / Sixel)

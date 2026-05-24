@@ -148,6 +148,14 @@ pub enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// Interactive provider and API key setup (same flow as the first-run wizard).
+    Setup {
+        /// Re-run setup even when keys are already configured.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Print instructions to upgrade to the latest release.
+    Update,
     /// Show harness configuration and environment status.
     Status,
     /// Restore the most recent harness checkpoint stash (undo last agent turn).

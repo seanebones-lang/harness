@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 //! Collaborative multi-user sessions over WebSocket when `[collab].enabled = true`.
 
+use anyhow::Result;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -105,13 +106,17 @@ pub fn join_session(
     registry: &CollabRegistry,
     session_id: &str,
     user_id: &str,
-) -> broadcast::Receiver<CollabEvent> {
+    max_users: usize,
+) -> Result<broadcast::Receiver<CollabEvent>> {
     let mut reg = registry.lock();
     let session = reg
         .entry(session_id.to_string())
         .or_insert_with(|| CollabSession::new(session_id));
+    if session.users.len() >= max_users && !session.users.iter().any(|u| u == user_id) {
+        anyhow::bail!("collab session full (max {max_users} users)");
+    }
     session.user_joined(user_id);
-    session.subscribe()
+    Ok(session.subscribe())
 }
 
 /// Leave a session and notify peers.

@@ -40,6 +40,12 @@ jobs:
             artifact: harness-macos-aarch64
             smoke: native
 
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            artifact: harness-windows-x86_64.exe
+            smoke: native
+
     steps:
       - uses: actions/checkout@v4
 

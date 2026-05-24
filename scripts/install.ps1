@@ -22,6 +22,11 @@ Info ("Rust " + (rustc --version))
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
+$CargoBin = Join-Path $HOME ".cargo\bin\harness.exe"
+if ((Test-Path -LiteralPath $CargoBin) -and ($InstallDir -ne (Join-Path $HOME ".cargo\bin"))) {
+    Warn "~\.cargo\bin\harness.exe also exists — cargo install and this script use different paths."
+}
+
 $Tmp = $null
 if (Test-Path -LiteralPath "Cargo.toml") {
     $SrcDir = (Get-Location).Path

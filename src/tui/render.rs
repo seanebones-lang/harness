@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
 };
 
 use crate::highlight::Highlighter;
@@ -253,8 +253,19 @@ fn draw_chat(
     }
 
     f.render_stateful_widget(list, area, &mut state.chat_scroll);
+
+    if total_items > area.height.saturating_sub(2) as usize {
+        let position = state.chat_scroll.selected().unwrap_or(0);
+        let mut scroll_state = ScrollbarState::new(total_items).position(position);
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight),
+            area,
+            &mut scroll_state,
+        );
+    }
 }
 
+#[allow(dead_code)]
 fn prefix_line(line: Line<'static>, prefix: &'static str) -> Line<'static> {
     let mut spans = vec![Span::raw(prefix)];
     spans.extend(line.spans);
