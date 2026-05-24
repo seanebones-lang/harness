@@ -38,6 +38,20 @@ Default model: **grok-4.3** (xAI). Falls back to Anthropic → OpenAI → local 
 
 **Full docs & troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md)
 
+## Screenshots
+
+### Terminal UI (TUI)
+
+Two-panel interface: chat on the left, tool and event log on the right.
+
+![Harness terminal UI](docs/screenshots/tui.png)
+
+### Web UI
+
+Browser interface served by `harness serve` — sessions, workspaces, and test runner.
+
+![Harness web UI](docs/screenshots/web-ui.png)
+
 ---
 
 ## Quick Start
