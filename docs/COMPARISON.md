@@ -10,7 +10,7 @@
 | **Cost tracking**         | Built-in        | Basic         | No            | No            |
 | **MCP Support**           | Yes             | No            | No            | No            |
 | **Cross-machine sync**    | Yes             | No            | No            | No            |
-| **Prebuilt binaries**     | Yes (planned)   | No            | No            | N/A           |
+| **Prebuilt binaries**     | Yes (GitHub Releases) | No            | No            | N/A           |
 
 **Key differentiators of Harness:**
 - Written in Rust for performance and safety

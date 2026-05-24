@@ -177,7 +177,7 @@ impl ProviderRouter {
         self.providers
             .get(&self.default_name)
             .or_else(|| self.providers.values().next())
-            .expect("ProviderRouter has no providers")
+            .expect("ProviderRouter has no providers — from_config should have returned an error")
     }
 
     pub fn fast_provider(&self) -> &ArcProvider {
@@ -380,16 +380,32 @@ impl ProviderRouter {
         }
 
         if r.providers.is_empty() {
-            warn!(
-                "No providers configured. Set ANTHROPIC_API_KEY, XAI_API_KEY, or OPENAI_API_KEY."
-            );
-        } else {
-            info!(
-                default = %default_name,
-                providers = ?r.providers.keys().collect::<Vec<_>>(),
-                "router initialised"
-            );
+            let ollama_entry = ProviderEntry {
+                name: Some("ollama".into()),
+                api_key: None,
+                model: Some("qwen3-coder:30b".into()),
+                base_url: None,
+            };
+            if let Ok(p) = build_provider("ollama", &ollama_entry) {
+                r.providers.insert("ollama".into(), p);
+                if !r.providers.contains_key(&r.default_name) {
+                    r.default_name = "ollama".to_string();
+                }
+            }
         }
+
+        if r.providers.is_empty() {
+            return Err(anyhow::anyhow!(
+                "No providers available. Set ANTHROPIC_API_KEY, XAI_API_KEY, or OPENAI_API_KEY, \
+                 add a [providers.*] block in ~/.harness/config.toml, or start Ollama locally."
+            ));
+        }
+
+        info!(
+            default = %r.default_name,
+            providers = ?r.providers.keys().collect::<Vec<_>>(),
+            "router initialised"
+        );
 
         Ok(r)
     }
@@ -614,5 +630,14 @@ mod tests {
         assert_eq!(router.default_provider().name(), "xai");
         assert!(router.get("anthropic").is_some());
         assert!(router.get("xai").is_some());
+    }
+
+    #[test]
+    fn from_config_falls_back_to_ollama_when_no_cloud_keys() {
+        let entries = HashMap::new();
+        let cfg = RouterConfig::default();
+        let router = ProviderRouter::from_config(&entries, &cfg).expect("ollama fallback");
+        assert!(router.get("ollama").is_some());
+        assert_eq!(router.default_provider().name(), "ollama");
     }
 }

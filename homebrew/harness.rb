@@ -1,25 +1,25 @@
 class Harness < Formula
   desc "Fast, private, terminal-first Rust coding agent"
   homepage "https://github.com/seanebones-lang/harness"
-  version "0.1.0"
+  version "0.1.1-beta"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-aarch64-apple-darwin"
+      url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-macos-aarch64"
       sha256 "REPLACE_WITH_ACTUAL_SHA"
     else
-      url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-x86_64-apple-darwin"
+      url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-macos-x86_64"
       sha256 "REPLACE_WITH_ACTUAL_SHA"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-aarch64-unknown-linux-gnu"
+      url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-linux-aarch64"
       sha256 "REPLACE_WITH_ACTUAL_SHA"
     else
-      url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-x86_64-unknown-linux-gnu"
+      url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-linux-x86_64"
       sha256 "REPLACE_WITH_ACTUAL_SHA"
     end
   end

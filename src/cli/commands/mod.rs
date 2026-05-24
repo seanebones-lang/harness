@@ -12,6 +12,9 @@ pub mod self_dev;
 pub mod sessions;
 pub mod status;
 
+pub mod setup;
+pub mod update;
+
 pub use doctor::handle_doctor_command;
 pub use init::run_init;
 pub use models::handle_models_command;
@@ -19,4 +22,6 @@ pub use project::handle_project_command;
 pub use prompt::build_prompt_with_image;
 pub use self_dev::run_self_dev;
 pub use sessions::{delete_session, export_session, list_sessions};
+pub use setup::{maybe_run_first_time_wizard, run_setup_interactive};
 pub use status::run_status;
+pub use update::run_update;

@@ -98,17 +98,23 @@ pub async fn load_mcp_tools_with_progress(
     Ok(())
 }
 
+/// When `allowlist` is unset, a conservative default list is enforced.
+const DEFAULT_COMMAND_ALLOWLIST: &[&str] = &["npx", "node", "python3", "uvx"];
+
 /// When `allowlist` is set and non-empty, only spawn servers whose command basename matches.
 fn command_is_allowed(command: &str, allowlist: Option<&[String]>) -> bool {
-    let Some(list) = allowlist.filter(|l| !l.is_empty()) else {
-        return true;
+    let effective: Vec<&str> = match allowlist {
+        None => DEFAULT_COMMAND_ALLOWLIST.to_vec(),
+        Some([]) => return true,
+        Some(list) => list.iter().map(String::as_str).collect(),
     };
     let cmd = std::path::Path::new(command)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(command);
-    list.iter()
-        .any(|allowed| allowed == command || allowed == cmd)
+    effective
+        .iter()
+        .any(|allowed| *allowed == command || *allowed == cmd)
 }
 
 /// Returns the first existing MCP config path found.
@@ -126,9 +132,14 @@ mod allowlist_tests {
     use super::command_is_allowed;
 
     #[test]
-    fn empty_allowlist_allows_all() {
-        assert!(command_is_allowed("/usr/bin/evil", None));
-        assert!(command_is_allowed("npx", Some(&[])));
+    fn default_allowlist_blocks_unknown_commands() {
+        assert!(!command_is_allowed("/usr/bin/evil", None));
+        assert!(command_is_allowed("npx", None));
+    }
+
+    #[test]
+    fn explicit_empty_allowlist_allows_all() {
+        assert!(command_is_allowed("/usr/bin/evil", Some(&[])));
     }
 
     #[test]

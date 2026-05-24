@@ -41,10 +41,6 @@ No API key is needed to build or run the automated test suite.
 
 These are well-scoped, self-contained, and unblock the next person reviewing the code.
 
-- **`harness-browser` unit tests** (`crates/harness-browser/`)
-  - No-Chrome error path (connect attempt with nothing listening on the CDP port)
-  - Unknown `action` passed to `BrowserTool::execute` returns a clean error
-  - CDP request/response JSON round-trip (mock the socket)
 - **`ambient.rs` consolidation test** (`src/ambient.rs` or `tests/smoke_test.rs`)
   - Spin up a mock `MemoryStore` with ≥ 5 entries, trigger consolidation, assert merged/`__consolidated__` entries look right
 - **Session-list title lag** (`src/main.rs` → `list_sessions()`)
@@ -69,15 +65,16 @@ Interesting targets: **Mistral**, **Cohere**, **Google Gemini**, **AWS Bedrock**
 
 See `CLAUDE.md` → *Adding a new tool*. The pattern is: implement `Tool` in `crates/harness-tools/src/tools/`, export it, register in `src/cli/wiring.rs`. Ideas:
 
-- **`GitTool`** — structured git operations (status, diff, commit) without shelling out raw commands
 - **`DatabaseTool`** — query SQLite or Postgres, return results as markdown tables
 - **`NotebookTool`** — read/write Jupyter `.ipynb` cells
 - **`DockerTool`** — list containers, exec, logs
 
+(`GitTool` — structured git ops — already shipped.)
+
 ### Platform coverage
 
 - **Windows:** the shell tool falls back to `cmd.exe` when Git for Windows is absent; a richer Windows-native fallback (PowerShell) would help many users.
-- **VS Code extension** (`extensions/vscode/`): Windows transport (currently Unix socket only); a named-pipe or TCP fallback would make it first-class on Windows.
+- **VS Code extension** (`extensions/vscode/`): TCP fallback on native Windows (`~/.harness/daemon.port`); packaging/assets still MVP.
 - **Tauri desktop app** (`apps/desktop/`): Windows/Linux packaging, tray icon behaviour, auto-update.
 
 ### Documentation and UX
@@ -112,7 +109,7 @@ Current coverage target is ≥ 60 % on library crates. Proptest/fuzzing on:
    ```
 4. Open a **pull request** against `main`. Describe what the change does and why. For anything non-trivial, include a short test plan or before/after diff.
 
-CI runs `fmt`, `clippy --all-features`, `test --all`, and `build` on **Ubuntu**, **macOS**, and **Windows**. PRs need all three to be green before merge.
+CI runs `fmt`, `clippy --all-features`, `test --all`, `build --all-targets`, `build --profile release-lto`, plus `supply-chain` (audit/deny), `msrv`, and install-script smoke jobs on **Ubuntu**, **macOS**, and **Windows**. PRs need all jobs green before merge.
 
 ---
 

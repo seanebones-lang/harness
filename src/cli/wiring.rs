@@ -29,12 +29,13 @@ pub async fn graceful_ambient_shutdown(
     }
 }
 
-pub fn tool_workspace(cfg: &crate::config::Config) -> Arc<WorkspaceRoot> {
+pub fn tool_workspace(cfg: &crate::config::Config) -> Result<Arc<WorkspaceRoot>> {
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mode = SandboxMode::from_config(cfg.tools.sandbox.as_deref());
-    Arc::new(
-        WorkspaceRoot::new(root, mode).expect("failed to resolve workspace root for tool sandbox"),
-    )
+    Ok(Arc::new(
+        WorkspaceRoot::new(root, mode)
+            .context("failed to resolve workspace root for tool sandbox")?,
+    ))
 }
 
 /// Build the full tool executor: base tools + SpawnAgentTool + SpawnSwarmTool + MCP tools.
@@ -48,7 +49,7 @@ pub async fn build_tools(
     memory_store: Option<harness_memory::MemoryStore>,
     embed_model: Option<String>,
     confirm_gate: Option<ConfirmGate>,
-) -> ToolExecutor {
+) -> Result<ToolExecutor> {
     let browser_url_owned = browser_url.to_string();
     let cfg_clone = cfg.clone();
     let swarm_enqueue: SwarmEnqueueRunner = Arc::new({
@@ -76,7 +77,7 @@ pub async fn build_tools(
                     None,
                     None,
                 )
-                .await;
+                .await?;
                 let mut ids = Vec::new();
                 for i in 0..n {
                     let label = if n > 1 {
@@ -154,8 +155,8 @@ pub async fn build_tools_inner(
     browser_url: &str,
     swarm_enqueue: Option<SwarmEnqueueRunner>,
     confirm_gate: Option<ConfirmGate>,
-) -> ToolExecutor {
-    let workspace = tool_workspace(cfg);
+) -> Result<ToolExecutor> {
+    let workspace = tool_workspace(cfg)?;
 
     let shell_cfg = ToolShellConfig {
         denylist: cfg.shell.effective_denylist(),
@@ -389,9 +390,9 @@ pub async fn build_tools_inner(
         .collect();
 
     if trusted_rules.is_empty() {
-        executor
+        Ok(executor)
     } else {
-        executor.with_trusted(trusted_rules)
+        Ok(executor.with_trusted(trusted_rules))
     }
 }
 

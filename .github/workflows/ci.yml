@@ -65,6 +65,9 @@ jobs:
       - name: Build
         run: cargo build --all-targets
 
+      - name: Build release-lto
+        run: cargo build --profile release-lto
+
       - name: Test
         run: cargo test --all
 

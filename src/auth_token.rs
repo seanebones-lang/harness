@@ -35,12 +35,19 @@ pub fn read_token_file(name: &str) -> Result<String> {
     Ok(t)
 }
 
-/// Constant-time-ish compare of bearer tokens (trimmed).
+/// Constant-time compare of bearer tokens (trimmed).
 pub fn verify(provided: Option<&str>, expected: &str) -> bool {
-    match provided.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(p) => p == expected,
-        None => false,
+    let Some(p) = provided.map(str::trim).filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    if p.len() != expected.len() {
+        return false;
     }
+    let mut diff = 0u8;
+    for (a, b) in p.bytes().zip(expected.bytes()) {
+        diff |= a ^ b;
+    }
+    diff == 0
 }
 
 fn load_or_create(name: &str) -> Result<String> {
@@ -67,4 +74,26 @@ fn write_secret_file(path: &Path, contents: &str) -> Result<()> {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_accepts_matching_token() {
+        assert!(verify(Some("secret-token"), "secret-token"));
+    }
+
+    #[test]
+    fn verify_rejects_wrong_or_missing_token() {
+        assert!(!verify(Some("wrong"), "secret-token"));
+        assert!(!verify(None, "secret-token"));
+        assert!(!verify(Some(""), "secret-token"));
+    }
+
+    #[test]
+    fn verify_is_constant_time_for_equal_length() {
+        assert!(!verify(Some("aaaa"), "bbbb"));
+    }
 }

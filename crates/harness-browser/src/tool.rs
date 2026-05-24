@@ -153,7 +153,7 @@ impl Tool for BrowserTool {
             }
             "screenshot" => session.screenshot().await,
             "page_info" => session.page_info().await,
-            _ => unreachable!("validated above"),
+            _ => anyhow::bail!("unknown browser action: {action}"),
         }
     }
 }

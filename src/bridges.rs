@@ -118,15 +118,20 @@ end tell"#
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
 
+fn escape_applescript(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 /// Query calendar events for a given day.
 pub async fn calendar_query(cfg: &CalendarConfig, date: &str) -> Result<Vec<String>> {
     if !cfg.enabled {
         anyhow::bail!("Calendar bridge not enabled.");
     }
 
+    let escaped_date = escape_applescript(date);
     let script = format!(
         r#"tell application "Calendar"
-    set d to date "{date}"
+    set d to date "{escaped_date}"
     set allEvents to (every event of every calendar whose start date >= d and start date < d + 1 * days)
     set names to {{}}
     repeat with e in allEvents
@@ -162,11 +167,14 @@ pub async fn calendar_create_event(
         anyhow::bail!("Calendar bridge not enabled.");
     }
 
-    let calendar = cfg.calendar.as_deref().unwrap_or("Harness");
+    let calendar = escape_applescript(cfg.calendar.as_deref().unwrap_or("Harness"));
+    let escaped_title = escape_applescript(title);
+    let escaped_start = escape_applescript(start);
+    let escaped_end = escape_applescript(end);
     let script = format!(
         r#"tell application "Calendar"
     tell calendar "{calendar}"
-        make new event with properties {{summary:"{title}", start date:(date "{start}"), end date:(date "{end}")}}
+        make new event with properties {{summary:"{escaped_title}", start date:(date "{escaped_start}"), end date:(date "{escaped_end}")}}
     end tell
 end tell"#
     );
@@ -226,4 +234,15 @@ pub async fn github_project_list(cfg: &GithubProjectsConfig) -> Result<Vec<Strin
 
     let _ = query;
     Ok(items)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_applescript;
+
+    #[test]
+    fn escape_applescript_quotes_and_backslashes() {
+        assert_eq!(escape_applescript(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(escape_applescript(r"path\to"), r"path\\to");
+    }
 }

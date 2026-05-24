@@ -97,7 +97,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | **Threat model** | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) |
 | **Open backlog** | [`TODO.md`](../TODO.md) — severity-ranked + roadmap |
 | **Manual smoke §3** | **Pending** — blocks **stable** |
-| **Experimental modules** | `collab`, `bridges`, `diff_review` unwired (Phase C) |
+| **Experimental modules** | `collab`, `bridges`, `diff_review` wired when enabled; polish ongoing |
 
 **Verdict:** **GO** for **public beta**. Promote to **stable** only after **REL-01** manual smoke §3 on target OSes (record above).
 

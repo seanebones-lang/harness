@@ -119,7 +119,7 @@ pub fn list_sessions(store: &SessionStore) -> Result<()> {
     println!("{:<10} {:<24} UPDATED", "ID", "NAME");
     for (id, name, updated) in sessions {
         let short = id.chars().take(8).collect::<String>();
-        let display_name = name.unwrap_or_else(|| format!("Session {short}"));
+        let display_name = name.unwrap_or_else(|| format!("Session {short} (naming…)"));
         println!("{:<10} {:<24} {}", short, display_name, updated);
     }
     Ok(())

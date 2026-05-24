@@ -28,7 +28,7 @@ pub fn build_arc_provider(cfg: &Config, cli_model: Option<&str>) -> Result<ArcPr
             if has_xai {
                 "grok-4.3".to_string()
             } else if has_anthropic {
-                "claude-3-5-sonnet-20241022".to_string()
+                "claude-sonnet-4-6".to_string()
             } else if has_openai {
                 "gpt-5.5".to_string()
             } else {
@@ -46,7 +46,8 @@ pub fn build_arc_provider(cfg: &Config, cli_model: Option<&str>) -> Result<ArcPr
             .api_key
             .clone()
             .or_else(|| std::env::var("XAI_API_KEY").ok())
-            .unwrap();
+            .filter(|k| !k.is_empty())
+            .context("XAI_API_KEY or [provider].api_key is required for the xAI provider")?;
         let xai_cfg = XaiConfig::new(&api_key)
             .with_model(&model)
             .with_max_tokens(cfg.provider.max_tokens.unwrap_or(8192))

@@ -52,6 +52,20 @@ detect_target() {
 TARGET=$(detect_target)
 info "Detected target: $TARGET"
 
+# Map Rust triple → release artifact name (matches .github/workflows/release.yml)
+artifact_name() {
+    case "$1" in
+        x86_64-unknown-linux-gnu)   echo "harness-linux-x86_64" ;;
+        aarch64-unknown-linux-gnu)  echo "harness-linux-aarch64" ;;
+        x86_64-apple-darwin)        echo "harness-macos-x86_64" ;;
+        aarch64-apple-darwin)       echo "harness-macos-aarch64" ;;
+        x86_64-pc-windows-msvc)     echo "harness-windows-x86_64.exe" ;;
+        *)                          echo "harness-$1" ;;
+    esac
+}
+
+ARTIFACT=$(artifact_name "$TARGET")
+
 # Try to install a prebuilt binary from the latest release
 install_prebuilt() {
     local version="${1:-latest}"
@@ -59,21 +73,15 @@ install_prebuilt() {
     local tmp
 
     if [[ "$version" == "latest" ]]; then
-        url="https://github.com/$REPO/releases/latest/download/harness-${TARGET}"
-        if [[ "$TARGET" == *"windows"* ]]; then
-            url="${url}.exe"
-        fi
+        url="https://github.com/$REPO/releases/latest/download/${ARTIFACT}"
     else
-        url="https://github.com/$REPO/releases/download/${version}/harness-${TARGET}"
-        if [[ "$TARGET" == *"windows"* ]]; then
-            url="${url}.exe"
-        fi
+        url="https://github.com/$REPO/releases/download/${version}/${ARTIFACT}"
     fi
 
     tmp=$(mktemp -d)
 
     info "Downloading prebuilt binary ($version)..."
-    if curl -fsSL "$url" -o "$tmp/harness" 2>/dev/null || curl -fsSL "$url.exe" -o "$tmp/harness.exe" 2>/dev/null; then
+    if curl -fsSL "$url" -o "$tmp/harness" 2>/dev/null; then
         # Try to verify checksum if available
         checksum_url="${url%/*}/checksums.txt"
         if curl -fsSL "$checksum_url" -o "$tmp/checksums.txt" 2>/dev/null; then
@@ -130,6 +138,20 @@ build_from_source() {
 
 # Main
 mkdir -p "$INSTALL_DIR"
+
+# Warn if another harness binary exists on PATH (common: ~/.cargo/bin vs ~/.local/bin)
+if command -v harness >/dev/null 2>&1; then
+    existing=$(command -v harness)
+    planned="$INSTALL_DIR/harness"
+    if [[ "$existing" != "$planned" && "$existing" != "$planned.exe" ]]; then
+        warn "Another harness binary is already on PATH: $existing"
+        warn "This install will place the binary at: $planned"
+        warn "Ensure $INSTALL_DIR appears before other bin dirs in your PATH."
+    fi
+fi
+if [[ -x "$HOME/.cargo/bin/harness" && "$INSTALL_DIR" != "$HOME/.cargo/bin" ]]; then
+    warn "~/.cargo/bin/harness also exists — cargo install and this script use different paths."
+fi
 
 if ! install_prebuilt "${1:-latest}"; then
     build_from_source

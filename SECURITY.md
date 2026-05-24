@@ -2,29 +2,26 @@
 
 ## Supported Versions
 
-We currently support the latest version on the `main` branch.
-
-| Version | Supported          |
-| ------- | ------------------ |
-| latest  | :white_check_mark: |
+| Version     | Supported |
+| ----------- | --------- |
+| 0.1.1-beta  | Yes       |
+| main branch | Yes       |
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please report it responsibly:
+1. **Do not** open a public GitHub issue for security-sensitive reports.
+2. Use [GitHub private vulnerability reporting](https://github.com/seanebones-lang/harness/security/advisories/new) or email **seanebones-lang@users.noreply.github.com** (maintainer contact via GitHub profile).
+3. Include steps to reproduce, affected versions, and potential impact.
 
-1. **Do not** open a public GitHub issue.
-2. Email the maintainer at a private channel or use GitHub's private vulnerability reporting feature.
-3. Provide as much detail as possible (steps to reproduce, affected versions, potential impact).
-
-We will respond within 48 hours and work with you on a fix.
+We aim to respond within 48 hours.
 
 ## Threat Model
 
-Harness is a local-first tool. The main security considerations are:
+Harness is a local-first coding agent. Primary trust boundaries:
 
-- Shell command execution (`shell` tool)
-- File system access
-- Network requests to LLM providers
-- MCP server connections
+- Shell and file tools (user approval modes)
+- MCP server subprocess spawning (command allowlist)
+- HTTP server and daemon IPC (loopback bearer tokens)
+- LLM provider network calls
 
-See `docs/threat-model.md` (if present) for more details.
+Full detail: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).

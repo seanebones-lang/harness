@@ -10,6 +10,8 @@
 # Editor files
 *.swp
 *.swo
+*.orig
+*.rej
 .idea/
 .vscode/
 
