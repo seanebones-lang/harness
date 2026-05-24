@@ -57,26 +57,25 @@ Execution order: **P0 → P1 → P2**. **Maintainer-only** items need API keys /
 | P2-7 | Coverage uplift (auth, bridges, swarm prefix tests) | [x] |
 | P2-8 | VS Code extension README + packaging notes | [x] |
 | P2-9 | Desktop app icon/docs (CI job deferred) | [x] |
-| P2-10 | Homebrew tap publish | [ ] maintainer |
+| P2-10 | Homebrew tap publish | [ ] maintainer (`scripts/update-homebrew-sha.sh`) |
 
 ### Maintainer-only
 
 | ID | Item | Status |
 |----|------|--------|
-| REL-01 | Manual smoke §3 | [ ] |
+| REL-01 | Manual smoke §3 | [ ] (`scripts/smoke_rel01.sh` for automated subset) |
 
 ---
 
 ## Remaining backlog
 
-- Homebrew tap publish with real SHA256s (P2-10)
-- REL-01 manual smoke on target OSes
-- Full notification wiring (`pr_opened`, `ci_failed`, `daemon_died`, `autotest_failed`)
+- Homebrew tap publish: run `bash scripts/update-homebrew-sha.sh vX.Y.Z` after tagging (P2-10)
+- REL-01 manual smoke on target OSes (automated subset: `scripts/smoke_rel01.sh`)
+- `pr_opened` notification (no `gh pr create` tool yet)
 - Coverage gate uplift toward 60% on more crates
 - DatabaseTool / NotebookTool / DockerTool
 - New providers (Mistral, Gemini, Bedrock)
 - Desktop CI smoke + Tauri icons generation
-- VS Code marketplace assets (`media/icon.png`)
 
 ---
 

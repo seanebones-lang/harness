@@ -389,7 +389,10 @@ async fn main() -> Result<()> {
                     provider, session_store, memory_store, embed_model,
                     tools, model, system, shutdown_rx
                 ) => {
-                    if let Err(e) = res { eprintln!("daemon: {e}"); }
+                    if let Err(e) = res {
+                        notifications::daemon_died(&cfg.notifications);
+                        eprintln!("daemon: {e}");
+                    }
                 }
                 _ = tokio::signal::ctrl_c() => {
                     println!("\nDaemon stopped.");

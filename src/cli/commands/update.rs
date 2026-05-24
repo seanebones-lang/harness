@@ -3,7 +3,19 @@
 use anyhow::Result;
 
 pub fn run_update() -> Result<()> {
-    println!("To update harness to the latest release:");
+    let current = env!("CARGO_PKG_VERSION");
+    if let Some(latest) = fetch_latest_release_tag() {
+        let latest_ver = latest.strip_prefix('v').unwrap_or(&latest);
+        if latest_ver != current {
+            println!("Update available: {latest} (installed: {current})");
+            println!();
+        } else {
+            println!("You are on the latest release ({current}).");
+            println!();
+        }
+    }
+
+    println!("To update harness:");
     println!();
     #[cfg(target_os = "macos")]
     {
@@ -33,4 +45,22 @@ pub fn run_update() -> Result<()> {
     println!();
     println!("Ensure ~/.local/bin (or %USERPROFILE%\\.local\\bin) is on your PATH.");
     Ok(())
+}
+
+fn fetch_latest_release_tag() -> Option<String> {
+    let out = std::process::Command::new("curl")
+        .args([
+            "-fsSL",
+            "https://api.github.com/repos/seanebones-lang/harness/releases/latest",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let body = String::from_utf8_lossy(&out.stdout);
+    body.lines()
+        .find(|l| l.contains("\"tag_name\""))
+        .and_then(|l| l.split('"').nth(3))
+        .map(|s| s.to_string())
 }

@@ -6,6 +6,7 @@ use crate::registry::ToolRegistry;
 use crate::tools::TestRunnerTool;
 use harness_provider_core::ToolCall;
 use std::collections::HashSet;
+use std::sync::Arc;
 use tracing::{debug, warn};
 
 /// When the confirm gate is active, which tool calls require user approval.
@@ -23,6 +24,9 @@ pub enum ConfirmPolicy {
 /// Tools that modify files (trigger autoformat + optional autotest).
 const FILE_WRITE_TOOLS: &[&str] = &["write_file", "patch_file", "apply_patch"];
 
+/// Hook invoked when post-write autotest reports failures.
+pub type AutotestFailHook = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// Runs registered tools on behalf of the agent, with optional confirm gate and hooks.
 #[derive(Clone)]
 pub struct ToolExecutor {
@@ -35,6 +39,8 @@ pub struct ToolExecutor {
     autotest: bool,
     /// Optional scope to pass to test_runner (package name, file, etc.).
     autotest_scope: Option<String>,
+    /// Called when autotest reports failures (desktop notification hook).
+    autotest_fail_hook: Option<AutotestFailHook>,
     /// Trust rules: (tool, pattern) pairs that bypass the confirm gate.
     trusted: Vec<(String, String)>,
     /// MCP-adapted tool names (require confirmation in plan mode).
@@ -58,6 +64,7 @@ impl ToolExecutor {
             autoformat: true,
             autotest: false,
             autotest_scope: None,
+            autotest_fail_hook: None,
             trusted: Vec::new(),
             mcp_tool_names: HashSet::new(),
             always_ask: Vec::new(),
@@ -194,6 +201,18 @@ impl ToolExecutor {
         self
     }
 
+    /// Desktop notification hook when autotest reports failures.
+    pub fn with_autotest_fail_hook(mut self, hook: AutotestFailHook) -> Self {
+        self.autotest_fail_hook = Some(hook);
+        self
+    }
+
+    fn notify_autotest_fail(&self, report: &str) {
+        if let Some(hook) = &self.autotest_fail_hook {
+            hook(report);
+        }
+    }
+
     /// Execute a provider tool call and return string output for the agent loop.
     pub async fn execute(&self, call: &ToolCall) -> String {
         let args = match call.args() {
@@ -236,6 +255,7 @@ impl ToolExecutor {
                                 let test_args = serde_json::json!({ "scope": scope });
                                 if let Ok(report) = TestRunnerTool.execute(test_args).await {
                                     if report.contains("FAIL") {
+                                        self.notify_autotest_fail(&report);
                                         result = format!("{result}\n\n[autotest]\n{report}");
                                     } else {
                                         result = format!("{result}\n\n[autotest] {report}");
@@ -272,6 +292,7 @@ impl ToolExecutor {
             match TestRunnerTool.execute(test_args).await {
                 Ok(report) => {
                     if report.contains("FAIL") {
+                        self.notify_autotest_fail(&report);
                         return format!("{result}\n\n[autotest]\n{report}");
                     }
                     // Tests passed — append brief confirmation.

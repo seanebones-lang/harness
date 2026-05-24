@@ -113,3 +113,17 @@ jobs:
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1
           & "$env:HARNESS_INSTALL_DIR\harness.exe" --version
           & "$env:HARNESS_INSTALL_DIR\harness.exe" --help | Out-Null
+
+  vscode-extension:
+    name: VS Code extension compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Compile extension
+        working-directory: extensions/vscode
+        run: |
+          npm install
+          npm run compile

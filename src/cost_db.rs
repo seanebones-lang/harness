@@ -38,7 +38,11 @@ pub struct CostDb {
 impl CostDb {
     /// Open (or create) the cost database at `~/.harness/cost.db`.
     pub fn open() -> Result<Self> {
-        let path = db_path();
+        Self::open_at(db_path())
+    }
+
+    /// Open (or create) the cost database at an explicit path (tests / tooling).
+    pub fn open_at(path: PathBuf) -> Result<Self> {
         let conn = Connection::open(&path)
             .with_context(|| format!("opening cost.db at {}", path.display()))?;
         let db = Self {
@@ -192,4 +196,35 @@ pub fn check_budget(
             .map(|spent| spent / limit * 100.0)
     });
     (daily_pct, monthly_pct)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn record_and_query_roundtrip() {
+        let dir = TempDir::new().expect("tempdir");
+        let path = dir.path().join("cost.db");
+        let db = CostDb::open_at(path).expect("open");
+        let row = UsageRow {
+            session_id: "abc".into(),
+            project: "harness".into(),
+            provider: "anthropic".into(),
+            model: "claude-sonnet-4-6".into(),
+            ts: 1_700_000_000,
+            in_tok: 100,
+            cached_in: 0,
+            out_tok: 50,
+            native_calls: 0,
+            usd: 0.01,
+        };
+        db.record(&row).expect("record");
+        let total = db.total_usd_since(0).expect("total");
+        assert!((total - 0.01).abs() < f64::EPSILON);
+        let recent = db.recent(1).expect("recent");
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].session_id, "abc");
+    }
 }
