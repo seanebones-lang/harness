@@ -45,15 +45,19 @@ Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI �
 ```bash
 # 1. Install (see one-liner above)
 
-# 2. Set an API key (any of these)
-export ANTHROPIC_API_KEY="sk-ant-..."   # recommended
-export XAI_API_KEY="xai-..."
-export OPENAI_API_KEY="sk-..."
-
-# 3. Run in any project
+# 2. Run harness — an interactive first-run wizard will guide you
+#    through selecting a provider and entering your API key.
 cd /path/to/your/project
 harness
 ```
+
+The wizard supports:
+- xAI (Grok) — recommended
+- Anthropic (Claude)
+- OpenAI
+- Ollama (local)
+
+You can also choose or type any model you want during setup.
 
 Prebuilt binaries are published on [GitHub Releases](https://github.com/seanebones-lang/harness/releases). See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the release process and [docs/RELEASE_POLICY.md](docs/RELEASE_POLICY.md) for the release policy.
 **Updating:** Re-run the install script above to get the latest version.
