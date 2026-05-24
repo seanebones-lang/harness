@@ -23,6 +23,7 @@ pub async fn load_mcp_tools(
     registry: &mut ToolRegistry,
     sampling_provider: Option<ArcProvider>,
     command_allowlist: Option<&[String]>,
+    sampling_auto_approve: bool,
 ) -> Result<()> {
     load_mcp_tools_with_progress(
         config_path,
@@ -30,6 +31,7 @@ pub async fn load_mcp_tools(
         None,
         sampling_provider,
         command_allowlist,
+        sampling_auto_approve,
     )
     .await
 }
@@ -41,6 +43,7 @@ pub async fn load_mcp_tools_with_progress(
     progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
     sampling_provider: Option<ArcProvider>,
     command_allowlist: Option<&[String]>,
+    sampling_auto_approve: bool,
 ) -> Result<()> {
     let cfg = match config::load(config_path) {
         Ok(c) => c,
@@ -61,6 +64,7 @@ pub async fn load_mcp_tools_with_progress(
             &server_cfg,
             progress_tx.clone(),
             sampling_provider.clone(),
+            sampling_auto_approve,
         )
         .await
         {

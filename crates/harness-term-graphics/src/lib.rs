@@ -239,3 +239,81 @@ fn quantize_to_palette(img: &image::RgbImage, palette: &[(u8, u8, u8)]) -> Vec<u
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn backend_detect_defaults_to_none_without_signals() {
+        let _lock = env_test_lock();
+        let _guard = EnvGuard::clear(&["TERM", "TERM_PROGRAM", "TERM_GRAPHICS_ID", "VTE_VERSION"]);
+        assert_eq!(Backend::detect(), Backend::None);
+    }
+
+    #[test]
+    fn backend_detect_kitty_from_term() {
+        let _lock = env_test_lock();
+        let _guard = EnvGuard::set("TERM", "xterm-kitty");
+        assert_eq!(Backend::detect(), Backend::Kitty);
+    }
+
+    #[test]
+    fn backend_detect_iterm_from_term_program() {
+        let _lock = env_test_lock();
+        let _guard = EnvGuard::configure(&[
+            ("TERM", None),
+            ("TERM_PROGRAM", Some("iTerm.app")),
+            ("TERM_GRAPHICS_ID", None),
+            ("VTE_VERSION", None),
+        ]);
+        assert_eq!(Backend::detect(), Backend::ITerm2);
+    }
+
+    struct EnvGuard {
+        keys: Vec<String>,
+        saved: Vec<Option<String>>,
+    }
+
+    impl EnvGuard {
+        fn clear(keys: &[&str]) -> Self {
+            Self::configure(&keys.iter().map(|k| (*k, None)).collect::<Vec<_>>())
+        }
+
+        fn set(key: &str, value: &str) -> Self {
+            Self::configure(&[(key, Some(value))])
+        }
+
+        fn configure(entries: &[(&str, Option<&str>)]) -> Self {
+            let keys: Vec<String> = entries.iter().map(|(k, _)| (*k).to_string()).collect();
+            let mut saved = Vec::new();
+            for (key, value) in entries {
+                saved.push(std::env::var(key).ok());
+                match value {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
+            }
+            Self { keys, saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, prev) in self.keys.iter().zip(self.saved.drain(..)) {
+                match prev {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+}

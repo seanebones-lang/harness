@@ -453,7 +453,7 @@ pub(crate) async fn handle_slash_command(
                 ));
                 for (id, name, updated) in &sessions {
                     let short = &id[..8.min(id.len())];
-                    let n = name.as_deref().unwrap_or("(unnamed)");
+                    let n = session_store.display_name_for(id, name.clone());
                     st.push_event(format!("  {short}  {n}  {updated}"));
                 }
                 st.status = format!("{} sessions in event log →", sessions.len());

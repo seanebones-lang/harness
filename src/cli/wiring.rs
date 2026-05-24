@@ -317,6 +317,7 @@ pub async fn build_tools_inner(
 
     // Load MCP tools.
     let mcp_allowlist = cfg.mcp.command_allowlist.as_deref();
+    let mcp_sampling_auto = cfg.approval.effective_mode() == "auto";
     let builtin_before: HashSet<String> = registry.names().into_iter().collect();
     if let Some(mcp_path) = harness_mcp::find_config() {
         if let Err(e) = harness_mcp::load_mcp_tools(
@@ -324,6 +325,7 @@ pub async fn build_tools_inner(
             &mut registry,
             Some(provider.clone()),
             mcp_allowlist,
+            mcp_sampling_auto,
         )
         .await
         {
@@ -337,6 +339,7 @@ pub async fn build_tools_inner(
                 &mut registry,
                 Some(provider.clone()),
                 mcp_allowlist,
+                mcp_sampling_auto,
             )
             .await
             {
@@ -385,6 +388,13 @@ pub async fn build_tools_inner(
         let notif = cfg.notifications.clone();
         executor = executor.with_autotest_fail_hook(Arc::new(move |report| {
             crate::notifications::autotest_failed(&notif, report);
+        }));
+    }
+
+    if cfg.notifications.enabled {
+        let notif = cfg.notifications.clone();
+        executor = executor.with_gh_pr_opened_hook(Arc::new(move |title, url| {
+            crate::notifications::pr_opened(&notif, title, url);
         }));
     }
 

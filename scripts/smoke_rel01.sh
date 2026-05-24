@@ -14,6 +14,11 @@ if [[ ! -x "$HARNESS" ]]; then
   exit 1
 fi
 
+# Prefer a freshly built workspace binary over stale ~/.local/bin installs.
+if [[ -x "$ROOT/target/debug/harness" ]]; then
+  HARNESS="$ROOT/target/debug/harness"
+fi
+
 info() { printf "\033[32m[smoke]\033[0m %s\n" "$*"; }
 warn() { printf "\033[33m[smoke]\033[0m %s\n" "$*"; }
 

@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use tracing::debug;
 
 use crate::session::{Session, SessionId};
+use harness_provider_core::Role;
 
 /// SQLite-backed persistent session store.
 /// One DB file per workspace (or `~/.harness/sessions.db` as fallback).
@@ -125,6 +126,34 @@ impl SessionStore {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Resolve a human-readable session title for list views.
+    pub fn display_name_for(&self, id: &str, name_col: Option<String>) -> String {
+        if let Some(n) = name_col.filter(|s| !s.is_empty()) {
+            return n;
+        }
+        if let Ok(Some(session)) = self.load(&id.to_string()) {
+            if let Some(n) = session.name.filter(|s| !s.is_empty()) {
+                return n;
+            }
+            if let Some(first) = session
+                .messages
+                .iter()
+                .find(|m| matches!(m.role, Role::User))
+            {
+                let s = first.content.as_str().trim();
+                if !s.is_empty() {
+                    let truncated: String = s.chars().take(48).collect();
+                    if s.chars().count() > 48 {
+                        return format!("{truncated}…");
+                    }
+                    return truncated.to_string();
+                }
+            }
+        }
+        let short: String = id.chars().take(8).collect();
+        format!("Session {short}")
+    }
+
     pub fn delete(&self, id_or_prefix: &str) -> anyhow::Result<bool> {
         let conn = self
             .conn
@@ -241,5 +270,17 @@ mod tests {
 
         assert!(store.delete(&session.id[..8]).unwrap());
         assert!(store.load(&session.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn display_name_falls_back_to_first_user_message() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::open(dir.path().join("sessions.db")).unwrap();
+        let mut session = Session::new("claude-sonnet-4-6");
+        session.push(Message::user("refactor the agent loop"));
+        store.save(&session).unwrap();
+
+        let name = store.display_name_for(&session.id, None);
+        assert_eq!(name, "refactor the agent loop");
     }
 }
