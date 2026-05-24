@@ -144,7 +144,7 @@ _None — E-03 closed May 2026._
 | ID | Task |
 |----|------|
 | **SWARM-01/02** | ✅ `cancel`/`wait`; `[swarm]` in Config |
-| **TST-10/11/12** | Proptest MCP/LSP; coverage 70%; checkpoint tests ✅ |
+| **TST-10/11/12** | ✅ MCP/LSP proptest; coverage 70% blocked (~48% lib baseline); checkpoint tests ✅ |
 | **OBS-01** | ✅ OTLP mock HTTP integration test |
 | **REL-02** | VS Code Windows E2E |
 

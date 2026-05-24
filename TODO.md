@@ -72,10 +72,10 @@ Session names are generated async; titles can be missing on the first `harness s
 
 ### Coverage and property testing
 
-Current coverage target: ≥ 60 % on library crates. Proptest / fuzzing targets:
+Current coverage target: ≥ 60 % on library crates (local `cargo llvm-cov --lib` ~48% as of May 2026 — raise gate only after uplift). Proptest / fuzzing targets:
 
-- MCP message framing (`crates/harness-mcp/`)
-- LSP framing (`crates/harness-lsp/`)
+- MCP NDJSON classifier (`classify_mcp_ndjson_line` in `crates/harness-mcp/`) — ✅
+- LSP async framed read (`read_lsp_message` in `crates/harness-lsp/`) — ✅
 - Provider SSE parsing (`crates/harness-provider-openai/`, `crates/harness-provider-xai/`)
 
 ### `#![deny(missing_docs)]` on public crates

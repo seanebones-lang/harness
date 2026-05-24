@@ -1012,7 +1012,7 @@ mod tests {
     #[test]
     fn context_limit_varies_by_model_family() {
         assert_eq!(context_limit_for_model("gpt-5.5"), 1_000_000);
-        assert_eq!(context_limit_for_model("grok-4.3"), 200_000);
+        assert_eq!(context_limit_for_model("grok-4.3"), 1_000_000);
         assert_eq!(context_limit_for_model("qwen3-coder:30b"), 256_000);
         assert_eq!(context_limit_for_model("unknown-model"), 128_000);
     }
