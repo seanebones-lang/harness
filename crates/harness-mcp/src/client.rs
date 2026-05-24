@@ -121,6 +121,43 @@ pub struct McpClient {
     sampling_provider: Arc<Mutex<Option<ArcProvider>>>,
 }
 
+/// Classification of one NDJSON line from MCP server stdout.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum McpLineKind {
+    Empty,
+    InvalidJson,
+    Notification(String),
+    Response { id: u64, is_error: bool },
+    UnhandledResponseId,
+}
+
+/// Pure NDJSON line classifier used by the async reader loop (property-tested).
+pub(crate) fn classify_mcp_ndjson_line(line: &str) -> McpLineKind {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return McpLineKind::Empty;
+    }
+    let msg: RawMessage = match serde_json::from_str(trimmed) {
+        Ok(m) => m,
+        Err(_) => return McpLineKind::InvalidJson,
+    };
+    if msg.id.is_none() {
+        if let Some(method) = msg.method {
+            return McpLineKind::Notification(method);
+        }
+        return McpLineKind::InvalidJson;
+    }
+    match &msg.id {
+        Some(Value::Number(n)) => n.as_u64().map_or(McpLineKind::UnhandledResponseId, |id| {
+            McpLineKind::Response {
+                id,
+                is_error: msg.error.is_some(),
+            }
+        }),
+        _ => McpLineKind::UnhandledResponseId,
+    }
+}
+
 async fn mcp_reader_loop<R: AsyncBufRead + Send + Unpin>(
     mut stdout: R,
     io: Arc<IoShared>,
@@ -142,39 +179,32 @@ async fn mcp_reader_loop<R: AsyncBufRead + Send + Unpin>(
             }
             break;
         }
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        let msg: RawMessage = match serde_json::from_str(line) {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-
-        if msg.id.is_none() {
-            if let Some(ref method_name) = msg.method {
-                dispatch_notification(&ctx, method_name, msg.params.unwrap_or(Value::Null));
+        let kind = classify_mcp_ndjson_line(&line);
+        match kind {
+            McpLineKind::Empty | McpLineKind::InvalidJson | McpLineKind::UnhandledResponseId => {
+                continue;
             }
-            continue;
-        }
-
-        let msg_id = match &msg.id {
-            Some(Value::Number(n)) => n.as_u64(),
-            _ => None,
-        };
-        let Some(rid) = msg_id else {
-            continue;
-        };
-
-        let mut pending = io.pending.lock().await;
-        if let Some(sender) = pending.remove(&rid) {
-            let out = if let Some(err) = msg.error {
-                Err(err.message)
-            } else {
-                Ok(msg.result.unwrap_or(Value::Null))
-            };
-            let _ = sender.send(out);
+            McpLineKind::Notification(method) => {
+                let msg: RawMessage =
+                    serde_json::from_str(line.trim()).expect("classifier accepted line");
+                dispatch_notification(&ctx, &method, msg.params.unwrap_or(Value::Null));
+            }
+            McpLineKind::Response { id: rid, is_error } => {
+                let msg: RawMessage =
+                    serde_json::from_str(line.trim()).expect("classifier accepted line");
+                let mut pending = io.pending.lock().await;
+                if let Some(sender) = pending.remove(&rid) {
+                    let out = if is_error {
+                        Err(msg
+                            .error
+                            .map(|e| e.message)
+                            .unwrap_or_else(|| "MCP error".into()))
+                    } else {
+                        Ok(msg.result.unwrap_or(Value::Null))
+                    };
+                    let _ = sender.send(out);
+                }
+            }
         }
     }
 }
@@ -1088,6 +1118,47 @@ mod tests {
                     expected
                 );
             }
+        }
+    }
+
+    mod classify_ndjson_proptest {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn classify_never_panics(s in "\\PC*") {
+                let _ = classify_mcp_ndjson_line(&s);
+            }
+
+            #[test]
+            fn response_with_numeric_id(id in 1u64..10_000) {
+                let line = json!({"jsonrpc":"2.0","id":id,"result":{"ok":true}}).to_string();
+                prop_assert_eq!(
+                    classify_mcp_ndjson_line(&line),
+                    McpLineKind::Response { id, is_error: false }
+                );
+            }
+
+            #[test]
+            fn notification_without_id(method in "[a-z_/]+") {
+                let line = json!({"jsonrpc":"2.0","method":method,"params":{}}).to_string();
+                prop_assert_eq!(
+                    classify_mcp_ndjson_line(&line),
+                    McpLineKind::Notification(method)
+                );
+            }
+        }
+
+        #[test]
+        fn empty_and_invalid_lines() {
+            assert_eq!(classify_mcp_ndjson_line(""), McpLineKind::Empty);
+            assert_eq!(classify_mcp_ndjson_line("   "), McpLineKind::Empty);
+            assert_eq!(classify_mcp_ndjson_line("not-json"), McpLineKind::InvalidJson);
+            assert_eq!(
+                classify_mcp_ndjson_line(r#"{"jsonrpc":"2.0","id":"abc","result":{}}"#),
+                McpLineKind::UnhandledResponseId
+            );
         }
     }
 }

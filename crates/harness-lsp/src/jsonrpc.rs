@@ -89,40 +89,7 @@ impl LspTransport {
     /// Read one LSP message. Skips notifications (no id).
     pub async fn read_response(&mut self) -> Result<Response> {
         loop {
-            let mut content_length: Option<usize> = None;
-            loop {
-                let mut line = String::new();
-                let n = self.stdout.read_line(&mut line).await?;
-                if n == 0 {
-                    anyhow::bail!("LSP: unexpected EOF while reading headers");
-                }
-                let line = line.trim();
-                if line.is_empty() {
-                    // Blank line ends the header block only after we have seen Content-Length.
-                    if content_length.is_some() {
-                        break;
-                    }
-                    // Skip stray leading newlines / empty lines before the first header.
-                    continue;
-                }
-                if let Some(rest) = line.strip_prefix("Content-Length: ") {
-                    content_length = Some(rest.trim().parse()?);
-                }
-            }
-
-            let content_length = content_length
-                .ok_or_else(|| anyhow::anyhow!("LSP: missing Content-Length header"))?;
-
-            // Some servers emit `Content-Length: 0` keep-alives or empty frames; skip them.
-            if content_length == 0 {
-                continue;
-            }
-
-            let mut body = vec![0u8; content_length];
-            self.stdout.read_exact(&mut body).await?;
-            let msg: serde_json::Value = serde_json::from_slice(&body)?;
-
-            // Skip notifications (they have no id or id is null)
+            let msg = read_lsp_message(&mut self.stdout).await?;
             if msg.get("id").map(|v| !v.is_null()).unwrap_or(false) {
                 let resp: Response = serde_json::from_value(msg)?;
                 return Ok(resp);
@@ -138,6 +105,43 @@ impl LspTransport {
                 return Ok(resp);
             }
         }
+    }
+}
+
+/// Read one LSP JSON body from a framed stream (Content-Length headers).
+pub async fn read_lsp_message<R>(reader: &mut R) -> Result<serde_json::Value>
+where
+    R: AsyncBufReadExt + AsyncReadExt + Unpin,
+{
+    loop {
+        let mut content_length: Option<usize> = None;
+        loop {
+            let mut line = String::new();
+            let n = reader.read_line(&mut line).await?;
+            if n == 0 {
+                anyhow::bail!("LSP: unexpected EOF while reading headers");
+            }
+            let line = line.trim();
+            if line.is_empty() {
+                if content_length.is_some() {
+                    break;
+                }
+                continue;
+            }
+            if let Some(rest) = line.strip_prefix("Content-Length: ") {
+                content_length = Some(rest.trim().parse()?);
+            }
+        }
+
+        let content_length =
+            content_length.ok_or_else(|| anyhow::anyhow!("LSP: missing Content-Length header"))?;
+        if content_length == 0 {
+            continue;
+        }
+
+        let mut body = vec![0u8; content_length];
+        reader.read_exact(&mut body).await?;
+        return Ok(serde_json::from_slice(&body)?);
     }
 }
 
@@ -186,6 +190,7 @@ pub fn try_decode_lsp_frame(input: &str) -> Result<Option<(String, &str)>> {
 mod framing_tests {
     use super::*;
     use proptest::prelude::*;
+    use tokio::io::BufReader;
 
     fn ascii_body(max: usize) -> impl Strategy<Value = String> {
         prop::collection::vec(0x20u8..=0x7e, 0..max)
@@ -222,5 +227,22 @@ mod framing_tests {
                 }
             }
         }
+    }
+
+    #[tokio::test]
+    async fn read_lsp_message_accepts_chunked_async_stream() {
+        let payload = serde_json::json!({"jsonrpc":"2.0","id":42,"result":{"ok":true}});
+        let frame = encode_lsp_frame(&payload.to_string());
+        let (mut writer, read_half) = tokio::io::duplex(4096);
+        tokio::spawn(async move {
+            for chunk in frame.as_bytes().chunks(5) {
+                writer.write_all(chunk).await.unwrap();
+                tokio::task::yield_now().await;
+            }
+        });
+        let mut reader = BufReader::new(read_half);
+        let msg = read_lsp_message(&mut reader).await.unwrap();
+        assert_eq!(msg["id"], 42);
+        assert_eq!(msg["result"]["ok"], true);
     }
 }
