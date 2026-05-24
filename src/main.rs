@@ -125,6 +125,26 @@ async fn main() -> Result<()> {
                 }
             };
 
+            // Ask for model (with recommended defaults)
+            let default_model = match provider_name {
+                "xai" => "grok-4.3",
+                "anthropic" => "claude-sonnet-4-6",
+                "openai" => "gpt-5.5",
+                _ => "grok-4.3",
+            };
+            println!();
+            println!("Recommended model for {}: {}", provider_name, default_model);
+            print!("Enter model (or press Enter for default): ");
+            std::io::stdout().flush().ok();
+
+            let mut model_input = String::new();
+            std::io::stdin().read_line(&mut model_input).ok();
+            let chosen_model = if model_input.trim().is_empty() {
+                default_model.to_string()
+            } else {
+                model_input.trim().to_string()
+            };
+
             println!();
             print!("Enter your {} key: ", env_var);
             std::io::stdout().flush().ok();
@@ -146,8 +166,13 @@ async fn main() -> Result<()> {
                 .entry(provider_name.to_string())
                 .or_default()
                 .api_key = Some(key.clone());
+            new_cfg.providers
+                .entry(provider_name.to_string())
+                .or_default()
+                .model = Some(chosen_model.clone());
 
             new_cfg.provider.api_key = Some(key.clone());
+            new_cfg.provider.model = Some(chosen_model);
             new_cfg.providers
                 .entry(provider_name.to_string())
                 .or_default()
