@@ -375,11 +375,18 @@ pub async fn build_tools_inner(
         .with_confirm_policy(confirm_policy);
 
     // Wire autotest if enabled in config.
-    let executor = if cfg.autotest.enabled {
+    let mut executor = if cfg.autotest.enabled {
         executor.with_autotest(cfg.autotest.scope.clone())
     } else {
         executor
     };
+
+    if cfg.autotest.enabled && cfg.notifications.on_autotest_fail {
+        let notif = cfg.notifications.clone();
+        executor = executor.with_autotest_fail_hook(Arc::new(move |report| {
+            crate::notifications::autotest_failed(&notif, report);
+        }));
+    }
 
     // Load trust rules.
     let trust_store = trust::TrustStore::load();

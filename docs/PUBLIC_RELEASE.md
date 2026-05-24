@@ -20,7 +20,9 @@ cargo test --all
 cargo build --profile release-lto
 ```
 
-CI runs these steps on **ubuntu-latest**, **macos-latest**, and **windows-latest**; keep local gates aligned before tagging. The same workflow includes an **`install-scripts`** job that builds via [`scripts/install.sh`](../scripts/install.sh) (Ubuntu + macOS) and [`scripts/install.ps1`](../scripts/install.ps1) (Windows).
+CI runs these steps on **ubuntu-latest**, **macos-latest**, and **windows-latest**; keep local gates aligned before tagging. The same workflow includes an **`install-scripts`** job that builds via [`scripts/install.sh`](../scripts/install.sh) (Ubuntu + macOS) and [`scripts/install.ps1`](../scripts/install.ps1) (Windows), plus **`release-lto`** build and VS Code extension compile.
+
+Optional automated REL-01 subset (no API keys): [`scripts/smoke_rel01.sh`](../scripts/smoke_rel01.sh).
 
 Confirm `harness --version` after install (or `target/release-lto/harness --version`).
 

@@ -620,6 +620,7 @@ pub(crate) async fn handle_slash_command(
         "/ci" => {
             state.lock().push_event("[ci] checking runs…");
             let state2 = state.clone();
+            let notif_cfg = state.lock().notifications.clone();
             tokio::spawn(async move {
                 let out = tokio::process::Command::new("gh")
                     .args(["run", "list", "--limit", "10"])
@@ -632,6 +633,10 @@ pub(crate) async fn handle_slash_command(
                 let mut st = state2.lock();
                 for line in msg.lines().take(20) {
                     st.push_event(format!("  {line}"));
+                    let lower = line.to_lowercase();
+                    if lower.contains("failure") || lower.contains("failed") {
+                        notifications::ci_failed(&notif_cfg, line.trim(), "");
+                    }
                 }
                 st.status = "CI runs in event log →".to_string();
             });
