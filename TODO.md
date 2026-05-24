@@ -9,6 +9,30 @@ Implemented and closed: xAI `stream_options` + usage, multi-tool-call streaming 
 
 Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md)
 
+
+## CTO Review Priorities (May 2026)
+
+### P0 – Critical (Fix before next release)
+- [ ] Eliminate "ProviderRouter has no providers" panic
+  - Make `from_config` always guarantee at least one provider or return a clear error.
+  - Add defensive check in `build_arc_provider`.
+- [ ] Fix multi-binary installation issue (`~/.cargo/bin` vs `~/.local/bin`)
+- [ ] Improve wizard robustness (handle existing config without xAI key, add `harness setup` command)
+
+### P1 – High Priority
+- [ ] Expand model selection + validation in first-run wizard
+- [ ] Add visible scrollbar to TUI chat panel
+- [ ] Improve swarm CLI integration (tests + status commands)
+- [ ] Add unit tests for `harness-provider-router` (`from_config`)
+- [ ] Refine auto-scroll behavior in TUI
+
+### P2 – Polish
+- [ ] Make `ambient` provider generic (remove XaiProvider hard dependency)
+- [ ] Fix session-list title lag
+- [ ] Better error messages for invalid/expired API keys
+- [ ] Windows improvements (PowerShell path, named pipes)
+
+
 ---
 
 ## Good first contributions
