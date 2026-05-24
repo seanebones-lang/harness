@@ -48,15 +48,15 @@ Execution order: **P0 → P1 → P2**. **Maintainer-only** items need API keys /
 
 | ID | Item | Status |
 |----|------|--------|
-| P2-1 | TUI visible scrollbar + auto-scroll | [x] |
-| P2-2 | Session-list title lag UX note | [x] |
+| P2-1 | TUI visible scrollbar + follow-scroll | [x] |
+| P2-2 | Session list display names (first-message fallback) | [x] |
 | P2-3 | Wire notification kinds (voice, swarm wait) | [x] |
 | P2-4 | Swarm background status updates | [x] (via existing `spawn_task`) |
 | P2-5 | Collab `max_users` enforcement | [x] |
 | P2-6 | Browser tool `unreachable!()` → `Err` | [x] |
 | P2-7 | Coverage uplift (auth, bridges, swarm prefix tests) | [x] |
 | P2-8 | VS Code extension README + packaging notes | [x] |
-| P2-9 | Desktop app icon/docs (CI job deferred) | [x] |
+| P2-9 | Desktop app CI check (Tauri `cargo check`) | [x] |
 | P2-10 | Homebrew tap publish | [ ] maintainer (`scripts/update-homebrew-sha.sh`) |
 
 ### Maintainer-only
@@ -70,12 +70,12 @@ Execution order: **P0 → P1 → P2**. **Maintainer-only** items need API keys /
 ## Remaining backlog
 
 - Homebrew tap publish: run `bash scripts/update-homebrew-sha.sh vX.Y.Z` after tagging (P2-10)
-- REL-01 manual smoke on target OSes (automated subset: `scripts/smoke_rel01.sh`)
-- `pr_opened` notification (no `gh pr create` tool yet)
-- Coverage gate uplift toward 60% on more crates
+- REL-01 manual smoke on target OSes (automated subset: `scripts/smoke_rel01.sh` — rebuild binary first)
+- MCP sampling interactive TUI approval (plan/smart currently deny inbound sampling)
+- Coverage gate uplift toward 60% on more crates (voice, mlx, lsp client)
 - DatabaseTool / NotebookTool / DockerTool
 - New providers (Mistral, Gemini, Bedrock)
-- Desktop CI smoke + Tauri icons generation
+- Tauri app icons generation (CI check only today)
 
 ---
 

@@ -127,3 +127,23 @@ jobs:
         run: |
           npm install
           npm run compile
+
+  desktop-tauri:
+    name: Desktop Tauri check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Install frontend deps
+        working-directory: apps/desktop
+        run: npm ci
+      - name: cargo check (Tauri)
+        working-directory: apps/desktop/src-tauri
+        run: cargo check

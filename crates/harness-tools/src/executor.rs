@@ -27,6 +27,9 @@ const FILE_WRITE_TOOLS: &[&str] = &["write_file", "patch_file", "apply_patch"];
 /// Hook invoked when post-write autotest reports failures.
 pub type AutotestFailHook = Arc<dyn Fn(&str) + Send + Sync>;
 
+/// Hook invoked after a successful `gh pr_create` (title, url).
+pub type GhPrOpenedHook = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 /// Runs registered tools on behalf of the agent, with optional confirm gate and hooks.
 #[derive(Clone)]
 pub struct ToolExecutor {
@@ -41,6 +44,7 @@ pub struct ToolExecutor {
     autotest_scope: Option<String>,
     /// Called when autotest reports failures (desktop notification hook).
     autotest_fail_hook: Option<AutotestFailHook>,
+    gh_pr_opened_hook: Option<GhPrOpenedHook>,
     /// Trust rules: (tool, pattern) pairs that bypass the confirm gate.
     trusted: Vec<(String, String)>,
     /// MCP-adapted tool names (require confirmation in plan mode).
@@ -65,6 +69,7 @@ impl ToolExecutor {
             autotest: false,
             autotest_scope: None,
             autotest_fail_hook: None,
+            gh_pr_opened_hook: None,
             trusted: Vec::new(),
             mcp_tool_names: HashSet::new(),
             always_ask: Vec::new(),
@@ -207,10 +212,36 @@ impl ToolExecutor {
         self
     }
 
+    /// Desktop notification hook when `gh pr_create` succeeds.
+    pub fn with_gh_pr_opened_hook(mut self, hook: GhPrOpenedHook) -> Self {
+        self.gh_pr_opened_hook = Some(hook);
+        self
+    }
+
     fn notify_autotest_fail(&self, report: &str) {
         if let Some(hook) = &self.autotest_fail_hook {
             hook(report);
         }
+    }
+
+    fn notify_gh_pr_opened(&self, args: &serde_json::Value, output: &str) {
+        if args.get("action").and_then(|v| v.as_str()) != Some("pr_create") {
+            return;
+        }
+        let Some(hook) = &self.gh_pr_opened_hook else {
+            return;
+        };
+        let parsed = serde_json::from_str::<serde_json::Value>(output.trim()).ok();
+        let title = parsed
+            .as_ref()
+            .and_then(|v| v.get("title").and_then(|t| t.as_str()))
+            .or_else(|| args.get("title").and_then(|v| v.as_str()))
+            .unwrap_or("Pull request");
+        let url = parsed
+            .as_ref()
+            .and_then(|v| v.get("url").and_then(|u| u.as_str()))
+            .unwrap_or("");
+        hook(title, url);
     }
 
     /// Execute a provider tool call and return string output for the agent loop.
@@ -275,6 +306,10 @@ impl ToolExecutor {
             Ok(output) => output,
             Err(e) => return format!("Tool error: {e}"),
         };
+
+        if call.function.name == "gh" {
+            self.notify_gh_pr_opened(&args, &result);
+        }
 
         let is_file_write = FILE_WRITE_TOOLS.contains(&call.function.name.as_str());
 

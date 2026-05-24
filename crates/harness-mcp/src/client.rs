@@ -134,6 +134,7 @@ struct ReaderContext {
     server_name: String,
     progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
     sampling_provider: Arc<Mutex<Option<ArcProvider>>>,
+    sampling_auto_approve: bool,
 }
 
 /// A handle to a running MCP server process.
@@ -313,13 +314,24 @@ async fn dispatch_server_request(
 ) {
     match method {
         "sampling/createMessage" => {
+            let auto = ctx.sampling_auto_approve;
+            let server = ctx.server_name.clone();
             let outcome = run_sampling_request(&ctx.sampling_provider, &params, |preview| {
-                warn!(
-                    server = %ctx.server_name,
-                    preview = %preview.chars().take(240).collect::<String>(),
-                    "MCP sampling/createMessage auto-approved (non-interactive)"
-                );
-                true
+                if auto {
+                    warn!(
+                        server = %server,
+                        preview = %preview.chars().take(240).collect::<String>(),
+                        "MCP sampling/createMessage auto-approved (approval mode: auto)"
+                    );
+                    true
+                } else {
+                    warn!(
+                        server = %server,
+                        preview = %preview.chars().take(240).collect::<String>(),
+                        "MCP sampling/createMessage denied (plan/smart mode — set approval.mode = auto to allow)"
+                    );
+                    false
+                }
             })
             .await;
             match outcome {
@@ -345,7 +357,7 @@ async fn dispatch_server_request(
 impl McpClient {
     /// Spawn an MCP server, run the initialization handshake, and return the client.
     pub async fn spawn(name: &str, cfg: &McpServerConfig) -> Result<Self> {
-        Self::spawn_with_opts(name, cfg, None, None).await
+        Self::spawn_with_opts(name, cfg, None, None, false).await
     }
 
     /// Spawn with an optional progress event sender and optional LLM for MCP sampling.
@@ -354,6 +366,7 @@ impl McpClient {
         cfg: &McpServerConfig,
         progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
         sampling_provider: Option<ArcProvider>,
+        sampling_auto_approve: bool,
     ) -> Result<Self> {
         let mut cmd = tokio::process::Command::new(&cfg.command);
         cmd.args(&cfg.args)
@@ -376,6 +389,7 @@ impl McpClient {
             name.to_string(),
             progress_tx,
             sampling_provider,
+            sampling_auto_approve,
         )
         .await
     }
@@ -393,6 +407,7 @@ impl McpClient {
         name: String,
         progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
         sampling_provider: Option<ArcProvider>,
+        sampling_auto_approve: bool,
     ) -> Result<Self>
     where
         R: AsyncRead + Send + Unpin + 'static,
@@ -411,6 +426,7 @@ impl McpClient {
             server_name: name.clone(),
             progress_tx,
             sampling_provider: sampling_arc.clone(),
+            sampling_auto_approve,
         });
         let io_reader = io.clone();
         let ctx_reader = ctx.clone();
@@ -838,7 +854,7 @@ mod tests {
             .await;
         });
 
-        let client = McpClient::from_streams(client_r, client_w, (), "test".into(), None, None)
+        let client = McpClient::from_streams(client_r, client_w, (), "test".into(), None, None, false)
             .await
             .expect("client construct");
         server.await.expect("server task");
@@ -893,7 +909,7 @@ mod tests {
         });
 
         let client =
-            McpClient::from_streams(client_r, client_w, (), "concurrent-test".into(), None, None)
+            McpClient::from_streams(client_r, client_w, (), "concurrent-test".into(), None, None, false)
                 .await
                 .expect("client construct");
 
@@ -949,7 +965,7 @@ mod tests {
             server_w.flush().await.unwrap();
         });
 
-        let client = McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None)
+        let client = McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None, false)
             .await
             .unwrap();
 
@@ -980,7 +996,7 @@ mod tests {
         });
 
         let client =
-            McpClient::from_streams(client_r, client_w, (), "close-test".into(), None, None)
+            McpClient::from_streams(client_r, client_w, (), "close-test".into(), None, None, false)
                 .await
                 .unwrap();
 
@@ -1051,6 +1067,7 @@ mod tests {
             "progress-test".into(),
             Some(tx),
             None,
+            false,
         )
         .await
         .unwrap();
@@ -1090,6 +1107,7 @@ mod tests {
             "sample-test".into(),
             None,
             None, // no sampling provider attached
+            false,
         )
         .await
         .unwrap();
@@ -1123,7 +1141,7 @@ mod tests {
         });
 
         let client =
-            McpClient::from_streams(client_r, client_w, (), "deny-test".into(), None, None)
+            McpClient::from_streams(client_r, client_w, (), "deny-test".into(), None, None, false)
                 .await
                 .unwrap();
         server.await.unwrap();
@@ -1179,7 +1197,7 @@ mod tests {
         });
 
         let client =
-            McpClient::from_streams(client_r, client_w, (), "tools-test".into(), None, None)
+            McpClient::from_streams(client_r, client_w, (), "tools-test".into(), None, None, false)
                 .await
                 .unwrap();
 

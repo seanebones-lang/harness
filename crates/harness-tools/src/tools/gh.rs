@@ -18,6 +18,7 @@ use crate::registry::Tool;
 ///   pr_diff N      — full diff for PR #N
 ///   pr_checks N    — CI status for PR #N
 ///   pr_comment N msg — post a comment on PR #N
+///   pr_create      — open a PR (title required; optional body, base, head)
 ///   issue_list     — list open issues
 ///   issue_view N   — view issue #N
 ///   run_view N     — view workflow run #N
@@ -31,7 +32,8 @@ impl Tool for GhTool {
         ToolDefinition::new(
             "gh",
             "GitHub CLI wrapper. Actions: pr_list, pr_view <n>, pr_diff <n>, pr_checks <n>, \
-             pr_comment <n> <msg>, issue_list, issue_view <n>, run_view <n>, run_logs <n>.",
+             pr_comment <n> <msg>, pr_create (title, body?, base?, head?), issue_list, \
+             issue_view <n>, run_view <n>, run_logs <n>.",
             json!({
                 "type": "object",
                 "properties": {
@@ -39,16 +41,32 @@ impl Tool for GhTool {
                         "type": "string",
                         "enum": [
                             "pr_list", "pr_view", "pr_diff", "pr_checks", "pr_comment",
-                            "issue_list", "issue_view", "run_view", "run_logs"
+                            "pr_create", "issue_list", "issue_view", "run_view", "run_logs"
                         ]
                     },
                     "number": {
                         "type": "integer",
                         "description": "PR, issue, or run number"
                     },
+                    "title": {
+                        "type": "string",
+                        "description": "PR title (for pr_create)"
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "PR or comment body"
+                    },
+                    "base": {
+                        "type": "string",
+                        "description": "Base branch (for pr_create)"
+                    },
+                    "head": {
+                        "type": "string",
+                        "description": "Head branch (for pr_create)"
+                    },
                     "message": {
                         "type": "string",
-                        "description": "Comment body (for pr_comment)"
+                        "description": "Comment body (for pr_comment; alias for body)"
                     }
                 },
                 "required": ["action"]
@@ -94,11 +112,44 @@ impl Tool for GhTool {
             }
             "pr_comment" => {
                 let n = require_number(num)?;
-                let msg = args["message"].as_str().unwrap_or("").trim().to_string();
+                let msg = args["message"]
+                    .as_str()
+                    .or_else(|| args["body"].as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
                 if msg.is_empty() {
                     anyhow::bail!("message is required for pr_comment");
                 }
                 run_gh(&["pr", "comment", &n, "--body", &msg]).await
+            }
+            "pr_create" => {
+                let title = args["title"].as_str().unwrap_or("").trim().to_string();
+                if title.is_empty() {
+                    anyhow::bail!("title is required for pr_create");
+                }
+                let body = args["body"].as_str().unwrap_or("").trim();
+                let mut gh_args = vec![
+                    "pr",
+                    "create",
+                    "--title",
+                    &title,
+                    "--json",
+                    "url,title,number",
+                ];
+                if !body.is_empty() {
+                    gh_args.push("--body");
+                    gh_args.push(body);
+                }
+                if let Some(base) = args["base"].as_str().filter(|s| !s.is_empty()) {
+                    gh_args.push("--base");
+                    gh_args.push(base);
+                }
+                if let Some(head) = args["head"].as_str().filter(|s| !s.is_empty()) {
+                    gh_args.push("--head");
+                    gh_args.push(head);
+                }
+                run_gh(&gh_args).await
             }
             "issue_list" => {
                 run_gh(&[

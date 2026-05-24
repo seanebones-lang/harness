@@ -93,6 +93,7 @@ pub(super) async fn run_terminal_loop(
                         .as_ref()
                         .and_then(|d| crate::diff_review::next_pending_hunk(d, 0))
                         .unwrap_or(0);
+                    let has_diff = file_diff.is_some();
                     let mut st = state.lock();
                     st.pending_confirm = Some(PendingConfirm {
                         tool_name: req.tool_name,
@@ -101,7 +102,7 @@ pub(super) async fn run_terminal_loop(
                         hunk_index,
                         reply: req.reply,
                     });
-                    st.status = if st.pending_confirm.as_ref().unwrap().file_diff.is_some() {
+                    st.status = if has_diff {
                         "DIFF REVIEW — y/n hunk · [/] nav · Enter approve all · Esc skip".into()
                     } else {
                         let label = st.confirm_bar_label.as_deref().unwrap_or("PLAN");
@@ -298,8 +299,8 @@ pub(super) async fn run_terminal_loop(
 
                     // ── Y — approve confirm ────────────────────────────────────
                     (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                        if state.lock().pending_confirm.is_some() {
-                            let mut pc = state.lock().pending_confirm.take().unwrap();
+                        let pc = state.lock().pending_confirm.take();
+                        if let Some(mut pc) = pc {
                             if pc.file_diff.is_some() {
                                 if let Some(result) = decide_hunk(&mut pc, true) {
                                     finish_confirm(&state, pc, result, "approved");
@@ -314,10 +315,8 @@ pub(super) async fn run_terminal_loop(
                         handle_char(&state, 'y');
                     }
 
-                    // ── N — deny confirm ───────────────────────────────────────
                     (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                        if state.lock().pending_confirm.is_some() {
-                            let mut pc = state.lock().pending_confirm.take().unwrap();
+                        if let Some(mut pc) = state.lock().pending_confirm.take() {
                             if pc.file_diff.is_some() {
                                 if let Some(result) = decide_hunk(&mut pc, false) {
                                     finish_confirm(&state, pc, result, "reviewed");
@@ -428,8 +427,7 @@ pub(super) async fn run_terminal_loop(
 
                         // Approve pending confirm
                         {
-                            if state.lock().pending_confirm.is_some() {
-                                let mut pc = state.lock().pending_confirm.take().unwrap();
+                            if let Some(mut pc) = state.lock().pending_confirm.take() {
                                 if pc.file_diff.is_some() {
                                     let result = approve_all_hunks(&mut pc);
                                     finish_confirm(&state, pc, result, "approved all hunks");

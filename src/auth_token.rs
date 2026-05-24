@@ -90,6 +90,7 @@ mod tests {
         assert!(!verify(Some("wrong"), "secret-token"));
         assert!(!verify(None, "secret-token"));
         assert!(!verify(Some(""), "secret-token"));
+        assert!(!verify(Some("secret-token-extra"), "secret-token"));
     }
 
     #[test]

@@ -245,7 +245,7 @@ fn draw_chat(
         )
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-    if total_items > 0 {
+    if total_items > 0 && state.chat_follow {
         let selected = state.chat_scroll.selected().unwrap_or(0);
         if selected == 0 || selected >= total_items.saturating_sub(5) {
             state.chat_scroll.select(Some(total_items.saturating_sub(1)));

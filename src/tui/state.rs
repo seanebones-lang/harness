@@ -41,6 +41,7 @@ pub(crate) struct AppState {
     pub(crate) busy: bool,
     /// Scroll state for chat list.
     pub(crate) chat_scroll: ListState,
+    pub(crate) chat_follow: bool,
     /// Scroll state for event log.
     pub(crate) event_scroll: ListState,
     /// Total rendered chat item count (updated on draw for scroll bounds).
@@ -175,6 +176,7 @@ impl AppState {
             status_right: String::new(),
             busy: false,
             chat_scroll,
+            chat_follow: true,
             event_scroll,
             chat_items_len: 0,
             event_items_len: 0,
@@ -406,6 +408,7 @@ impl AppState {
     }
 
     pub(crate) fn scroll_chat_up(&mut self, n: usize) {
+        self.chat_follow = false;
         let cur = self
             .chat_scroll
             .selected()
@@ -418,6 +421,9 @@ impl AppState {
         let cur = self.chat_scroll.selected().unwrap_or(0);
         let max = self.chat_items_len.saturating_sub(1);
         let new = (cur + n).min(max);
+        if new >= max {
+            self.chat_follow = true;
+        }
         self.chat_scroll.select(Some(new));
     }
 
@@ -438,6 +444,7 @@ impl AppState {
     }
 
     pub(crate) fn scroll_to_bottom(&mut self) {
+        self.chat_follow = true;
         let max = self.chat_items_len.saturating_sub(1);
         self.chat_scroll.select(Some(max));
         let emax = self.event_items_len.saturating_sub(1);
