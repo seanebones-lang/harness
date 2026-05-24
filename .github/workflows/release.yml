@@ -19,6 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Linux
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             artifact: harness-linux-x86_64
@@ -28,6 +29,16 @@ jobs:
             artifact: harness-linux-aarch64
             cross: true
             smoke: verify
+
+          # macOS
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            artifact: harness-macos-x86_64
+            smoke: native
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            artifact: harness-macos-aarch64
+            smoke: native
 
     steps:
       - uses: actions/checkout@v4
