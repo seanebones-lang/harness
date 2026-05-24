@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
         eprintln!("harness: No API keys configured.");
         eprintln!();
         eprintln!("Would you like to set one up now? (y/n)");
-        
+
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input).is_ok() && input.trim().to_lowercase().starts_with('y') {
             println!();
@@ -109,30 +109,63 @@ async fn main() -> Result<()> {
             let mut choice = String::new();
             std::io::stdin().read_line(&mut choice).ok();
 
-            match choice.trim() {
-                "1" => {
-                    println!("\n→ Add this to your shell profile:");
-                    println!("   export XAI_API_KEY=\"xai-...\"");
-                    println!("\nThen restart harness.");
-                }
-                "2" => {
-                    println!("\n→ Add this to your shell profile:");
-                    println!("   export ANTHROPIC_API_KEY=\"sk-ant-...\"");
-                    println!("\nThen restart harness.");
-                }
-                "3" => {
-                    println!("\n→ Add this to your shell profile:");
-                    println!("   export OPENAI_API_KEY=\"sk-...\"");
-                    println!("\nThen restart harness.");
-                }
+            let provider_choice = choice.trim();
+            let (provider_name, env_var) = match provider_choice {
+                "1" => ("xai", "XAI_API_KEY"),
+                "2" => ("anthropic", "ANTHROPIC_API_KEY"),
+                "3" => ("openai", "OPENAI_API_KEY"),
                 "4" => {
                     println!("\n→ Make sure Ollama is running:");
                     println!("   ollama run qwen3-coder:30b");
+                    std::process::exit(0);
                 }
-                _ => println!("Invalid choice."),
+                _ => {
+                    println!("Invalid choice.");
+                    std::process::exit(1);
+                }
+            };
+
+            println!();
+            print!("Enter your {} key: ", env_var);
+            std::io::stdout().flush().ok();
+
+            let mut key = String::new();
+            std::io::stdin().read_line(&mut key).ok();
+            let key = key.trim().to_string();
+
+            if key.is_empty() {
+                eprintln!("No key provided. Exiting.");
+                std::process::exit(1);
+            }
+
+            // Persist to config
+            let config_path = config::active_config_toml_path();
+            let mut new_cfg = cfg.clone();
+
+            new_cfg.providers
+                .entry(provider_name.to_string())
+                .or_default()
+                .api_key = Some(key.clone());
+
+            new_cfg.provider.api_key = Some(key.clone());
+            new_cfg.providers
+                .entry(provider_name.to_string())
+                .or_default()
+                .api_key = Some(key);
+
+            match config::write_config_toml(&config_path, &new_cfg) {
+                Ok(_) => {
+                    println!("\n✓ Saved to {}", config_path.display());
+                    println!("Restart harness to use the new key.");
+                }
+                Err(e) => {
+                    eprintln!("Failed to write config: {}", e);
+                    println!("\n→ Add this to your shell profile:");
+                    println!("   export {}=\"your-key\"", env_var);
+                }
             }
         }
-        std::process::exit(1);
+        std::process::exit(0);
     }
 
     // Handle partial config: xAI not present but others are
