@@ -69,34 +69,35 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Detect available API keys (in priority order: Anthropic > xAI > OpenAI > legacy config)
-    let has_anthropic = std::env::var("ANTHROPIC_API_KEY")
-        .map(|k| !k.is_empty())
-        .unwrap_or(false);
+    // Detect available API keys (priority: xAI > Anthropic > OpenAI > Ollama)
     let has_xai = cfg.provider.api_key.is_some()
         || std::env::var("XAI_API_KEY")
             .map(|k| !k.is_empty())
             .unwrap_or(false);
+    let has_anthropic = std::env::var("ANTHROPIC_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false);
     let has_openai = std::env::var("OPENAI_API_KEY")
         .map(|k| !k.is_empty())
         .unwrap_or(false);
     let has_ollama = cfg.providers.contains_key("ollama");
 
-if !has_anthropic
-        && !has_xai
-        && !has_openai
-        && !has_ollama
+    // Improved first-run wizard with better partial-config handling
+    let no_keys_at_all = !has_xai && !has_anthropic && !has_openai && !has_ollama
         && cfg.providers.is_empty()
-        && !harness_provider_mlx::mlx_runtime_available()
-    {
-        eprintln!("harness: No API key found.");
+        && !harness_provider_mlx::mlx_runtime_available();
+
+    if no_keys_at_all {
+        eprintln!("harness: No API keys configured.");
         eprintln!();
-        eprintln!("Would you like to configure one now? (y/n)");
+        eprintln!("Would you like to set one up now? (y/n)");
         
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input).is_ok() && input.trim().to_lowercase().starts_with('y') {
             println!();
-            println!("Which provider would you like to use?");
+            println!("Recommended: xAI (Grok 4.3) — fast and cost-efficient.");
+            println!();
+            println!("Which provider?");
             println!("  [1] xAI (Grok)         ← Recommended");
             println!("  [2] Anthropic (Claude)");
             println!("  [3] OpenAI");
@@ -110,28 +111,33 @@ if !has_anthropic
 
             match choice.trim() {
                 "1" => {
-                    println!("\n→ Run this command:");
+                    println!("\n→ Add this to your shell profile:");
                     println!("   export XAI_API_KEY=\"xai-...\"");
                     println!("\nThen restart harness.");
                 }
                 "2" => {
-                    println!("\n→ Run this command:");
+                    println!("\n→ Add this to your shell profile:");
                     println!("   export ANTHROPIC_API_KEY=\"sk-ant-...\"");
                     println!("\nThen restart harness.");
                 }
                 "3" => {
-                    println!("\n→ Run this command:");
+                    println!("\n→ Add this to your shell profile:");
                     println!("   export OPENAI_API_KEY=\"sk-...\"");
                     println!("\nThen restart harness.");
                 }
                 "4" => {
-                    println!("\n→ Make sure Ollama is running (example):");
+                    println!("\n→ Make sure Ollama is running:");
                     println!("   ollama run qwen3-coder:30b");
                 }
                 _ => println!("Invalid choice."),
             }
         }
         std::process::exit(1);
+    }
+
+    // Handle partial config: xAI not present but others are
+    if !has_xai && (has_anthropic || has_openai || has_ollama) {
+        eprintln!("Note: xAI key not found (current default). Other providers detected.");
     }
 
     let model = cli
