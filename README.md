@@ -30,7 +30,7 @@ See how Harness compares to Aider, Claude Code, Cursor, and others: [`docs/COMPA
 
 Harness is a fast, private, terminal-first Rust coding agent. Multi-provider (xAI Grok, Claude, OpenAI, local), semantic memory, sub-agents, cost tracking, and MCP support.
 
-Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
+Default model: **grok-4.3** (xAI). Falls back to Anthropic → OpenAI → local Ollama based on which API keys are set.
 
 **Status:** Beta — fine for daily use.
 
