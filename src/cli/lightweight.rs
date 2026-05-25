@@ -3,14 +3,14 @@
 use anyhow::{Context, Result};
 use clap::CommandFactory;
 use clap_complete::generate;
-use harness_tools::tools::GhTool;
 use harness_tools::registry::Tool;
+use harness_tools::tools::GhTool;
 
 use crate::cli::args::BridgeAction;
 use crate::cli::{
     delete_session, export_session, handle_doctor_command, handle_models_command,
-    handle_project_command, list_sessions, run_init, run_status, run_update, CheckpointAction,
-    Cli, Commands, CostAction, SwarmAction, SyncAction,
+    handle_project_command, list_sessions, run_init, run_status, run_update, CheckpointAction, Cli,
+    Commands, CostAction, SwarmAction, SyncAction,
 };
 use crate::config::Config;
 use crate::provider_build;
@@ -93,16 +93,14 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
 
         Some(Commands::DaemonStatus) => dispatch_daemon_status().await?,
 
-        Some(Commands::RunBg { prompt }) => {
-            match crate::background::spawn(prompt) {
-                Ok(id) => {
-                    println!("Background run started: {id}");
-                    println!("Output: ~/.harness/runs/{id}/output.log");
-                    println!("Status: harness runs");
-                }
-                Err(e) => eprintln!("run-bg: {e}"),
+        Some(Commands::RunBg { prompt }) => match crate::background::spawn(prompt) {
+            Ok(id) => {
+                println!("Background run started: {id}");
+                println!("Output: ~/.harness/runs/{id}/output.log");
+                println!("Status: harness runs");
             }
-        }
+            Err(e) => eprintln!("run-bg: {e}"),
+        },
 
         Some(Commands::Runs) => dispatch_runs()?,
 
@@ -140,13 +138,11 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
             }
         }
 
-        Some(Commands::Forget { topic }) => {
-            match crate::memory_project::forget(topic) {
-                Ok(true) => println!("Forgot topic '{topic}'"),
-                Ok(false) => println!("No memory for topic '{topic}'"),
-                Err(e) => eprintln!("Error: {e}"),
-            }
-        }
+        Some(Commands::Forget { topic }) => match crate::memory_project::forget(topic) {
+            Ok(true) => println!("Forgot topic '{topic}'"),
+            Ok(false) => println!("No memory for topic '{topic}'"),
+            Err(e) => eprintln!("Error: {e}"),
+        },
 
         Some(Commands::Memories) => {
             let topics = crate::memory_project::list_topics();
@@ -172,7 +168,11 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
             println!("{out}");
         }
 
-        Some(Commands::Connect { url, prompt, session }) => {
+        Some(Commands::Connect {
+            url,
+            prompt,
+            session,
+        }) => {
             crate::cli::connect_to_server(url, prompt, session.as_deref()).await?;
         }
 

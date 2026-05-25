@@ -35,11 +35,9 @@ pub fn load_session_into_chat(session: &Session, chat: &mut Vec<ChatMessage>) {
                         if let Ok(calls) = serde_json::from_str::<serde_json::Value>(json) {
                             if let Some(arr) = calls.as_array() {
                                 for call in arr {
-                                    let name =
-                                        call["function"]["name"].as_str().unwrap_or("?");
-                                    let args = call["function"]["arguments"]
-                                        .as_str()
-                                        .unwrap_or("{}");
+                                    let name = call["function"]["name"].as_str().unwrap_or("?");
+                                    let args =
+                                        call["function"]["arguments"].as_str().unwrap_or("{}");
                                     chat.push(ChatMessage {
                                         role: "assistant".to_string(),
                                         content: format!("→ `{name}`\n{args}"),

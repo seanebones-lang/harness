@@ -355,8 +355,14 @@ mod normalize_tests {
 
     #[test]
     fn grok_41_fast_aliases_canonicalize() {
-        assert_eq!(normalize_xai_model("grok-4-1-fast-reasoning"), "grok-4.1-fast");
-        assert_eq!(normalize_xai_model("grok-4.1-fast-reasoning"), "grok-4.1-fast");
+        assert_eq!(
+            normalize_xai_model("grok-4-1-fast-reasoning"),
+            "grok-4.1-fast"
+        );
+        assert_eq!(
+            normalize_xai_model("grok-4.1-fast-reasoning"),
+            "grok-4.1-fast"
+        );
         assert_eq!(normalize_xai_model("grok-4.3"), "grok-4.3");
     }
 }
