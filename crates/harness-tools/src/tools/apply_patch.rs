@@ -177,7 +177,9 @@ fn parse_unified_diff(
                 if !hunk_header.starts_with("@@") {
                     break;
                 }
-                let header = lines.next().unwrap();
+                let header = lines
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("truncated hunk header"))?;
                 let (orig_start, _orig_count, _new_start, _new_count) = parse_hunk_header(header)?;
 
                 let pos = (orig_start as usize).saturating_sub(1);
@@ -187,7 +189,9 @@ fn parse_unified_diff(
                     if l.starts_with("@@") || l.starts_with("---") || l.starts_with("+++") {
                         break;
                     }
-                    let l = lines.next().unwrap();
+                    let l = lines
+                        .next()
+                        .ok_or_else(|| anyhow::anyhow!("truncated hunk body"))?;
                     if l.is_empty() {
                         hunk_lines.push((' ', String::new()));
                     } else {
@@ -335,5 +339,14 @@ mod tests {
         let ws = WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap();
         let changes = parse_unified_diff("", &ws).expect("parse");
         assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn parse_malformed_hunk_returns_err_not_panic() {
+        let dir = tempdir().unwrap();
+        let ws = WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap();
+        let patch = "--- a/foo.rs\n+++ b/foo.rs\n@@ not-a-valid-header @@\n";
+        let err = parse_unified_diff(patch, &ws).expect_err("bad hunk header");
+        assert!(err.to_string().contains("hunk"));
     }
 }

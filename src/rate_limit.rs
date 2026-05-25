@@ -37,8 +37,12 @@ fn limiter() -> &'static Mutex<RateLimiter> {
 }
 
 /// Returns false when the client exceeded the per-IP request budget.
+/// On mutex poison, fail closed (deny) rather than panic.
 pub fn allow(ip: IpAddr) -> bool {
-    limiter().lock().expect("rate limiter lock").check(ip)
+    let Ok(mut guard) = limiter().lock() else {
+        return false;
+    };
+    guard.check(ip)
 }
 
 #[cfg(test)]

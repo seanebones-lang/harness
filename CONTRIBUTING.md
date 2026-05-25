@@ -41,10 +41,13 @@ No API key is needed to build or run the automated test suite.
 
 These are well-scoped, self-contained, and unblock the next person reviewing the code.
 
-- **`ambient.rs` consolidation test** (`src/ambient.rs` or `tests/smoke_test.rs`)
-  - Spin up a mock `MemoryStore` with ≥ 5 entries, trigger consolidation, assert merged/`__consolidated__` entries look right
-- **Session-list title lag** (`src/main.rs` → `list_sessions()`)
-  - Titles can lag the first `harness sessions` call because naming is async; a follow-up re-query or a UX note fixes it
+- **New tools** — `DatabaseTool`, `NotebookTool`, `DockerTool` (see below)
+- **New providers** — Mistral, Gemini, Bedrock (four-step guide below)
+- **Coverage uplift** — voice/mlx/lsp client integration paths (Round 2 added unit tests for detect/availability; deeper paths still welcome)
+
+~~**`ambient.rs` consolidation test**~~ — **Done** (May 2026).
+
+~~**Session-list title lag**~~ — **Done** — first-message fallback + async naming (May 2026).
 
 ### Architecture improvement — generic `ambient` provider
 
@@ -73,7 +76,7 @@ See `CLAUDE.md` → *Adding a new tool*. The pattern is: implement `Tool` in `cr
 
 ### Platform coverage
 
-- **Windows:** the shell tool falls back to `cmd.exe` when Git for Windows is absent; a richer Windows-native fallback (PowerShell) would help many users.
+- **Windows:** shell tool prefers Git Bash, then **PowerShell**, then `cmd.exe` — see `crates/harness-tools/src/tools/shell.rs`.
 - **VS Code extension** (`extensions/vscode/`): TCP fallback on native Windows (`~/.harness/daemon.port`); packaging/assets still MVP.
 - **Tauri desktop app** (`apps/desktop/`): Windows/Linux packaging, tray icon behaviour, auto-update.
 
@@ -86,7 +89,9 @@ See `CLAUDE.md` → *Adding a new tool*. The pattern is: implement `Tool` in `cr
 
 ### Coverage and property tests
 
-Current coverage target is ≥ 60 % on library crates. Proptest/fuzzing on:
+The **≥ 60% line coverage gate** runs on **pull requests only** via [`.github/workflows/coverage.yml`](.github/workflows/coverage.yml) — it is not part of the default `main` CI matrix. Local baseline: `cargo llvm-cov --workspace --summary-only`.
+
+Proptest/fuzzing targets:
 - MCP message framing (`crates/harness-mcp/`)
 - LSP framing (`crates/harness-lsp/`)
 - Provider SSE parsing (`crates/harness-provider-openai/`, `crates/harness-provider-xai/`)

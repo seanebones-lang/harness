@@ -149,3 +149,36 @@ pub fn list_sessions(registry: &CollabRegistry) -> Vec<(String, usize)> {
         .map(|s| (s.session_id.clone(), s.users.len()))
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn join_session_enforces_max_users() {
+        let reg = new_registry();
+        for i in 0..2 {
+            join_session(&reg, "sess1", &format!("user{i}"), 2).expect("join");
+        }
+        let err = join_session(&reg, "sess1", "user3", 2).unwrap_err();
+        assert!(err.to_string().contains("full"));
+    }
+
+    #[test]
+    fn join_session_allows_rejoin_for_existing_user() {
+        let reg = new_registry();
+        join_session(&reg, "sess1", "alice", 1).expect("first join");
+        join_session(&reg, "sess1", "alice", 1).expect("rejoin");
+    }
+
+    #[test]
+    fn list_sessions_reports_user_counts() {
+        let reg = new_registry();
+        join_session(&reg, "a", "u1", 10).unwrap();
+        join_session(&reg, "a", "u2", 10).unwrap();
+        join_session(&reg, "b", "u3", 10).unwrap();
+        let mut sessions = list_sessions(&reg);
+        sessions.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(sessions, vec![("a".into(), 2), ("b".into(), 1)]);
+    }
+}

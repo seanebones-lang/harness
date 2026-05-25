@@ -173,32 +173,31 @@ impl ProviderRouter {
         self.providers.get(name)
     }
 
-    pub fn default_provider(&self) -> &ArcProvider {
+    pub fn default_provider(&self) -> Option<&ArcProvider> {
         self.providers
             .get(&self.default_name)
             .or_else(|| self.providers.values().next())
-            .expect("ProviderRouter has no providers — from_config should have returned an error")
     }
 
-    pub fn fast_provider(&self) -> &ArcProvider {
+    pub fn fast_provider(&self) -> Option<&ArcProvider> {
         self.fast_name
             .as_ref()
             .and_then(|n| self.providers.get(n))
-            .unwrap_or_else(|| self.default_provider())
+            .or_else(|| self.default_provider())
     }
 
-    pub fn heavy_provider(&self) -> &ArcProvider {
+    pub fn heavy_provider(&self) -> Option<&ArcProvider> {
         self.heavy_name
             .as_ref()
             .and_then(|n| self.providers.get(n))
-            .unwrap_or_else(|| self.default_provider())
+            .or_else(|| self.default_provider())
     }
 
-    pub fn embed_provider(&self) -> &ArcProvider {
+    pub fn embed_provider(&self) -> Option<&ArcProvider> {
         self.embed_name
             .as_ref()
             .and_then(|n| self.providers.get(n))
-            .unwrap_or_else(|| self.default_provider())
+            .or_else(|| self.default_provider())
     }
 
     /// Wrap this router as an `ArcProvider` (uses the default provider for all calls,
@@ -423,15 +422,20 @@ impl Provider for ProviderRouter {
     }
 
     fn model(&self) -> &str {
-        self.default_provider().model()
+        self.default_provider()
+            .map(|p| p.model())
+            .unwrap_or("unknown")
     }
 
     fn pricing(&self) -> Option<Pricing> {
-        self.default_provider().pricing()
+        self.default_provider().and_then(|p| p.pricing())
     }
 
     async fn embed(&self, model: &str, text: &str) -> Result<Vec<f32>, ProviderError> {
-        self.embed_provider().embed(model, text).await
+        let p = self
+            .embed_provider()
+            .ok_or_else(|| ProviderError::Other("no embed provider configured".into()))?;
+        p.embed(model, text).await
     }
 
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
@@ -563,10 +567,13 @@ mod tests {
             .with_fast("fast")
             .with_embed("embed");
 
-        assert_eq!(router.default_provider().name(), "default");
-        assert_eq!(router.fast_provider().name(), "fast");
-        assert_eq!(router.embed_provider().name(), "embed");
-        assert_eq!(collect_text(router.fast_provider().clone()).await, "fast");
+        assert_eq!(router.default_provider().unwrap().name(), "default");
+        assert_eq!(router.fast_provider().unwrap().name(), "fast");
+        assert_eq!(router.embed_provider().unwrap().name(), "embed");
+        assert_eq!(
+            collect_text(router.fast_provider().unwrap().clone()).await,
+            "fast"
+        );
 
         let embedding = router.embed("embed-model", "hello").await.expect("embed");
         assert_eq!(embedding.len(), 3);
@@ -627,7 +634,7 @@ mod tests {
         };
 
         let router = ProviderRouter::from_config(&entries, &cfg).expect("router");
-        assert_eq!(router.default_provider().name(), "xai");
+        assert_eq!(router.default_provider().unwrap().name(), "xai");
         assert!(router.get("anthropic").is_some());
         assert!(router.get("xai").is_some());
     }
@@ -638,6 +645,19 @@ mod tests {
         let cfg = RouterConfig::default();
         let router = ProviderRouter::from_config(&entries, &cfg).expect("ollama fallback");
         assert!(router.get("ollama").is_some());
-        assert_eq!(router.default_provider().name(), "ollama");
+        assert_eq!(router.default_provider().unwrap().name(), "ollama");
+    }
+
+    #[test]
+    fn default_provider_none_when_router_empty() {
+        let router = ProviderRouter {
+            providers: HashMap::new(),
+            default_name: "default".into(),
+            fast_name: None,
+            heavy_name: None,
+            embed_name: None,
+            fallback: vec![],
+        };
+        assert!(router.default_provider().is_none());
     }
 }

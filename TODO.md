@@ -63,19 +63,37 @@ Execution order: **P0 → P1 → P2**. **Maintainer-only** items need API keys /
 
 | ID | Item | Status |
 |----|------|--------|
-| REL-01 | Manual smoke §3 | [ ] (`scripts/smoke_rel01.sh` for automated subset) |
+| REL-01 | Manual smoke §3 | [ ] (`scripts/smoke_rel01.sh` for automated subset; CI `smoke-rel01` job added Round 2) |
+
+---
+
+## Round 2 re-inspection (2026-05-24)
+
+Post-`433065d` MIT-style audit. All actionable P1–P2 code/doc/CI items below are **closed** unless noted.
+
+| ID | Item | Status |
+|----|------|--------|
+| R2-1 | GitHub Projects bridge stdin + JSON-safe GraphQL | [x] |
+| R2-2 | Apple Notes `escape_applescript` parity | [x] |
+| R2-3 | `apply_patch` parser `Err` paths + test | [x] |
+| R2-4 | `/api/health` `config_path` loopback gate | [x] |
+| R2-5 | `ProviderRouter::default_provider` no panic | [x] |
+| R2-6 | Unwrap hardening (rate_limit, swarm, diff_review, browser) | [x] |
+| R2-7 | Tests: voice, mlx, lsp detect, collab `max_users` | [x] |
+| R2-8 | CI smoke-rel01; release checksums; Windows prebuilt install | [x] |
+| R2-9 | Docs refresh (PEER_REVIEW Round 2, RELEASE_STATUS, README) | [x] |
 
 ---
 
 ## Remaining backlog
 
 - Homebrew tap publish: run `bash scripts/update-homebrew-sha.sh vX.Y.Z` after tagging (P2-10)
-- REL-01 manual smoke on target OSes (automated subset: `scripts/smoke_rel01.sh` — rebuild binary first)
+- REL-01 manual smoke on target OSes (automated subset: `scripts/smoke_rel01.sh` + CI `smoke-rel01` job)
 - MCP sampling interactive TUI approval (plan/smart currently deny inbound sampling)
-- Coverage gate uplift toward 60% on more crates (voice, mlx, lsp client)
 - DatabaseTool / NotebookTool / DockerTool
 - New providers (Mistral, Gemini, Bedrock)
 - Tauri app icons generation (CI check only today)
+- Version drift: `apps/desktop/`, `extensions/vscode/`, `harness-lsp` still at `0.1.0` — optional `version.workspace` follow-up
 
 ---
 

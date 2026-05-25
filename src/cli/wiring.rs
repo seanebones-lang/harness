@@ -32,10 +32,9 @@ pub async fn graceful_ambient_shutdown(
 pub fn tool_workspace(cfg: &crate::config::Config) -> Result<Arc<WorkspaceRoot>> {
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mode = SandboxMode::from_config(cfg.tools.sandbox.as_deref());
-    Ok(Arc::new(
-        WorkspaceRoot::new(root, mode)
-            .context("failed to resolve workspace root for tool sandbox")?,
-    ))
+    Ok(Arc::new(WorkspaceRoot::new(root, mode).context(
+        "failed to resolve workspace root for tool sandbox",
+    )?))
 }
 
 /// Build the full tool executor: base tools + SpawnAgentTool + SpawnSwarmTool + MCP tools.

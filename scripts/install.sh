@@ -86,8 +86,17 @@ install_prebuilt() {
         checksum_url="${url%/*}/checksums.txt"
         if curl -fsSL "$checksum_url" -o "$tmp/checksums.txt" 2>/dev/null; then
             if command -v sha256sum >/dev/null; then
-                if (cd "$tmp" && sha256sum -c checksums.txt --ignore-missing 2>/dev/null); then
+                local expected
+                expected=$(grep " ${ARTIFACT}$" "$tmp/checksums.txt" | awk '{print $1}' | head -1)
+                if [[ -n "$expected" ]]; then
+                    local actual
+                    actual=$(sha256sum "$tmp/harness" | awk '{print $1}')
+                    if [[ "$actual" != "$expected" ]]; then
+                        error "Checksum mismatch for ${ARTIFACT}"
+                    fi
                     info "Checksum verified"
+                else
+                    warn "No checksum entry for ${ARTIFACT} in checksums.txt"
                 fi
             fi
         fi

@@ -10,7 +10,7 @@ Harness is an AI coding assistant you run in your terminal. You type a request; 
 
 **Default model: `claude-sonnet-4-6`** — 10x cheaper than base price on repeated context thanks to Anthropic prompt caching. Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
 
-**Operational truth (May 2026):** Public **beta** — **164 automated tests**, P0 security closed ([`docs/THREAT_MODEL.md`](../docs/THREAT_MODEL.md)). Stable release blocked on maintainer manual smoke ([`docs/PUBLIC_RELEASE.md`](../docs/PUBLIC_RELEASE.md)). Canonical backlog + roadmap: **[`TODO.md`](../TODO.md)**. Licensed MIT — see [`LICENSE`](../LICENSE).
+**Operational truth (May 2026):** Public **beta** — **218 automated tests**, P0 security closed ([`docs/THREAT_MODEL.md`](../docs/THREAT_MODEL.md)). Stable release blocked on maintainer manual smoke ([`docs/PUBLIC_RELEASE.md`](../docs/PUBLIC_RELEASE.md)). Canonical backlog + roadmap: **[`TODO.md`](../TODO.md)**. Licensed MIT — see [`LICENSE`](../LICENSE).
 
 **More docs:** [`docs/BROWSER_CDP.md`](../docs/BROWSER_CDP.md) · [`docs/COOKBOOK.md`](../docs/COOKBOOK.md) · [`docs/PEER_REVIEW_AUDIT.md`](../docs/PEER_REVIEW_AUDIT.md)
 

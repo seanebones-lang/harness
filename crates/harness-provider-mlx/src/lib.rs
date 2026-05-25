@@ -15,7 +15,7 @@ pub const DEFAULT_MODEL: &str = "mlx-community/Qwen3-Coder-30B";
 /// Default base URL (`mlx_lm.server` uses port 8080 by default).
 pub const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8080/v1";
 
-fn normalize_base_url(url: &str) -> String {
+pub(crate) fn normalize_base_url(url: &str) -> String {
     let u = url.trim_end_matches('/');
     if u.ends_with("/v1") {
         u.to_string()
@@ -57,4 +57,27 @@ fn mlx_port_open(port: u16) -> bool {
         return false;
     };
     TcpStream::connect_timeout(&sock, Duration::from_millis(250)).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_base_url_appends_v1_suffix() {
+        assert_eq!(
+            normalize_base_url("http://127.0.0.1:8080"),
+            "http://127.0.0.1:8080/v1"
+        );
+        assert_eq!(
+            normalize_base_url("http://127.0.0.1:8080/v1"),
+            "http://127.0.0.1:8080/v1"
+        );
+    }
+
+    #[test]
+    fn build_arc_uses_default_model_and_url() {
+        let provider = build_arc(None, None).expect("build");
+        assert_eq!(provider.model(), DEFAULT_MODEL);
+    }
 }

@@ -111,7 +111,9 @@ impl Tool for BrowserTool {
         })?;
 
         let lock = session_arc.lock().await;
-        let session = lock.as_ref().unwrap();
+        let session = lock
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("browser session not connected"))?;
 
         match action {
             "navigate" => {

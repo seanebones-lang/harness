@@ -93,9 +93,9 @@ pub async fn notes_write(cfg: &NotesConfig, title: &str, content: &str) -> Resul
         anyhow::bail!("Notes bridge not enabled. Set [bridges.notes] enabled = true in config.");
     }
 
-    // Escape for AppleScript
-    let escaped_title = title.replace('"', "\\\"");
-    let escaped_content = content.replace('"', "\\\"").replace('\n', "\\n");
+    // Escape for AppleScript (same helper as Calendar bridge).
+    let escaped_title = escape_applescript(title);
+    let escaped_content = escape_applescript(content).replace('\n', "\\n");
 
     let script = format!(
         r#"tell application "Notes"
@@ -191,6 +191,17 @@ end tell"#
 
 // ── GitHub Projects V2 ────────────────────────────────────────────────────────
 
+/// Build a parameterized GraphQL body for GitHub Project V2 item listing.
+pub(crate) fn github_projects_graphql_body(owner: &str, project_number: u64) -> serde_json::Value {
+    serde_json::json!({
+        "query": "query($login: String!, $num: Int!) { user(login: $login) { projectV2(number: $num) { items(first: 20) { nodes { id content { ... on Issue { title number } ... on PullRequest { title number } } } } } } } }",
+        "variables": {
+            "login": owner,
+            "num": project_number
+        }
+    })
+}
+
 /// List items in a GitHub Project V2.
 pub async fn github_project_list(cfg: &GithubProjectsConfig) -> Result<Vec<String>> {
     if !cfg.enabled {
@@ -205,23 +216,32 @@ pub async fn github_project_list(cfg: &GithubProjectsConfig) -> Result<Vec<Strin
         .project_number
         .context("bridges.github_projects.project_number not set")?;
 
-    let query = format!(
-        r#"{{
-        "query": "query {{ user(login: \"{owner}\") {{ projectV2(number: {project_number}) {{ items(first: 20) {{ nodes {{ id content {{ ... on Issue {{ title number }} ... on PullRequest {{ title number }} }} }} }} }} }} }}"
-    }}"#
-    );
+    let body = github_projects_graphql_body(owner, project_number);
+    let payload = serde_json::to_string(&body)?;
 
-    let out = tokio::process::Command::new("gh")
+    let mut child = tokio::process::Command::new("gh")
         .args(["api", "graphql", "--input", "-"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .context("spawning gh")?
-        .wait_with_output()
-        .await?;
+        .context("spawning gh")?;
 
-    let text = String::from_utf8_lossy(&out.stdout).to_string();
-    // Parse item titles from JSON
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(payload.as_bytes()).await?;
+        stdin.shutdown().await.ok();
+    }
+
+    let out = child.wait_with_output().await?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "gh api graphql failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    let text = String::from_utf8_lossy(&out.stdout);
     let val: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
     let items = val["data"]["user"]["projectV2"]["items"]["nodes"]
         .as_array()
@@ -232,17 +252,35 @@ pub async fn github_project_list(cfg: &GithubProjectsConfig) -> Result<Vec<Strin
         })
         .unwrap_or_default();
 
-    let _ = query;
     Ok(items)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::escape_applescript;
+    use super::{escape_applescript, github_projects_graphql_body};
 
     #[test]
     fn escape_applescript_quotes_and_backslashes() {
         assert_eq!(escape_applescript(r#"say "hi""#), r#"say \"hi\""#);
         assert_eq!(escape_applescript(r"path\to"), r"path\\to");
+    }
+
+    #[test]
+    fn notes_escape_uses_applescript_helper() {
+        let title = escape_applescript(r#"Note "title""#);
+        assert!(title.contains(r#"\"#));
+        let body = escape_applescript("line1\nline2").replace('\n', "\\n");
+        assert!(body.contains("\\n"));
+    }
+
+    #[test]
+    fn github_projects_graphql_uses_variables() {
+        let body = github_projects_graphql_body("acme-corp", 42);
+        let vars = &body["variables"];
+        assert_eq!(vars["login"], "acme-corp");
+        assert_eq!(vars["num"], 42);
+        let query = body["query"].as_str().expect("query");
+        assert!(query.contains("$login"));
+        assert!(!query.contains("acme-corp"));
     }
 }

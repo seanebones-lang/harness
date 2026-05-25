@@ -4,6 +4,24 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-05-24 — MIT Re-Inspection Round 2 (post-`433065d`, local working tree)**
+
+| Gate | Result |
+|------|--------|
+| `cargo fmt --all -- --check` | **Pass** |
+| `cargo clippy --all-targets --all-features -- -D warnings` | **Pass** |
+| `cargo test --all` | **Pass** — **218 tests** (running total across crates + doctests) |
+| `cargo build --profile release-lto` | **Pass** (~65s local) |
+| `scripts/smoke_rel01.sh` | **Pass** — automated REL-01 subset (doctor, update, sessions, setup --help) |
+| P0 security | **Closed** — re-verified; no new P0 |
+| Manual smoke §3 | **Pending** — maintainer-only (API keys + TUI + serve + export) |
+
+| Round 2 fixes | GitHub Projects GraphQL stdin + JSON-safe query; Notes `escape_applescript`; `apply_patch` parser `Err` paths; `/api/health` `config_path` loopback-gated; `ProviderRouter::default_provider` no panic; mutex poison fail-closed (rate_limit, swarm); collab/voice/mlx/lsp tests; CI `smoke-rel01` job; release checksum hardening; Windows prebuilt in `install.ps1` |
+
+**Go / no-go:** **GO** for public beta. **Stable** blocked on **REL-01** manual smoke §3 per target OS. Homebrew tap SHA update remains post-tag maintainer action (P2-10).
+
+---
+
 **2026-05-22 — Peer review remediation (security + tests + docs)**
 
 | Gate | Result |
@@ -92,7 +110,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | Item | Status |
 |------|--------|
 | **License** | MIT (`LICENSE` + workspace `Cargo.toml`) |
-| **Automated gates** | **164 tests**, clippy clean; CI multi-OS; coverage ≥ 60% on PRs |
+| **Automated gates** | **218 tests**, clippy clean; CI multi-OS + `smoke-rel01` job; coverage ≥ 60% on PRs |
 | **P0 security** | **Closed** — see [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
 | **Threat model** | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) |
 | **Open backlog** | [`TODO.md`](../TODO.md) — severity-ranked + roadmap |
