@@ -81,7 +81,9 @@ pub async fn run(
     let mut terminal = Terminal::new(backend)?;
 
     let has_confirm_gate = confirm_rx.is_some();
-    let state = Arc::new(Mutex::new(AppState::new(&model)));
+    // Labels + status must reflect the live provider model, not stale config text.
+    let live_model = harness_provider_core::Provider::model(provider.as_ref()).to_string();
+    let state = Arc::new(Mutex::new(AppState::new(&live_model)));
     {
         let mut st = state.lock();
         st.plan_mode = has_confirm_gate;
@@ -91,18 +93,24 @@ pub async fn run(
         st.budget_monthly_usd = cfg.budget.monthly_usd;
         st.notifications = cfg.notifications.clone();
         st.thinking_budget = initial_thinking_budget;
+        if model != live_model {
+            st.push_event(format!(
+                "[model] config `{model}` — live provider uses `{live_model}`"
+            ));
+        }
     }
     let mut session = match resume_id {
         Some(id) => session_store
             .find(id)?
             .ok_or_else(|| anyhow::anyhow!("session not found: {id}"))?,
-        None => Session::new(&model),
+        None => Session::new(&live_model),
     };
 
     if let Some(id) = resume_id {
         let mut st = state.lock();
         st.session_id = id[..8.min(id.len())].to_string();
         st.session_id_full = id.to_string();
+        st.model = live_model.clone();
         for msg in &session.messages {
             let role = match msg.role {
                 harness_provider_core::Role::User => "user",

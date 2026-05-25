@@ -409,16 +409,14 @@ pub(crate) async fn handle_slash_command(
 
         "/model" => {
             let name = parts.get(1).copied().unwrap_or("");
+            let live = provider.model().to_string();
+            let mut st = state.lock();
             if name.is_empty() {
-                let model_name = state.lock().model.clone();
-                state
-                    .lock()
-                    .push_event(format!("[model] current: {model_name}"));
+                st.push_event(format!("[model] live: {live}"));
             } else {
-                let mut st = state.lock();
-                st.model = name.to_string();
-                st.push_event(format!("[model] → {name}"));
-                st.status = format!("Model: {name}");
+                st.push_event(format!(
+                    "[model] cannot switch to `{name}` in-session — run `harness models --set` and restart"
+                ));
             }
         }
 
