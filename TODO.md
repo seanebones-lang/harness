@@ -82,6 +82,7 @@ Post-`433065d` MIT-style audit. All actionable P1–P2 code/doc/CI items below a
 | R2-7 | Tests: voice, mlx, lsp detect, collab `max_users` | [x] |
 | R2-8 | CI smoke-rel01; release checksums; Windows prebuilt install | [x] |
 | R2-9 | Docs refresh (PEER_REVIEW Round 2, RELEASE_STATUS, README) | [x] |
+| R2-10 | Generic ambient provider (`AmbientProviders` + `[ambient]` config) | [x] |
 
 ---
 

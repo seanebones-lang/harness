@@ -10,13 +10,33 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 
+/// Providers used by ambient consolidation: a cheap/fast backend for summaries
+/// and an embed-capable backend for vector storage (often different when routed).
+#[derive(Clone)]
+pub struct AmbientProviders {
+    /// Chat backend for merge summaries (typically router `fast` route).
+    pub summary: ArcProvider,
+    /// Backend that implements `embed` (typically router `embed` route / Ollama).
+    pub embed: ArcProvider,
+}
+
+impl AmbientProviders {
+    /// Use the same provider for both summary and embedding.
+    pub fn same(provider: ArcProvider) -> Self {
+        Self {
+            summary: provider.clone(),
+            embed: provider,
+        }
+    }
+}
+
 /// Tunable parameters for the ambient consolidation loop.
 #[derive(Debug, Clone)]
 pub struct AmbientConfig {
     pub interval: Duration,
     pub min_new: usize,
     pub top_k: usize,
-    /// Model used for consolidation summaries; defaults to the provider's model when unset.
+    /// Model used for consolidation summaries; defaults to the summary provider's model when unset.
     pub consolidation_model: Option<String>,
 }
 
@@ -31,21 +51,30 @@ impl Default for AmbientConfig {
     }
 }
 
-/// Spawn the ambient consolidation task.
-///
-/// Returns a `(shutdown_tx, join_handle)` pair.
-/// Send `()` on `shutdown_tx` (or drop it) to request a clean stop;
-/// `await` the `JoinHandle` to confirm the task has exited.
+impl AmbientConfig {
+    /// Build runtime settings from `[ambient]` config (see `config::AmbientConfigSection`).
+    pub fn from_section(section: &crate::config::AmbientConfigSection) -> Self {
+        Self {
+            interval: Duration::from_secs(section.interval_secs.unwrap_or(300)),
+            min_new: section.min_new.unwrap_or(5),
+            top_k: section.top_k.unwrap_or(20),
+            consolidation_model: section.consolidation_model.clone(),
+        }
+    }
+}
+
+/// Spawn the ambient consolidation task with default [`AmbientConfig`].
+#[allow(dead_code)]
 pub fn spawn(
-    provider: ArcProvider,
+    providers: AmbientProviders,
     memory: Arc<MemoryStore>,
     embed_model: String,
 ) -> (watch::Sender<()>, tokio::task::JoinHandle<()>) {
-    spawn_with_config(provider, memory, embed_model, AmbientConfig::default())
+    spawn_with_config(providers, memory, embed_model, AmbientConfig::default())
 }
 
 pub fn spawn_with_config(
-    provider: ArcProvider,
+    providers: AmbientProviders,
     memory: Arc<MemoryStore>,
     embed_model: String,
     config: AmbientConfig,
@@ -83,7 +112,7 @@ pub fn spawn_with_config(
             );
 
             match consolidate(
-                &provider,
+                &providers,
                 &memory,
                 &embed_model,
                 min_new,
@@ -126,7 +155,7 @@ impl From<anyhow::Error> for ConsolidateError {
 /// Pull the most recent memories, ask the model to summarise them,
 /// store the summary as a new memory, and delete the originals.
 pub(crate) async fn consolidate(
-    provider: &ArcProvider,
+    providers: &AmbientProviders,
     memory: &MemoryStore,
     embed_model: &str,
     min_new: usize,
@@ -153,9 +182,10 @@ pub(crate) async fn consolidate(
 
     let model = consolidation_model
         .map(str::to_string)
-        .unwrap_or_else(|| provider.model().to_string());
+        .unwrap_or_else(|| providers.summary.model().to_string());
     let req = ChatRequest::new(model).with_messages(vec![Message::user(&prompt)]);
-    let mut stream = provider
+    let mut stream = providers
+        .summary
         .stream_chat(req)
         .await
         .map_err(|e| ConsolidateError::Other(anyhow::anyhow!("stream_chat failed: {e}")))?;
@@ -173,7 +203,7 @@ pub(crate) async fn consolidate(
         )));
     }
 
-    let embedding = match provider.embed(embed_model, &summary).await {
+    let embedding = match providers.embed.embed(embed_model, &summary).await {
         Ok(v) => v,
         Err(ProviderError::Unsupported(_)) => return Err(ConsolidateError::UnsupportedEmbed),
         Err(e) => {
@@ -234,8 +264,61 @@ mod tests {
         }
     }
 
+    struct NoEmbedProvider {
+        summary: String,
+    }
+
+    #[async_trait]
+    impl Provider for NoEmbedProvider {
+        fn name(&self) -> &str {
+            "no-embed"
+        }
+        fn model(&self) -> &str {
+            "m"
+        }
+        async fn stream_chat(&self, _req: ChatRequest) -> Result<DeltaStream, ProviderError> {
+            let s = stream::iter(vec![
+                Ok(Delta::Text(self.summary.clone())),
+                Ok(Delta::Done {
+                    stop_reason: StopReason::EndTurn,
+                }),
+            ]);
+            Ok(Box::pin(s))
+        }
+    }
+
     fn sample_embedding(seed: f32) -> Vec<f32> {
         vec![seed, 1.0 - seed, 0.5]
+    }
+
+    fn providers_from_arc(p: ArcProvider) -> AmbientProviders {
+        AmbientProviders::same(p)
+    }
+
+    #[test]
+    fn ambient_config_from_section_uses_defaults() {
+        let section = crate::config::AmbientConfigSection::default();
+        let cfg = AmbientConfig::from_section(&section);
+        assert_eq!(cfg.interval, Duration::from_secs(300));
+        assert_eq!(cfg.min_new, 5);
+        assert_eq!(cfg.top_k, 20);
+        assert!(cfg.consolidation_model.is_none());
+    }
+
+    #[test]
+    fn ambient_config_from_section_overrides() {
+        let section = crate::config::AmbientConfigSection {
+            enabled: Some(true),
+            interval_secs: Some(60),
+            min_new: Some(3),
+            top_k: Some(10),
+            consolidation_model: Some("grok-4.1-fast".into()),
+        };
+        let cfg = AmbientConfig::from_section(&section);
+        assert_eq!(cfg.interval, Duration::from_secs(60));
+        assert_eq!(cfg.min_new, 3);
+        assert_eq!(cfg.top_k, 10);
+        assert_eq!(cfg.consolidation_model.as_deref(), Some("grok-4.1-fast"));
     }
 
     #[tokio::test]
@@ -254,12 +337,12 @@ mod tests {
             ids.push(id);
         }
 
-        let provider: ArcProvider = Arc::new(FakeProvider {
+        let providers = providers_from_arc(Arc::new(FakeProvider {
             summary: "consolidated summary paragraph".into(),
             embed: sample_embedding(0.9),
-        });
+        }));
 
-        let deleted = consolidate(&provider, &store, "embed-model", 5, 20, None)
+        let deleted = consolidate(&providers, &store, "embed-model", 5, 20, None)
             .await
             .expect("consolidate");
         assert_eq!(deleted, 5);
@@ -282,12 +365,12 @@ mod tests {
             .insert("sess", "only one", &sample_embedding(0.1))
             .unwrap();
 
-        let provider: ArcProvider = Arc::new(FakeProvider {
+        let providers = providers_from_arc(Arc::new(FakeProvider {
             summary: "unused".into(),
             embed: sample_embedding(0.2),
-        });
+        }));
 
-        let deleted = consolidate(&provider, &store, "embed-model", 5, 20, None)
+        let deleted = consolidate(&providers, &store, "embed-model", 5, 20, None)
             .await
             .expect("consolidate");
         assert_eq!(deleted, 0);
@@ -296,27 +379,6 @@ mod tests {
 
     #[tokio::test]
     async fn consolidate_returns_unsupported_when_embed_missing() {
-        struct NoEmbedProvider;
-
-        #[async_trait]
-        impl Provider for NoEmbedProvider {
-            fn name(&self) -> &str {
-                "no-embed"
-            }
-            fn model(&self) -> &str {
-                "m"
-            }
-            async fn stream_chat(&self, _req: ChatRequest) -> Result<DeltaStream, ProviderError> {
-                let s = stream::iter(vec![
-                    Ok(Delta::Text("summary".into())),
-                    Ok(Delta::Done {
-                        stop_reason: StopReason::EndTurn,
-                    }),
-                ]);
-                Ok(Box::pin(s))
-            }
-        }
-
         let dir = tempdir().unwrap();
         let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
         for i in 0..5 {
@@ -325,10 +387,40 @@ mod tests {
                 .unwrap();
         }
 
-        let provider: ArcProvider = Arc::new(NoEmbedProvider);
-        let err = consolidate(&provider, &store, "embed-model", 5, 20, None)
+        let providers = AmbientProviders::same(Arc::new(NoEmbedProvider {
+            summary: "summary".into(),
+        }));
+        let err = consolidate(&providers, &store, "embed-model", 5, 20, None)
             .await
             .unwrap_err();
         assert!(matches!(err, ConsolidateError::UnsupportedEmbed));
+    }
+
+    #[tokio::test]
+    async fn consolidate_uses_split_summary_and_embed_providers() {
+        let dir = tempdir().unwrap();
+        let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
+        for i in 0..5 {
+            store
+                .insert("sess", &format!("m{i}"), &sample_embedding(i as f32))
+                .unwrap();
+        }
+
+        let providers = AmbientProviders {
+            summary: Arc::new(NoEmbedProvider {
+                summary: "merged from fast route".into(),
+            }),
+            embed: Arc::new(FakeProvider {
+                summary: "unused".into(),
+                embed: sample_embedding(0.42),
+            }),
+        };
+
+        let deleted = consolidate(&providers, &store, "embed-model", 5, 20, None)
+            .await
+            .expect("consolidate");
+        assert_eq!(deleted, 5);
+        let recent = store.recent_memories(1).unwrap();
+        assert_eq!(recent[0].text, "merged from fast route");
     }
 }

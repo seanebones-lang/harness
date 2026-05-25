@@ -26,7 +26,7 @@
 //! model = "mlx-community/Qwen3-Coder-30B"
 //!
 //! [router]
-//! fast_model = "xai:grok-4-1-fast-reasoning"
+//! fast_model = "xai:grok-4.1-fast"
 //! heavy_model = "anthropic:claude-opus-4-7"
 //! embed_model = "ollama:nomic-embed-text"
 //! fallback = ["anthropic", "xai", "openai", "ollama", "mlx"]
@@ -214,7 +214,7 @@ impl ProviderRouter {
     /// | Priority | Default  | Fast                     | Heavy                  | Embed                   |
     /// |----------|----------|--------------------------|------------------------|-------------------------|
     /// | 1st      | anthropic (if ANTHROPIC_API_KEY) | anthropic:claude-haiku-4-5 | anthropic:claude-opus-4-7 | ollama:nomic-embed-text |
-    /// | 2nd      | xai (if XAI_API_KEY)    | xai:grok-4-1-fast-reasoning | xai:grok-4.3 | ollama:nomic-embed-text |
+    /// | 2nd      | xai (if XAI_API_KEY)    | xai:grok-4.1-fast | xai:grok-4.3 | ollama:nomic-embed-text |
     /// | 3rd      | ollama (local, always)  | ollama:qwen3-coder:30b | ollama:qwen3-coder:30b | ollama:nomic-embed-text |
     pub fn from_config(
         entries: &HashMap<String, ProviderEntry>,

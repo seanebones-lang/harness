@@ -125,7 +125,7 @@ harness/
 │   ├── diff_review.rs              inline diff review + staging buffer (E4)
 │   ├── observability.rs            OpenTelemetry tracing + OTLP export (E7)
 │   ├── swarm.rs                    parallel sub-agent swarm + SQLite registry (E9)
-│   ├── ambient.rs                  background memory consolidation (`AmbientConfig`, `ArcProvider`)
+│   ├── ambient.rs                  background memory consolidation (`AmbientProviders`, `[ambient]` config)
 │   ├── daemon.rs                   editor IPC: Unix socket (macOS/Linux) or loopback TCP (Windows)
 │   ├── bridges.rs                  Obsidian / Apple Notes / Calendar / GitHub Projects (E12)
 │   └── collab.rs                   collaborative WebSocket sessions (E13)
@@ -303,7 +303,7 @@ New MCP 2.0 features:
 
 ### `ambient` (`src/ambient.rs`)
 
-Background memory consolidation after turns. Uses **`ArcProvider`** (any backend), **`AmbientConfig`** (interval, thresholds, optional fast model), and **`consolidate()`** to merge new facts into vector memory. Embed failures are skipped rather than aborting the loop. Tests use **`FakeProvider`** in-process.
+Background memory consolidation after turns. Uses **`AmbientProviders`** (router **fast** route for summaries, **embed** route for vectors), **`AmbientConfig`** / **`[ambient]`** in config (interval, thresholds, optional `consolidation_model`), and **`consolidate()`** to merge new facts into vector memory. Embed failures are skipped rather than aborting the loop. Tests use **`FakeProvider`** in-process.
 
 ### `daemon` (`src/daemon.rs`)
 
@@ -436,6 +436,12 @@ obsidian_vault = ""            # e.g. "/Users/you/Documents/Obsidian/Vault"
 apple_notes_folder = "Harness"
 github_project_number = 0
 github_owner = ""
+
+[ambient]
+# interval_secs = 300
+# min_new = 5
+# top_k = 20
+# consolidation_model = "grok-4.1-fast"
 
 [collab]
 enabled = false

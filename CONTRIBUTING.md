@@ -49,9 +49,7 @@ These are well-scoped, self-contained, and unblock the next person reviewing the
 
 ~~**Session-list title lag**~~ — **Done** — first-message fallback + async naming (May 2026).
 
-### Architecture improvement — generic `ambient` provider
-
-`src/ambient.rs` currently takes `XaiProvider` directly. Replacing it with a `P: Provider + Clone + 'static` bound lets any backend (Anthropic, Ollama, …) drive ambient consolidation. See the `Provider` trait in `crates/harness-provider-core/`. This is a medium-sized Rust generics change with a clear goal and no API keys needed to validate it.
+~~**Generic ambient provider**~~ — **Done** (May 2026). `AmbientProviders` uses router **fast** for summaries and **embed** for vectors; tune via `[ambient]` in config.
 
 ### New providers
 

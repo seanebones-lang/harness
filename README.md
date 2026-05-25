@@ -527,7 +527,7 @@ For a developer deep-dive see [`CLAUDE.md`](CLAUDE.md). User-facing migration no
 
 Non-exhaustive list; details live in [`TODO.md`](TODO.md):
 
-- **Polish:** ambient provider abstraction, extra `harness-browser` tests, optional ambient consolidation tests.
+- **Polish:** extra `harness-browser` tests, TUI unified diff summaries.
 - **UX:** session titles from async auto-naming can lag the first `harness sessions` list right after save.
 - **`shell` on Windows:** prefers Git `sh`/`bash`; without them commands run via PowerShell, then `cmd.exe` (not POSIX).
 
