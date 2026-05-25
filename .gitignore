@@ -15,6 +15,9 @@
 .idea/
 .vscode/
 
+# Claude Code agent worktrees (runtime, not source)
+.claude/
+
 # Session data
 *.db
 *.db-wal
