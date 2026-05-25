@@ -1,0 +1,25 @@
+# Quick start: docker compose up
+
+services:
+  harness:
+    build: .
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - type: bind
+        source: ${HOME}/.harness
+        target: /root/.harness
+    depends_on:
+      - ollama
+    stdin_open: true
+    tty: true
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  ollama-models:

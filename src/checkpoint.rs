@@ -168,6 +168,7 @@ mod tests {
         git(dir, &["init"]);
         git(dir, &["config", "user.email", "test@example.com"]);
         git(dir, &["config", "user.name", "test"]);
+        git(dir, &["config", "commit.gpgsign", "false"]);
         std::fs::write(dir.join("tracked.txt"), "v1").unwrap();
         git(dir, &["add", "tracked.txt"]);
         git(dir, &["commit", "-m", "init"]);
