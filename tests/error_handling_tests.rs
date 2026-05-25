@@ -2,7 +2,6 @@
 mod error_handling_tests {
     use anyhow::Result;
     use harness_memory::SessionStore;
-    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
