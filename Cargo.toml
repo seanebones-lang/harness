@@ -119,6 +119,12 @@ uuid = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }
+harness-memory = { path = "crates/harness-memory" }
+
+[[bench]]
+name = "agent_benchmarks"
+harness = false
 
 [profile.release]
 opt-level = 2

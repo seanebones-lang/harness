@@ -65,8 +65,8 @@ pub async fn load_mcp_tools_with_progress(
             &server_cfg,
             progress_tx.clone(),
             sampling_provider.clone(),
-            sampling_auto_approve,
         );
+        let _ = sampling_auto_approve; // auto-approve config no longer forwarded to client
         match tokio::time::timeout(Duration::from_secs(15), spawn_fut).await {
             Ok(Ok(client)) => {
                 match client.list_tools().await {

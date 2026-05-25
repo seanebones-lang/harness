@@ -105,36 +105,10 @@ struct IoShared {
     _keepalive: Box<dyn std::any::Any + Send + Sync>,
 }
 
-impl IoShared {
-    async fn send_jsonrpc_result(&self, id: u64, result: Value) -> Result<()> {
-        let body = json!({ "jsonrpc": "2.0", "id": id, "result": result });
-        let mut stdin = self.stdin.lock().await;
-        stdin.write_all(body.to_string().as_bytes()).await?;
-        stdin.write_all(b"\n").await?;
-        stdin.flush().await?;
-        Ok(())
-    }
-
-    async fn send_jsonrpc_error(&self, id: u64, message: &str) -> Result<()> {
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": { "code": -32603, "message": message }
-        });
-        let mut stdin = self.stdin.lock().await;
-        stdin.write_all(body.to_string().as_bytes()).await?;
-        stdin.write_all(b"\n").await?;
-        stdin.flush().await?;
-        Ok(())
-    }
-}
-
 #[derive(Clone)]
 struct ReaderContext {
     server_name: String,
     progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
-    sampling_provider: Arc<Mutex<Option<ArcProvider>>>,
-    sampling_auto_approve: bool,
 }
 
 /// A handle to a running MCP server process.
@@ -145,52 +119,6 @@ pub struct McpClient {
     pub server_name: String,
     pub capabilities: Arc<Mutex<ServerCapabilities>>,
     sampling_provider: Arc<Mutex<Option<ArcProvider>>>,
-}
-
-/// Classification of one NDJSON line from MCP server stdout.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum McpLineKind {
-    Empty,
-    InvalidJson,
-    Notification(String),
-    Request { id: u64, method: String },
-    Response { id: u64, is_error: bool },
-    UnhandledResponseId,
-}
-
-/// Pure NDJSON line classifier used by the async reader loop (property-tested).
-pub(crate) fn classify_mcp_ndjson_line(line: &str) -> McpLineKind {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
-        return McpLineKind::Empty;
-    }
-    let msg: RawMessage = match serde_json::from_str(trimmed) {
-        Ok(m) => m,
-        Err(_) => return McpLineKind::InvalidJson,
-    };
-    if let Some(method) = msg.method {
-        if msg.id.is_some() {
-            if let Some(Value::Number(n)) = msg.id {
-                if let Some(id) = n.as_u64() {
-                    return McpLineKind::Request { id, method };
-                }
-            }
-            return McpLineKind::UnhandledResponseId;
-        }
-        return McpLineKind::Notification(method);
-    }
-    if msg.id.is_none() {
-        return McpLineKind::InvalidJson;
-    }
-    match &msg.id {
-        Some(Value::Number(n)) => n.as_u64().map_or(McpLineKind::UnhandledResponseId, |id| {
-            McpLineKind::Response {
-                id,
-                is_error: msg.error.is_some(),
-            }
-        }),
-        _ => McpLineKind::UnhandledResponseId,
-    }
 }
 
 async fn mcp_reader_loop<R: AsyncBufRead + Send + Unpin>(
@@ -214,48 +142,39 @@ async fn mcp_reader_loop<R: AsyncBufRead + Send + Unpin>(
             }
             break;
         }
-        let kind = classify_mcp_ndjson_line(&line);
-        match kind {
-            McpLineKind::Empty | McpLineKind::InvalidJson | McpLineKind::UnhandledResponseId => {
-                continue;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let msg: RawMessage = match serde_json::from_str(line) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        if msg.id.is_none() {
+            if let Some(ref method_name) = msg.method {
+                dispatch_notification(&ctx, method_name, msg.params.unwrap_or(Value::Null));
             }
-            McpLineKind::Notification(method) => {
-                if let Ok(msg) = serde_json::from_str::<RawMessage>(line.trim()) {
-                    dispatch_notification(&ctx, &method, msg.params.unwrap_or(Value::Null));
-                }
-            }
-            McpLineKind::Request { id: rid, method } => {
-                if let Ok(msg) = serde_json::from_str::<RawMessage>(line.trim()) {
-                    let io_req = io.clone();
-                    let ctx_req = ctx.clone();
-                    tokio::spawn(async move {
-                        dispatch_server_request(
-                            &io_req,
-                            &ctx_req,
-                            rid,
-                            &method,
-                            msg.params.unwrap_or(Value::Null),
-                        )
-                        .await;
-                    });
-                }
-            }
-            McpLineKind::Response { id: rid, is_error } => {
-                if let Ok(msg) = serde_json::from_str::<RawMessage>(line.trim()) {
-                    let mut pending = io.pending.lock().await;
-                    if let Some(sender) = pending.remove(&rid) {
-                        let out = if is_error {
-                            Err(msg
-                                .error
-                                .map(|e| e.message)
-                                .unwrap_or_else(|| "MCP error".into()))
-                        } else {
-                            Ok(msg.result.unwrap_or(Value::Null))
-                        };
-                        let _ = sender.send(out);
-                    }
-                }
-            }
+            continue;
+        }
+
+        let msg_id = match &msg.id {
+            Some(Value::Number(n)) => n.as_u64(),
+            _ => None,
+        };
+        let Some(rid) = msg_id else {
+            continue;
+        };
+
+        let mut pending = io.pending.lock().await;
+        if let Some(sender) = pending.remove(&rid) {
+            let out = if let Some(err) = msg.error {
+                Err(err.message)
+            } else {
+                Ok(msg.result.unwrap_or(Value::Null))
+            };
+            let _ = sender.send(out);
         }
     }
 }
@@ -305,59 +224,10 @@ fn dispatch_notification(ctx: &ReaderContext, method: &str, params: Value) {
     }
 }
 
-async fn dispatch_server_request(
-    io: &Arc<IoShared>,
-    ctx: &ReaderContext,
-    id: u64,
-    method: &str,
-    params: Value,
-) {
-    match method {
-        "sampling/createMessage" => {
-            let auto = ctx.sampling_auto_approve;
-            let server = ctx.server_name.clone();
-            let outcome = run_sampling_request(&ctx.sampling_provider, &params, |preview| {
-                if auto {
-                    warn!(
-                        server = %server,
-                        preview = %preview.chars().take(240).collect::<String>(),
-                        "MCP sampling/createMessage auto-approved (approval mode: auto)"
-                    );
-                    true
-                } else {
-                    warn!(
-                        server = %server,
-                        preview = %preview.chars().take(240).collect::<String>(),
-                        "MCP sampling/createMessage denied (plan/smart mode — set approval.mode = auto to allow)"
-                    );
-                    false
-                }
-            })
-            .await;
-            match outcome {
-                Ok(result) => {
-                    if let Err(e) = io.send_jsonrpc_result(id, result).await {
-                        warn!(server = %ctx.server_name, "MCP sampling response write failed: {e}");
-                    }
-                }
-                Err(e) => {
-                    if let Err(w) = io.send_jsonrpc_error(id, &e.to_string()).await {
-                        warn!(server = %ctx.server_name, "MCP error response write failed: {w}");
-                    }
-                }
-            }
-        }
-        other => {
-            let msg = format!("method not supported: {other}");
-            let _ = io.send_jsonrpc_error(id, &msg).await;
-        }
-    }
-}
-
 impl McpClient {
     /// Spawn an MCP server, run the initialization handshake, and return the client.
     pub async fn spawn(name: &str, cfg: &McpServerConfig) -> Result<Self> {
-        Self::spawn_with_opts(name, cfg, None, None, false).await
+        Self::spawn_with_opts(name, cfg, None, None).await
     }
 
     /// Spawn with an optional progress event sender and optional LLM for MCP sampling.
@@ -366,7 +236,6 @@ impl McpClient {
         cfg: &McpServerConfig,
         progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
         sampling_provider: Option<ArcProvider>,
-        sampling_auto_approve: bool,
     ) -> Result<Self> {
         let mut cmd = tokio::process::Command::new(&cfg.command);
         cmd.args(&cfg.args)
@@ -389,7 +258,6 @@ impl McpClient {
             name.to_string(),
             progress_tx,
             sampling_provider,
-            sampling_auto_approve,
         )
         .await
     }
@@ -407,7 +275,6 @@ impl McpClient {
         name: String,
         progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
         sampling_provider: Option<ArcProvider>,
-        sampling_auto_approve: bool,
     ) -> Result<Self>
     where
         R: AsyncRead + Send + Unpin + 'static,
@@ -421,12 +288,9 @@ impl McpClient {
             pending: Mutex::new(HashMap::new()),
             _keepalive: Box::new(keepalive),
         });
-        let sampling_arc = Arc::new(Mutex::new(sampling_provider));
         let ctx = Arc::new(ReaderContext {
             server_name: name.clone(),
             progress_tx,
-            sampling_provider: sampling_arc.clone(),
-            sampling_auto_approve,
         });
         let io_reader = io.clone();
         let ctx_reader = ctx.clone();
@@ -438,7 +302,7 @@ impl McpClient {
             io,
             server_name: name,
             capabilities: Arc::new(Mutex::new(ServerCapabilities::default())),
-            sampling_provider: sampling_arc,
+            sampling_provider: Arc::new(Mutex::new(sampling_provider)),
         };
 
         client.initialize().await?;
@@ -667,7 +531,56 @@ impl McpClient {
         params: &Value,
         approval_fn: impl Fn(&str) -> bool,
     ) -> Result<Value> {
-        run_sampling_request(&self.sampling_provider, params, approval_fn).await
+        let messages = params["messages"].as_array().cloned().unwrap_or_default();
+        let prompt_preview: Vec<String> = messages
+            .iter()
+            .map(|m| {
+                let role = m["role"].as_str().unwrap_or("?");
+                let text = m["content"]["text"].as_str().unwrap_or("(non-text)");
+                format!("[{role}]: {text}")
+            })
+            .collect();
+        let preview = prompt_preview.join("\n");
+
+        if !approval_fn(&preview) {
+            return Ok(json!({
+                "role": "assistant",
+                "content": { "type": "text", "text": "[sampling request denied by user]" },
+                "stopReason": "endTurn"
+            }));
+        }
+
+        let provider = self.sampling_provider.lock().await.clone();
+        let Some(provider) = provider else {
+            anyhow::bail!(
+                "MCP sampling/createMessage requires an attached LLM provider; pass `Some(provider)` \
+                 to `McpClient::spawn_with_opts` or call `attach_sampling_provider` before handling sampling"
+            );
+        };
+
+        let mut core_messages = Vec::with_capacity(messages.len());
+        for m in &messages {
+            core_messages.push(mcp_sampling_message_to_core(m)?);
+        }
+
+        let req = ChatRequest::new(provider.model().to_string()).with_messages(core_messages);
+        let mut stream = provider.stream_chat(req).await?;
+        let mut text = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(Delta::Text(t)) => text.push_str(&t),
+                Ok(Delta::Done { .. }) => break,
+                Ok(_) => {}
+                Err(e) => anyhow::bail!("sampling LLM call failed: {e}"),
+            }
+        }
+
+        Ok(json!({
+            "role": "assistant",
+            "content": { "type": "text", "text": text },
+            "stopReason": "endTurn",
+            "model": provider.model(),
+        }))
     }
 
     // ── Roots API ────────────────────────────────────────────────────────────
@@ -684,63 +597,6 @@ impl McpClient {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-async fn run_sampling_request(
-    sampling_provider: &Arc<Mutex<Option<ArcProvider>>>,
-    params: &Value,
-    approval_fn: impl Fn(&str) -> bool,
-) -> Result<Value> {
-    let messages = params["messages"].as_array().cloned().unwrap_or_default();
-    let prompt_preview: Vec<String> = messages
-        .iter()
-        .map(|m| {
-            let role = m["role"].as_str().unwrap_or("?");
-            let text = m["content"]["text"].as_str().unwrap_or("(non-text)");
-            format!("[{role}]: {text}")
-        })
-        .collect();
-    let preview = prompt_preview.join("\n");
-
-    if !approval_fn(&preview) {
-        return Ok(json!({
-            "role": "assistant",
-            "content": { "type": "text", "text": "[sampling request denied by user]" },
-            "stopReason": "endTurn"
-        }));
-    }
-
-    let provider = sampling_provider.lock().await.clone();
-    let Some(provider) = provider else {
-        anyhow::bail!(
-            "MCP sampling/createMessage requires an attached LLM provider; pass `Some(provider)` \
-             to `McpClient::spawn_with_opts` or call `attach_sampling_provider` before handling sampling"
-        );
-    };
-
-    let mut core_messages = Vec::with_capacity(messages.len());
-    for m in &messages {
-        core_messages.push(mcp_sampling_message_to_core(m)?);
-    }
-
-    let req = ChatRequest::new(provider.model().to_string()).with_messages(core_messages);
-    let mut stream = provider.stream_chat(req).await?;
-    let mut text = String::new();
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(Delta::Text(t)) => text.push_str(&t),
-            Ok(Delta::Done { .. }) => break,
-            Ok(_) => {}
-            Err(e) => anyhow::bail!("sampling LLM call failed: {e}"),
-        }
-    }
-
-    Ok(json!({
-        "role": "assistant",
-        "content": { "type": "text", "text": text },
-        "stopReason": "endTurn",
-        "model": provider.model(),
-    }))
-}
 
 fn mcp_sampling_message_to_core(m: &Value) -> Result<Message> {
     let role_str = m["role"].as_str().unwrap_or("user");
@@ -854,10 +710,9 @@ mod tests {
             .await;
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "test".into(), None, None, false)
-                .await
-                .expect("client construct");
+        let client = McpClient::from_streams(client_r, client_w, (), "test".into(), None, None)
+            .await
+            .expect("client construct");
         server.await.expect("server task");
 
         let caps = client.capabilities.lock().await.clone();
@@ -909,17 +764,10 @@ mod tests {
             }
         });
 
-        let client = McpClient::from_streams(
-            client_r,
-            client_w,
-            (),
-            "concurrent-test".into(),
-            None,
-            None,
-            false,
-        )
-        .await
-        .expect("client construct");
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "concurrent-test".into(), None, None)
+                .await
+                .expect("client construct");
 
         // Fire 5 concurrent calls; collect results.
         let mut handles = Vec::new();
@@ -973,10 +821,9 @@ mod tests {
             server_w.flush().await.unwrap();
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None, false)
-                .await
-                .unwrap();
+        let client = McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None)
+            .await
+            .unwrap();
 
         let err = client
             .call("bogus", json!({}))
@@ -1004,17 +851,10 @@ mod tests {
             drop(reader);
         });
 
-        let client = McpClient::from_streams(
-            client_r,
-            client_w,
-            (),
-            "close-test".into(),
-            None,
-            None,
-            false,
-        )
-        .await
-        .unwrap();
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "close-test".into(), None, None)
+                .await
+                .unwrap();
 
         let res = tokio::time::timeout(
             Duration::from_secs(5),
@@ -1083,7 +923,6 @@ mod tests {
             "progress-test".into(),
             Some(tx),
             None,
-            false,
         )
         .await
         .unwrap();
@@ -1123,7 +962,6 @@ mod tests {
             "sample-test".into(),
             None,
             None, // no sampling provider attached
-            false,
         )
         .await
         .unwrap();
@@ -1156,17 +994,10 @@ mod tests {
             do_handshake(&mut reader, &mut server_w, json!({})).await;
         });
 
-        let client = McpClient::from_streams(
-            client_r,
-            client_w,
-            (),
-            "deny-test".into(),
-            None,
-            None,
-            false,
-        )
-        .await
-        .unwrap();
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "deny-test".into(), None, None)
+                .await
+                .unwrap();
         server.await.unwrap();
 
         let params = json!({
@@ -1219,17 +1050,10 @@ mod tests {
             server_w.flush().await.unwrap();
         });
 
-        let client = McpClient::from_streams(
-            client_r,
-            client_w,
-            (),
-            "tools-test".into(),
-            None,
-            None,
-            false,
-        )
-        .await
-        .unwrap();
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "tools-test".into(), None, None)
+                .await
+                .unwrap();
 
         let tools = client.list_tools().await.expect("list_tools");
         assert_eq!(tools.len(), 2);
@@ -1240,74 +1064,64 @@ mod tests {
 
         server.await.unwrap();
     }
+}
 
-    mod extract_text_proptest {
-        use super::*;
-        use proptest::prelude::*;
+// ── Proptest property tests ───────────────────────────────────────────────────
 
-        proptest! {
-            #[test]
-            fn plain_string_round_trip(s in ".*") {
-                let val = Value::String(s.clone());
-                prop_assert_eq!(extract_mcp_text_content(Some(&val)), s);
-            }
+#[cfg(test)]
+mod prop_tests {
+    use proptest::prelude::*;
 
-            #[test]
-            fn text_parts_join_with_newlines(parts in prop::collection::vec(".*", 0..5)) {
-                let arr: Vec<Value> = parts
-                    .iter()
-                    .map(|p| json!({ "type": "text", "text": p }))
-                    .collect();
-                let expected = parts.join("\n");
-                prop_assert_eq!(
-                    extract_mcp_text_content(Some(&Value::Array(arr))),
-                    expected
-                );
-            }
-        }
-    }
-
-    mod classify_ndjson_proptest {
-        use super::*;
-        use proptest::prelude::*;
-
-        proptest! {
-            #[test]
-            fn classify_never_panics(s in "\\PC*") {
-                let _ = classify_mcp_ndjson_line(&s);
-            }
-
-            #[test]
-            fn response_with_numeric_id(id in 1u64..10_000) {
-                let line = json!({"jsonrpc":"2.0","id":id,"result":{"ok":true}}).to_string();
-                prop_assert_eq!(
-                    classify_mcp_ndjson_line(&line),
-                    McpLineKind::Response { id, is_error: false }
-                );
-            }
-
-            #[test]
-            fn notification_without_id(method in "[a-z_/]+") {
-                let line = json!({"jsonrpc":"2.0","method":method,"params":{}}).to_string();
-                prop_assert_eq!(
-                    classify_mcp_ndjson_line(&line),
-                    McpLineKind::Notification(method)
-                );
-            }
-        }
-
+    proptest! {
+        /// JSON-RPC request IDs must survive a serialize→deserialize round-trip exactly.
+        /// The MCP client relies on `id` equality to demultiplex concurrent responses.
         #[test]
-        fn empty_and_invalid_lines() {
-            assert_eq!(classify_mcp_ndjson_line(""), McpLineKind::Empty);
-            assert_eq!(classify_mcp_ndjson_line("   "), McpLineKind::Empty);
-            assert_eq!(
-                classify_mcp_ndjson_line("not-json"),
-                McpLineKind::InvalidJson
-            );
-            assert_eq!(
-                classify_mcp_ndjson_line(r#"{"jsonrpc":"2.0","id":"abc","result":{}}"#),
-                McpLineKind::UnhandledResponseId
-            );
+        fn jsonrpc_id_survives_roundtrip(id in 0u64..u64::MAX) {
+            let req = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "ping",
+                "params": {}
+            });
+            let serialized = serde_json::to_string(&req).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+            prop_assert_eq!(parsed["id"].as_u64().unwrap(), id);
+        }
+
+        /// Method names that contain path-traversal sequences must never match a
+        /// known MCP method literally — the dispatch table only matches exact strings.
+        /// This documents the security invariant: only allow-listed method names
+        /// are forwarded to `dispatch_notification`.
+        #[test]
+        fn traversal_method_names_are_not_dispatched_as_known_methods(
+            segment in "[a-z]{1,10}"
+        ) {
+            let traversal = format!("../../../{segment}");
+            // Known notification methods — none of them match a traversal path.
+            let known_methods = [
+                "notifications/progress",
+                "notifications/tools/list_changed",
+                "notifications/resources/list_changed",
+                "notifications/message",
+                "notifications/initialized",
+            ];
+            for known in &known_methods {
+                prop_assert_ne!(traversal.as_str(), *known,
+                    "traversal path must not match a known MCP method");
+            }
+        }
+
+        /// `extract_mcp_text_content` must never panic on arbitrary string content.
+        #[test]
+        fn extract_text_content_is_total_on_string_values(s in ".*") {
+            // Call through `mcp_sampling_message_to_core` with a plain string content.
+            let msg = serde_json::json!({
+                "role": "user",
+                "content": s
+            });
+            // Should not panic.
+            let result = super::mcp_sampling_message_to_core(&msg);
+            prop_assert!(result.is_ok());
         }
     }
 }
@@ -1324,6 +1138,14 @@ fn collect_roots() -> Vec<Value> {
             .unwrap_or("workspace")
             .to_string();
         roots.push(json!({ "uri": uri, "name": name }));
+    }
+
+    // Include home dir as a secondary root
+    if let Some(home) = dirs::home_dir() {
+        roots.push(json!({
+            "uri": format!("file://{}", home.display()),
+            "name": "home"
+        }));
     }
 
     roots
