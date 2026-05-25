@@ -4,6 +4,7 @@
 
 | Version     | Supported |
 | ----------- | --------- |
+| 0.1.2-beta  | Yes       |
 | 0.1.1-beta  | Yes       |
 | main branch | Yes       |
 

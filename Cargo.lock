@@ -1909,7 +1909,7 @@ dependencies = [
 
 [[package]]
 name = "harness"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "age",
  "anyhow",
@@ -1964,7 +1964,7 @@ dependencies = [
 
 [[package]]
 name = "harness-browser"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1997,7 +1997,7 @@ dependencies = [
 
 [[package]]
 name = "harness-mcp"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2016,7 +2016,7 @@ dependencies = [
 
 [[package]]
 name = "harness-memory"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2035,7 +2035,7 @@ dependencies = [
 
 [[package]]
 name = "harness-provider-anthropic"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2053,7 +2053,7 @@ dependencies = [
 
 [[package]]
 name = "harness-provider-core"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2069,7 +2069,7 @@ dependencies = [
 
 [[package]]
 name = "harness-provider-mlx"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "harness-provider-core",
@@ -2079,7 +2079,7 @@ dependencies = [
 
 [[package]]
 name = "harness-provider-ollama"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2097,7 +2097,7 @@ dependencies = [
 
 [[package]]
 name = "harness-provider-openai"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2116,7 +2116,7 @@ dependencies = [
 
 [[package]]
 name = "harness-provider-router"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2135,7 +2135,7 @@ dependencies = [
 
 [[package]]
 name = "harness-provider-xai"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2154,7 +2154,7 @@ dependencies = [
 
 [[package]]
 name = "harness-term-graphics"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2163,7 +2163,7 @@ dependencies = [
 
 [[package]]
 name = "harness-tools"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2185,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "harness-voice"
-version = "0.1.1-beta"
+version = "0.1.2-beta"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

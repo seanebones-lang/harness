@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2-beta] - 2026-05-25
+
 ### Added
 - `[ambient]` config section and `AmbientProviders` (router fast for summaries, embed for vectors)
 - Promotion docs: `docs/PROMOTION_REPORT.md`, `docs/RELEASE_NOTES_v0.1.2-beta.md`

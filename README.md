@@ -34,7 +34,7 @@ Default model depends on configured API keys: router priority is **Anthropic →
 
 **Status:** Beta — fine for daily use.
 
-**v0.1.1-beta** — current release (see [`CHANGELOG.md`](CHANGELOG.md)).
+**v0.1.2-beta** — current release (see [`CHANGELOG.md`](CHANGELOG.md)).
 
 **Full docs & troubleshooting:** [`docs/INSTALL.md`](docs/INSTALL.md)
 
