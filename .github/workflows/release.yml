@@ -65,11 +65,11 @@ jobs:
 
       - name: Build release binary (cross)
         if: matrix.cross
-        run: cross build --release --profile release-lto --target ${{ matrix.target }}
+        run: cross build --profile release-lto --target ${{ matrix.target }}
 
       - name: Build release binary
         if: "!matrix.cross"
-        run: cargo build --release --profile release-lto --target ${{ matrix.target }}
+        run: cargo build --profile release-lto --target ${{ matrix.target }}
 
       - name: Rename binary (Unix)
         if: runner.os != 'Windows'
