@@ -161,6 +161,8 @@ pub fn command_skips_first_run_wizard(cmd: Option<&crate::cli::Commands>) -> boo
                 | Init { .. }
                 | Sessions
                 | Status
+                | Export { .. }
+                | Delete { .. }
         )
     )
 }
