@@ -115,8 +115,8 @@ That's it. Harness auto-detects which API keys are set and picks the best availa
 
 ### Development snapshot
 
-- **`TODO.md`** — remaining work is mostly **Polish** (ambient abstraction, browser/ambient test coverage, session list timing). Older Critical/Important backlog items are **implemented** on current `main`.
-- **CI:** Pull requests and `main` run **fmt**, **clippy `--all-features`**, **tests**, **build**, and **install-script smoke jobs** (`scripts/install.sh` on Ubuntu + macOS, `scripts/install.ps1` on Windows) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Tag **GitHub Releases** binaries are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml); ship only when `main` is green and [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) is satisfied.
+- **`TODO.md`** — open work is mostly **maintainer-only** (REL-01 manual smoke, Homebrew tap) and **ecosystem** (new tools/providers, Tauri packaging). Round 2 P1 fixes (bridges, apply_patch, health leak, router panic) are **done** on current tree.
+- **CI:** Pull requests and `main` run **fmt**, **clippy `--all-features`**, **tests**, **build**, **REL-01 smoke subset** (`smoke-rel01` job), and **install-script smoke jobs** (`scripts/install.sh` on Ubuntu + macOS, `scripts/install.ps1` on Windows) — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Tag **GitHub Releases** binaries are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml); ship only when `main` is green and [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) is satisfied.
 
 See [`CLAUDE.md`](CLAUDE.md) for module-level detail and contributor hooks (`core.hooksPath`). **Want to help?** See [`CONTRIBUTING.md`](CONTRIBUTING.md) for a guided tour of the open task list.
 
@@ -207,7 +207,7 @@ Full cheat sheet: [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md). Phase E highlights:
 | Feature | macOS | Linux | Windows | Notes |
 |--------|-------|-------|---------|--------|
 | **Core CLI / TUI** | Yes | Yes | Yes | Same `harness` binary; CI covers all three. |
-| **`shell` tool** | `sh -c` | `sh -c` | Git `sh`/`bash` if on `PATH`; else **`cmd.exe /C`** (limited POSIX) | Install **Git for Windows** and ensure `usr\bin` is on `PATH` for best results. |
+| **`shell` tool** | `sh -c` | `sh -c` | Git `sh`/`bash` if on `PATH`; else **PowerShell**, then **`cmd.exe /C`** | Install **Git for Windows** and ensure `usr\bin` is on `PATH` for best results. |
 | **GitHub `/pr`, `/issues`, `harness pr`** | With `gh` | With `gh` | With `gh` | Run `gh auth login` once. |
 | **Desktop notifications** | Notification Center | **libnotify** (e.g. `libnotify-bin`) | Varies / may be limited | See [`config/default.toml`](config/default.toml). |
 | **Voice (`harness voice`, Ctrl+S)** | `sox` / `afrecord` + Whisper or `whisper-cli` | `sox rec` + backends | Not first-class | Prefer OpenAI Whisper API or local tooling you already use. |
@@ -412,7 +412,7 @@ Requires `harness` on `PATH` for auto-spawn of `harness daemon`. See [`apps/desk
 
 ## VS Code extension (optional)
 
-`extensions/vscode/` — side-panel chat against the harness daemon over a **Unix domain socket** (`~/.harness/daemon.sock` by default). **Windows:** use **WSL** for a supported setup today, or run the TUI / `harness serve` natively. Install with `npm install`, then **Run Extension** or package with `vsce`.
+`extensions/vscode/` — side-panel chat against the harness daemon. **macOS/Linux:** Unix domain socket (`~/.harness/daemon.sock` by default). **Windows native:** loopback **TCP** — daemon writes `~/.harness/daemon.port`; extension connects to `127.0.0.1:<port>`. Run **`harness daemon`** first. **WSL2** uses the Linux socket path. Install with `npm install`, then **Run Extension** or package with `vsce`.
 
 ---
 
@@ -514,7 +514,7 @@ For a developer deep-dive see [`CLAUDE.md`](CLAUDE.md). User-facing migration no
 |--------|--------------|
 | `command not found: harness` | **Unix:** add `~/.local/bin` to `PATH` (`export PATH="$HOME/.local/bin:$PATH"`). Run `hash -r` or open a new shell. **Windows:** add `%USERPROFILE%\.local\bin` to User **Path** and open a new terminal. |
 | API / auth errors | **Unix:** `export ANTHROPIC_API_KEY=…`. **Windows:** `$env:ANTHROPIC_API_KEY='…'`. Run `harness status` and `harness doctor`. |
-| `shell` tool behaves oddly on Windows | Install **Git for Windows** so `sh.exe` is on `PATH`; without it Harness falls back to `cmd.exe` (not POSIX). |
+| `shell` tool behaves oddly on Windows | Install **Git for Windows** so `sh.exe` is on `PATH`; without it Harness falls back to PowerShell, then `cmd.exe` (not POSIX). |
 | `/pr`, `/issues`, `/ci` fail | Install GitHub CLI on your OS: `gh auth login`, then `gh auth status`. |
 | Clippy fails locally but CI passes | Run the same command as CI: `cargo clippy --all-targets --all-features -- -D warnings`. |
 | Checkpoint / `/undo` says not a git repo | Run `git init` in the project root (Harness uses git for checkpoints). |
@@ -529,7 +529,7 @@ Non-exhaustive list; details live in [`TODO.md`](TODO.md):
 
 - **Polish:** ambient provider abstraction, extra `harness-browser` tests, optional ambient consolidation tests.
 - **UX:** session titles from async auto-naming can lag the first `harness sessions` list right after save.
-- **`shell` on Windows:** prefers Git `sh`/`bash`; without them commands run via `cmd.exe` (not POSIX).
+- **`shell` on Windows:** prefers Git `sh`/`bash`; without them commands run via PowerShell, then `cmd.exe` (not POSIX).
 
 ---
 

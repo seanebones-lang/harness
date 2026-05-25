@@ -2,7 +2,7 @@
 
 This guide walks through installing Harness on every OS the project **tests in CI** and supports in the field: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
 
-**Status (May 2026):** Public **beta** — **164 automated tests**, P0 security closed. See [`TODO.md`](../TODO.md) for open work and [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for latest gates.
+**Status (May 2026):** Public **beta** — **218 automated tests**, P0 security closed. See [`TODO.md`](../TODO.md) for open work and [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for latest gates.
 
 **Quick links:** [macOS](#macos) · [Linux](#linux) · [Windows](#windows-native) · [WSL2](#windows-subsystem-for-linux-wsl2) · [After installing](#after-installing) · [Updating](#updating) · [Uninstall](#uninstall)
 

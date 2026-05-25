@@ -23,8 +23,8 @@ This document describes how to cut a new release of Harness.
 2. **Create and push a version tag**
 
    ```bash
-   git tag -a v0.1.0 -m "v0.1.0 - Initial public release"
-   git push origin v0.1.0
+   git tag -a v0.1.1-beta -m "v0.1.1-beta - Public beta refresh"
+   git push origin v0.1.1-beta
    ```
 
 3. **GitHub Actions will automatically**:
@@ -46,9 +46,9 @@ We follow semantic versioning:
 - `v0.x.y` — Initial development / breaking changes allowed
 - `v1.0.0` — First stable release
 
-## First Release (v0.1.0)
+## First Release (v0.1.1-beta)
 
-The first release is the most important. Once `v0.1.0` is tagged, the install script will start serving prebuilt binaries to new users.
+Current workspace version is **`0.1.1-beta`**. After tagging, the install scripts serve prebuilt binaries from GitHub Releases. Run `scripts/update-homebrew-sha.sh` after publishing to refresh the Homebrew tap.
 
 ## Rollback
 

@@ -89,6 +89,10 @@ fn runtime() -> &'static SwarmRuntime {
     })
 }
 
+fn lock_active() -> std::sync::MutexGuard<'static, SwarmState> {
+    runtime().active.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Apply `[swarm]` settings from config (safe to call multiple times; first call wins).
 pub fn configure(cfg: &SwarmConfig) {
     let _ = RUNTIME.set(SwarmRuntime {
@@ -254,12 +258,7 @@ where
 {
     let (cancel_tx, cancel_rx) = oneshot::channel();
     {
-        runtime()
-            .active
-            .lock()
-            .expect("swarm lock")
-            .cancel_txs
-            .insert(id.clone(), cancel_tx);
+        lock_active().cancel_txs.insert(id.clone(), cancel_tx);
     }
 
     let id2 = id.clone();
@@ -283,12 +282,7 @@ where
                 let _ = update_status(&id2, &TaskStatus::Cancelled, None);
             }
         }
-        runtime()
-            .active
-            .lock()
-            .expect("swarm lock")
-            .cancel_txs
-            .remove(&id2);
+        lock_active().cancel_txs.remove(&id2);
     });
 }
 
@@ -301,13 +295,7 @@ pub fn cancel_task(id: &str) -> Result<bool> {
         return Ok(false);
     }
 
-    if let Some(tx) = runtime()
-        .active
-        .lock()
-        .expect("swarm lock")
-        .cancel_txs
-        .remove(&task.id)
-    {
+    if let Some(tx) = lock_active().cancel_txs.remove(&task.id) {
         let _ = tx.send(());
         return Ok(true);
     }

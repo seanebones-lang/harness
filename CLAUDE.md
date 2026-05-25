@@ -2,7 +2,7 @@
 
 Rust coding agent. Multi-provider (Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, Ollama Qwen3-Coder). Fast, low-memory, multi-agent.
 
-**Release:** Public **beta** GO — **164 tests**, P0 security closed. **Stable** blocked on manual smoke §3 ([`TODO.md`](TODO.md) **REL-01**).
+**Release:** Public **beta** GO — **218 tests**, P0 security closed. **Stable** blocked on manual smoke §3 ([`TODO.md`](TODO.md) **REL-01**).
 
 ## Build & Test
 

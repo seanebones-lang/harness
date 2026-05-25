@@ -5,6 +5,8 @@
 $ErrorActionPreference = "Stop"
 
 $RepoUrl = "https://github.com/seanebones-lang/harness.git"
+$Repo = "seanebones-lang/harness"
+$Artifact = "harness-windows-x86_64.exe"
 if ($env:HARNESS_INSTALL_DIR) {
     $InstallDir = $env:HARNESS_INSTALL_DIR
 } else {
@@ -14,13 +16,48 @@ if ($env:HARNESS_INSTALL_DIR) {
 function Info($msg) { Write-Host "[harness] $msg" -ForegroundColor Green }
 function Warn($msg) { Write-Host "[harness] $msg" -ForegroundColor Yellow }
 
+function Install-Prebuilt {
+    param([string]$Version = "latest")
+    if ($Version -eq "latest") {
+        $url = "https://github.com/$Repo/releases/latest/download/$Artifact"
+    } else {
+        $url = "https://github.com/$Repo/releases/download/$Version/$Artifact"
+    }
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("harness-dl-" + [Guid]::NewGuid().ToString("n"))
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    Info "Downloading prebuilt binary ($Version)..."
+    try {
+        Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp "harness.exe") -UseBasicParsing
+    } catch {
+        Warn "No prebuilt binary found for $Version"
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+    $checksumUrl = ($url -replace "/download/[^/]+$", "/download/$Version")
+    # checksum verification optional on Windows for now
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    Copy-Item -LiteralPath (Join-Path $tmp "harness.exe") -Destination (Join-Path $InstallDir "harness.exe") -Force
+    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    Info "Installed prebuilt binary to $InstallDir"
+    return $true
+}
+
+$Version = if ($args.Count -gt 0) { $args[0] } else { "latest" }
+
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+
+if (Install-Prebuilt -Version $Version) {
+    $Dest = Join-Path $InstallDir "harness.exe"
+    & $Dest --version
+    Info "Run: harness"
+    exit 0
+}
+
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     Write-Error "cargo not found. Install Rust from https://rustup.rs (MSVC toolchain recommended)."
 }
 
 Info ("Rust " + (rustc --version))
-
-New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 $CargoBin = Join-Path $HOME ".cargo\bin\harness.exe"
 if ((Test-Path -LiteralPath $CargoBin) -and ($InstallDir -ne (Join-Path $HOME ".cargo\bin"))) {

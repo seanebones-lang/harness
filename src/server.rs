@@ -118,8 +118,9 @@ struct HealthResponse {
     provider_model: String,
     #[serde(rename = "key_env")]
     keys: HealthKeyHints,
-    /// Expanded path to the active Harness config file for this workspace.
-    config_path: String,
+    /// Expanded path to the active Harness config file (loopback clients only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_path: Option<String>,
     /// Loopback-only bootstrap token for the bundled web UI.
     #[serde(skip_serializing_if = "Option::is_none")]
     auth_token: Option<String>,
@@ -264,9 +265,7 @@ async fn handle_collab_ws(
     let mut rx = match collab::join_session(&registry, &session_id, &user_id, max_users) {
         Ok(rx) => rx,
         Err(e) => {
-            let _ = socket
-                .send(WsMessage::Text(format!("error: {e}")))
-                .await;
+            let _ = socket.send(WsMessage::Text(format!("error: {e}"))).await;
             return;
         }
     };
@@ -517,7 +516,11 @@ async fn health(
             xai_env: nonempty_env("XAI_API_KEY"),
             openai_env: nonempty_env("OPENAI_API_KEY"),
         },
-        config_path: state.config_active_path.display().to_string(),
+        config_path: if loopback {
+            Some(state.config_active_path.display().to_string())
+        } else {
+            None
+        },
         auth_token: if loopback {
             Some(state.auth_token.clone())
         } else {

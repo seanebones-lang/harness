@@ -8,7 +8,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
+    widgets::{
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
+    },
 };
 
 use crate::highlight::Highlighter;
@@ -170,7 +173,11 @@ fn draw_chat(
             let rendered = hl.render_message(&msg.content, Style::default().fg(Color::White));
             for line in rendered {
                 // Wrap highlighted lines too
-                let plain = line.spans.iter().map(|s| s.content.as_ref()).collect::<String>();
+                let plain = line
+                    .spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>();
                 for wrapped in wrap_text(&plain, content_width) {
                     items.push(ListItem::new(Line::from(Span::styled(
                         format!("│ {wrapped}"),
@@ -248,7 +255,9 @@ fn draw_chat(
     if total_items > 0 && state.chat_follow {
         let selected = state.chat_scroll.selected().unwrap_or(0);
         if selected == 0 || selected >= total_items.saturating_sub(5) {
-            state.chat_scroll.select(Some(total_items.saturating_sub(1)));
+            state
+                .chat_scroll
+                .select(Some(total_items.saturating_sub(1)));
         }
     }
 

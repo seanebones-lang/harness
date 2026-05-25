@@ -263,19 +263,20 @@ fn group_edits_into_hunks(
                     hunk.0.push((' ', orig[*oi].to_string()));
                     if dist_to_next_change > context * 2 {
                         // Flush hunk
-                        let (lines, orig_start, new_start) = current_hunk.take().unwrap();
-                        let header = format!(
-                            "@@ -{},{} +{},{} @@",
-                            orig_start + 1,
-                            lines.len(),
-                            new_start + 1,
-                            lines.len()
-                        );
-                        hunks.push(DiffHunk {
-                            header,
-                            lines,
-                            decision: HunkDecision::Pending,
-                        });
+                        if let Some((lines, orig_start, new_start)) = current_hunk.take() {
+                            let header = format!(
+                                "@@ -{},{} +{},{} @@",
+                                orig_start + 1,
+                                lines.len(),
+                                new_start + 1,
+                                lines.len()
+                            );
+                            hunks.push(DiffHunk {
+                                header,
+                                lines,
+                                decision: HunkDecision::Pending,
+                            });
+                        }
                     }
                 }
             }

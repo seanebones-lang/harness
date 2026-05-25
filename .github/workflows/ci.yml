@@ -147,3 +147,16 @@ jobs:
       - name: cargo check (Tauri)
         working-directory: apps/desktop/src-tauri
         run: cargo check
+
+  smoke-rel01:
+    name: REL-01 automated subset
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build harness
+        run: cargo build
+      - name: Run smoke_rel01.sh
+        run: bash scripts/smoke_rel01.sh

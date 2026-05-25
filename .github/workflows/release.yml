@@ -135,7 +135,13 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum harness-* > checksums.txt 2>/dev/null || true
+          shopt -s nullglob
+          files=(harness-*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release artifacts found" >&2
+            exit 1
+          fi
+          sha256sum "${files[@]}" > checksums.txt
           cat checksums.txt
 
       - name: Create release

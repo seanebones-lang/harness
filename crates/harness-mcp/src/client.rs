@@ -854,9 +854,10 @@ mod tests {
             .await;
         });
 
-        let client = McpClient::from_streams(client_r, client_w, (), "test".into(), None, None, false)
-            .await
-            .expect("client construct");
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "test".into(), None, None, false)
+                .await
+                .expect("client construct");
         server.await.expect("server task");
 
         let caps = client.capabilities.lock().await.clone();
@@ -908,10 +909,17 @@ mod tests {
             }
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "concurrent-test".into(), None, None, false)
-                .await
-                .expect("client construct");
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "concurrent-test".into(),
+            None,
+            None,
+            false,
+        )
+        .await
+        .expect("client construct");
 
         // Fire 5 concurrent calls; collect results.
         let mut handles = Vec::new();
@@ -965,9 +973,10 @@ mod tests {
             server_w.flush().await.unwrap();
         });
 
-        let client = McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None, false)
-            .await
-            .unwrap();
+        let client =
+            McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None, false)
+                .await
+                .unwrap();
 
         let err = client
             .call("bogus", json!({}))
@@ -995,10 +1004,17 @@ mod tests {
             drop(reader);
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "close-test".into(), None, None, false)
-                .await
-                .unwrap();
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "close-test".into(),
+            None,
+            None,
+            false,
+        )
+        .await
+        .unwrap();
 
         let res = tokio::time::timeout(
             Duration::from_secs(5),
@@ -1140,10 +1156,17 @@ mod tests {
             do_handshake(&mut reader, &mut server_w, json!({})).await;
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "deny-test".into(), None, None, false)
-                .await
-                .unwrap();
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "deny-test".into(),
+            None,
+            None,
+            false,
+        )
+        .await
+        .unwrap();
         server.await.unwrap();
 
         let params = json!({
@@ -1196,10 +1219,17 @@ mod tests {
             server_w.flush().await.unwrap();
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "tools-test".into(), None, None, false)
-                .await
-                .unwrap();
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "tools-test".into(),
+            None,
+            None,
+            false,
+        )
+        .await
+        .unwrap();
 
         let tools = client.list_tools().await.expect("list_tools");
         assert_eq!(tools.len(), 2);
@@ -1270,7 +1300,10 @@ mod tests {
         fn empty_and_invalid_lines() {
             assert_eq!(classify_mcp_ndjson_line(""), McpLineKind::Empty);
             assert_eq!(classify_mcp_ndjson_line("   "), McpLineKind::Empty);
-            assert_eq!(classify_mcp_ndjson_line("not-json"), McpLineKind::InvalidJson);
+            assert_eq!(
+                classify_mcp_ndjson_line("not-json"),
+                McpLineKind::InvalidJson
+            );
             assert_eq!(
                 classify_mcp_ndjson_line(r#"{"jsonrpc":"2.0","id":"abc","result":{}}"#),
                 McpLineKind::UnhandledResponseId

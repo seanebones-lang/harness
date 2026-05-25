@@ -218,3 +218,19 @@ pub fn voice_available() -> bool {
 
 pub mod realtime;
 pub use realtime::{RealtimeEvent, RealtimeVoiceSession};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_prefers_openai_when_key_provided_and_no_local_whisper() {
+        let backend = WhisperBackend::detect(Some("sk-test"));
+        assert!(matches!(backend, WhisperBackend::OpenAI { .. }));
+    }
+
+    #[test]
+    fn voice_available_does_not_panic() {
+        let _ = voice_available();
+    }
+}

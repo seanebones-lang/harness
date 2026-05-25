@@ -121,7 +121,10 @@ pub fn run_setup_interactive(cfg: &Config, force: bool) -> Result<()> {
     let config_path = config::active_config_toml_path();
     let mut new_cfg = cfg.clone();
 
-    let entry = new_cfg.providers.entry(provider_name.to_string()).or_default();
+    let entry = new_cfg
+        .providers
+        .entry(provider_name.to_string())
+        .or_default();
     entry.api_key = Some(key.clone());
     entry.model = Some(chosen_model.clone());
 

@@ -3,7 +3,7 @@
 **Audience:** Core maintainers, security reviewers, and prospective contributors  
 **Scope:** Full-workspace read of ~136 Rust/TOML/CI sources; automated gate verification; security surface analysis  
 **Auditor posture:** Pre-release peer review — findings are actionable, severity-ranked, and tied to file references  
-**Verdict:** **Public beta GO** — **stable** blocked on **REL-01** (manual smoke §3). P0 closed; 164 tests; threat model published.
+**Verdict:** **Public beta GO** — **stable** blocked on **REL-01** (manual smoke §3). P0 closed; **218 tests**; threat model published.
 
 ### Current application state (May 2026)
 
@@ -62,7 +62,7 @@
 
 ## Executive summary
 
-**harness** is a well-structured Rust coding agent: clean workspace layout, strong CI (multi-OS, supply-chain, MSRV, 60% coverage gate), and thoughtful primitives (workspace sandbox, plan mode, MCP 2025-03-26, provider abstraction). The May 2026 remediation wave closed **all seven P0 findings**, raised automated tests from ~114 to **164**, and published a threat model.
+**harness** is a well-structured Rust coding agent: clean workspace layout, strong CI (multi-OS, supply-chain, MSRV, 60% coverage gate), and thoughtful primitives (workspace sandbox, plan mode, MCP 2025-03-26, provider abstraction). The May 2026 remediation wave closed **all seven P0 findings**, raised automated tests from ~114 to **218** (Round 2), and published a threat model.
 
 Several E-phase modules (`collab`, `bridges`, `diff_review`) remain compiled but unwired — acceptable for **public beta**, not for **stable** until resolved or removed.
 
@@ -72,7 +72,7 @@ Several E-phase modules (`collab`, `bridges`, `diff_review`) remain compiled but
 
 | Gate | Result |
 |------|--------|
-| `cargo test --all` | **Pass** — **164 tests** |
+| `cargo test --all` | **Pass** — **218 tests** |
 | `cargo clippy --all-targets --all-features -- -D warnings` | **Pass** |
 | `cargo fmt --all -- --check` | Not re-run this session (prior pass) |
 | Manual smoke §3 | **Pending** — checklist in [`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md) §3 |
@@ -174,7 +174,7 @@ Sandbox, confirm gate, HTTP/daemon auth, sync tar-slip, [`THREAT_MODEL.md`](THRE
 
 ### Phase B — Core reliability ✅ (complete May 2026)
 
-**164 tests**; agent loop bounded + tested; provider SSE tests; `native_tools` / `--think` / approval wired.
+**218 tests**; agent loop bounded + tested; provider SSE tests; `native_tools` / `--think` / approval wired.
 
 ### Phase C — Product completeness 🔄 (in progress)
 
@@ -223,7 +223,7 @@ New providers; cross-platform desktop; enterprise features; performance; i18n.
 | Ollama multi-tool per chunk | ✅ Fixed + tested |
 | HTTP swallows agent errors | ✅ SSE error events |
 | Context compaction silent | ✅ `ContextCompacted` event |
-| Malformed patch panics | ⚠️ Monitor — prefer Result over unwrap in parser |
+| Malformed patch panics | ✅ Fixed — parser returns `Err` on bad hunk headers; regression test |
 
 ### 5.4 Dead code & doc drift (updated May 2026)
 
@@ -240,7 +240,7 @@ New providers; cross-platform desktop; enterprise features; performance; i18n.
 
 | Area | Tests | Gap |
 |------|------:|-----|
-| Workspace total | **185** | — |
+| Workspace total | **218** | — |
 | `harness-tools` (incl. tool modules) | 32+ | Strong |
 | `harness-mcp` | 10 | Good |
 | `harness-provider-openai` | 9 | Good |
@@ -271,7 +271,51 @@ New providers; cross-platform desktop; enterprise features; performance; i18n.
 
 **Peer sign-off statement (template):**
 
-> We reviewed harness after the 2026-05-22 remediation. Automated gates pass (**164 tests**). All P0 items are closed. We approve **public beta**. We **do not** approve **stable** until REL-01 manual smoke is recorded on target OSes.
+> We reviewed harness after the 2026-05-24 Round 2 re-inspection. Automated gates pass (**218 tests**). All P0 items remain closed. Round 2 P1 fixes (bridges, apply_patch, health leak, router panic, unwrap hardening) are applied. We approve **public beta**. We **do not** approve **stable** until REL-01 manual smoke is recorded on target OSes.
+
+---
+
+---
+
+## Round 2 — MIT Re-Inspection (2026-05-24)
+
+**Baseline:** `433065d` on `main` (post-audit batch: gh `pr_create`, MCP sampling gate, session titles, TUI follow-scroll, desktop CI, term-graphics tests).  
+**Scope:** Re-run automated gates; fix actionable P1–P2 regressions and gaps; refresh docs. Excluded maintainer-only REL-01 full manual smoke and Homebrew tap publish.
+
+### Automated gates (Round 2)
+
+| Gate | Result |
+|------|--------|
+| `cargo fmt --all -- --check` | **Pass** |
+| `cargo clippy --all-targets --all-features -- -D warnings` | **Pass** |
+| `cargo test --all` | **Pass** — **218 tests** |
+| `cargo build --profile release-lto` | **Pass** |
+| `scripts/smoke_rel01.sh` | **Pass** (automated subset) |
+| CI `smoke-rel01` job | **Added** — ubuntu, post-build |
+
+### Round 2 findings — remediated
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| R2-1 | P1 | GitHub Projects bridge: GraphQL body never written to `gh api graphql` stdin | `github_projects_graphql_body()` + stdin write; serde_json parameterization |
+| R2-2 | P1 | Apple Notes bridge: incomplete AppleScript escaping | Reuse `escape_applescript()` (parity with calendar) |
+| R2-3 | P1 | `apply_patch` parser `unwrap()` on malformed hunks | `Err` paths + `parse_malformed_hunk_returns_err_not_panic` test |
+| R2-4 | P2 | `/api/health` leaks `config_path` to non-loopback clients | Gate behind loopback check (same as `auth_token`) |
+| R2-5 | P1 | `ProviderRouter::default_provider().expect(...)` panic on empty map | Returns `Option`; safe fallbacks in trait methods |
+| R2-6 | P2 | Production `unwrap()` in rate_limit, swarm, diff_review, browser | Poison → deny; explicit branches |
+| R2-7 | P2 | Weak test coverage (voice, mlx, lsp detect, collab) | Unit tests added |
+| R2-8 | P2 | REL-01 subset not in CI; release checksum fragility; Windows install asymmetry | `smoke-rel01` CI job; explicit `sha256sum`; `install.ps1` prebuilt download |
+
+### Round 2 — still open (maintainer-only)
+
+| ID | Item |
+|----|------|
+| **REL-01** | Full manual smoke §3 — API keys + TUI + serve + export on target OSes |
+| **P2-10** | Homebrew tap SHA — run `scripts/update-homebrew-sha.sh v0.1.1-beta` after next tag |
+
+### Round 2 verdict
+
+**Public beta GO** · **Stable NO-GO** until REL-01 logged in [`RELEASE_STATUS.md`](RELEASE_STATUS.md).
 
 ---
 
