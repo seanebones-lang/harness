@@ -18,12 +18,10 @@ pub fn run_status(cfg: &Config, model: &str, store: &SessionStore) -> Result<()>
         .map(|k| !k.is_empty())
         .unwrap_or(false);
     let has_ollama = cfg.providers.contains_key("ollama");
-    let has_provider_keys = cfg.providers.values().any(|e| {
-        e.api_key
-            .as_ref()
-            .map(|k| !k.is_empty())
-            .unwrap_or(false)
-    });
+    let has_provider_keys = cfg
+        .providers
+        .values()
+        .any(|e| e.api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false));
 
     let configured = has_config_key
         || has_xai

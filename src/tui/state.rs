@@ -476,7 +476,10 @@ impl AppState {
             ("/runs", "list background runs"),
             ("/cost", "show cost estimate"),
             ("/plan", "plan mode info (use --plan at startup)"),
-            ("/model", "show live model (`harness models --set` + restart)"),
+            (
+                "/model",
+                "show live model (`harness models --set` + restart)",
+            ),
             ("/think", "set thinking budget (e.g. /think 10000)"),
             ("/remember", "store fact (e.g. /remember arch: monorepo)"),
             ("/forget", "delete memory topic"),

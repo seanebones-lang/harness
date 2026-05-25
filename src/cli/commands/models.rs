@@ -125,11 +125,7 @@ fn config_paths_to_update() -> Vec<std::path::PathBuf> {
     paths
 }
 
-fn apply_model_set(
-    path: &std::path::Path,
-    provider_part: &str,
-    model_part: &str,
-) -> Result<()> {
+fn apply_model_set(path: &std::path::Path, provider_part: &str, model_part: &str) -> Result<()> {
     let text = if path.exists() {
         std::fs::read_to_string(path)?
     } else {

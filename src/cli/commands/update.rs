@@ -91,10 +91,7 @@ fn semver_compare(a: &str, b: &str) -> Ordering {
 
 fn split_version(v: &str) -> (Vec<u64>, Option<String>) {
     let (main, pre) = v.split_once('-').map_or((v, None), |(m, p)| (m, Some(p)));
-    let nums = main
-        .split('.')
-        .map(|p| p.parse().unwrap_or(0))
-        .collect();
+    let nums = main.split('.').map(|p| p.parse().unwrap_or(0)).collect();
     (nums, pre.map(str::to_string))
 }
 

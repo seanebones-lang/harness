@@ -327,21 +327,17 @@ pub fn sync_provider_model(cfg: &mut Config) {
     let Some(model) = cfg.provider.model.clone() else {
         return;
     };
-    let default = cfg
-        .router
-        .default
-        .clone()
-        .or_else(|| {
-            if cfg.providers.contains_key("xai") {
-                Some("xai".into())
-            } else if cfg.providers.contains_key("anthropic") {
-                Some("anthropic".into())
-            } else if cfg.providers.contains_key("openai") {
-                Some("openai".into())
-            } else {
-                cfg.providers.keys().next().cloned()
-            }
-        });
+    let default = cfg.router.default.clone().or_else(|| {
+        if cfg.providers.contains_key("xai") {
+            Some("xai".into())
+        } else if cfg.providers.contains_key("anthropic") {
+            Some("anthropic".into())
+        } else if cfg.providers.contains_key("openai") {
+            Some("openai".into())
+        } else {
+            cfg.providers.keys().next().cloned()
+        }
+    });
     if let Some(name) = default {
         let entry = cfg.providers.entry(name).or_default();
         if entry.model.as_deref() != Some(model.as_str()) {

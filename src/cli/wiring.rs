@@ -6,7 +6,7 @@ use crate::trust;
 use anyhow::{Context, Result};
 use harness_browser::BrowserTool;
 use harness_lsp::{
-    LazyLspClient, DiagnosticsTool, FindDefinitionTool, FindReferencesTool, RenameSymbolTool,
+    DiagnosticsTool, FindDefinitionTool, FindReferencesTool, LazyLspClient, RenameSymbolTool,
 };
 use harness_mcp;
 use harness_provider_core::ArcProvider;

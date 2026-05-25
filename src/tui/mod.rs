@@ -22,7 +22,6 @@
 //! - Spinner during long operations
 //! - Status bar: persistent cost/tokens, transient messages above
 
-
 use anyhow::Result;
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
