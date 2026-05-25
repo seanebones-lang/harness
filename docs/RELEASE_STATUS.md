@@ -4,6 +4,20 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-05-24 — Public beta promotion report**
+
+| Item | Result |
+|------|--------|
+| Promotion assessment | [`PROMOTION_REPORT.md`](PROMOTION_REPORT.md) — **GO** for public beta |
+| Tier 0 (docs, CI, screenshots) | **Complete** |
+| Tier 1 (REL-01, Homebrew, tag) | **Pending** — maintainer-only |
+| Draft release notes | [`RELEASE_NOTES_v0.1.2-beta.md`](RELEASE_NOTES_v0.1.2-beta.md) |
+| Comparison table refresh | [`COMPARISON.md`](COMPARISON.md) updated |
+
+**Go / no-go:** **GO** to promote public beta now. **Stable** still blocked on REL-01 manual smoke §3 per OS + P2-10 Homebrew post-tag.
+
+---
+
 **2026-05-24 — MIT Re-Inspection Round 2 (post-`433065d`, local working tree)**
 
 | Gate | Result |

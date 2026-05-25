@@ -52,6 +52,10 @@ Browser interface served by `harness serve` — sessions, workspaces, and test r
 
 ![Harness web UI](docs/screenshots/web-ui.png)
 
+### Demo video
+
+A short TUI walkthrough (15–30s) is planned for the next README refresh. Until then, see the screenshots above and [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md) for the public beta checklist.
+
 ---
 
 ## Quick Start

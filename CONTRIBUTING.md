@@ -10,7 +10,8 @@ Thank you for your interest in contributing. Harness is a Rust coding agent — 
 |-----|---------------|
 | [`README.md`](README.md) | Install, run, daily workflow |
 | [`CLAUDE.md`](CLAUDE.md) | Module map, key types, agent loop, adding providers/tools |
-| [`TODO.md`](TODO.md) | Prioritised backlog — great place to pick up work |
+| [`TODO.md`](TODO.md) | Prioritised backlog — promotion tiers + audit items |
+| [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md) | Public beta readiness and launch checklist |
 | [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md) | TUI keyboard reference |
 | [`docs/MIGRATION.md`](docs/MIGRATION.md) | Breaking changes across phases |
 | [`config/default.toml`](config/default.toml) | Annotated config reference |
@@ -37,12 +38,25 @@ No API key is needed to build or run the automated test suite.
 
 ## Where to contribute
 
+Pick a pathway below. Each maps to a **`good first issue`** label on GitHub when maintainers triage the backlog.
+
+| Pathway | Good for | Entry point | Quality gate |
+|---------|----------|-------------|--------------|
+| **Tools** | Rust + CLI ergonomics | [`crates/harness-tools/`](crates/harness-tools/) | Unit test or smoke in `cargo test --all` |
+| **Providers** | HTTP/SSE, API integration | [`crates/harness-provider-*/`](crates/) | Mock-server unit test |
+| **Tests & coverage** | No API keys needed | [`tests/`](tests/), crate `#[cfg(test)]` | PR coverage ≥ 60% |
+| **Docs** | Writing, screenshots | [`docs/`](docs/), [`README.md`](README.md) | Spell-check + link check |
+| **Platform** | Windows, VS Code, Tauri | [`extensions/vscode/`](extensions/vscode/), [`apps/desktop/`](apps/desktop/) | CI matrix green |
+| **MCP / LSP** | Protocol work | [`crates/harness-mcp/`](crates/harness-mcp/), [`crates/harness-lsp/`](crates/harness-lsp/) | Framing + handshake tests |
+
 ### Good first issues — tests and small fixes
 
-These are well-scoped, self-contained, and unblock the next person reviewing the code.
+These are well-scoped, self-contained, and unblock the next person reviewing the code. Ask maintainers to label your chosen issue **`good first issue`**.
 
 - **New tools** — `DatabaseTool`, `NotebookTool`, `DockerTool` (see below)
 - **New providers** — Mistral, Gemini, Bedrock (four-step guide below)
+- **MCP sampling TUI approval** — interactive prompt when MCP servers request `sampling/createMessage`
+- **Demo GIF** — 15–30s TUI recording for README (see [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md))
 - **Coverage uplift** — voice/mlx/lsp client integration paths (Round 2 added unit tests for detect/availability; deeper paths still welcome)
 
 ~~**`ambient.rs` consolidation test**~~ — **Done** (May 2026).
@@ -123,6 +137,16 @@ CI runs `fmt`, `clippy --all-features`, `test --all`, `build --all-targets`, `bu
 - `clippy -D warnings` is enforced — fix warnings rather than suppressing them without explanation.
 - No unnecessary comments. If a comment is needed, explain *why*, not *what*.
 - Prefer editing existing files to adding new abstractions. Keep diffs reviewable.
+
+---
+
+## Community
+
+- **Issues** — bugs, feature requests, and **`good first issue`** candidates
+- **Discussions** — setup help, workflows, provider tips (enable on GitHub if not already)
+- **Discord / Matrix** — optional; not required for beta (see [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md) Tier 3)
+
+When opening a PR, link the issue if one exists. For new features, a short design note in the issue helps reviewers.
 
 ---
 

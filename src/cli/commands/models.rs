@@ -33,7 +33,10 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
                     "grok-4.20-0309-reasoning",
                     "$2/$6   · pinned 2M ctx snapshot",
                 ),
-                ("grok-4.1-fast", "$0.20/$0.50 · fast · reasoning via API param"),
+                (
+                    "grok-4.1-fast",
+                    "$0.20/$0.50 · fast · reasoning via API param",
+                ),
             ],
         ),
         (

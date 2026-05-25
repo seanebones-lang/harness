@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `[ambient]` config section and `AmbientProviders` (router fast for summaries, embed for vectors)
+- Promotion docs: `docs/PROMOTION_REPORT.md`, `docs/RELEASE_NOTES_v0.1.2-beta.md`
+- Refreshed `docs/COMPARISON.md` (Grok 4.x, MCP 2025, daemon, cost DB)
+
+### Fixed
+- TUI assistant label drift when router default differed from `[provider].model`
+- Grok 4.1 Fast model slug (`grok-4.1-fast`)
+- `harness doctor` and other diagnostic commands no longer block on first-run setup wizard
+
+### Changed
+- `TODO.md` promotion tiers (Tier 0–3)
+- `CONTRIBUTING.md` contribution pathways and community section
+- README demo video placeholder
+
 ## [0.1.1-beta] - 2026-05-24
 
 ### Added
