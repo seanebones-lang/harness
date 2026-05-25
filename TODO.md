@@ -4,7 +4,51 @@
 
 Canonical user docs: [`README.md`](README.md). Developer detail: [`CLAUDE.md`](CLAUDE.md), [`config/default.toml`](config/default.toml).
 
-Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md)
+Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · promotion plan: [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md)
+
+---
+
+## Public beta promotion (May 2026)
+
+**Verdict:** **GO** for public beta now. **Stable** blocked on REL-01 + P2-10 (see Tier 1).
+
+### Tier 0 — Ship beta now
+
+| Task | Status |
+|------|--------|
+| Public repo, MIT, threat model, install docs | [x] |
+| CI (Ubuntu, macOS, Windows) + automated smoke subset | [x] |
+| README screenshots + comparison link | [x] |
+| Promotion report + draft release notes | [x] |
+| Public announcement (HN, X, Discussions) | [ ] maintainer |
+
+### Tier 1 — Before “stable”
+
+| ID | Task | Status |
+|----|------|--------|
+| REL-01 | Manual smoke §3 (macOS, Linux, Windows) | [ ] maintainer — [`PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) §3 |
+| P2-10 | Homebrew tap SHA after tag | [ ] maintainer — `scripts/update-homebrew-sha.sh v0.1.2-beta` |
+| REL-02 | Tag v0.1.2-beta + verify prebuilts on Releases | [ ] maintainer — [`RELEASE_NOTES_v0.1.2-beta.md`](docs/RELEASE_NOTES_v0.1.2-beta.md) |
+| REL-03 | Log REL-01 per OS in `RELEASE_STATUS.md` | [ ] maintainer |
+
+### Tier 2 — High-impact polish (1–2 days)
+
+| Task | Status |
+|------|--------|
+| Refresh `docs/COMPARISON.md` | [x] |
+| CONTRIBUTING pathways + community section | [x] |
+| GitHub `good first issue` labels on backlog issues | [x] label exists; apply per issue when opened |
+| Demo GIF/video (15–30s TUI) | [ ] optional — link from README when ready |
+
+### Tier 3 — Next 1–2 weeks (growth)
+
+| Task | Status |
+|------|--------|
+| MCP sampling interactive TUI approval | [ ] |
+| DatabaseTool / NotebookTool / DockerTool | [ ] |
+| New providers (Mistral, Gemini, Bedrock) | [ ] |
+| VS Code + Tauri packaging (icons, Windows/Linux) | [ ] |
+| Community channel (Discord / Matrix) | [ ] optional |
 
 ---
 
@@ -86,10 +130,8 @@ Post-`433065d` MIT-style audit. All actionable P1–P2 code/doc/CI items below a
 
 ---
 
-## Remaining backlog
+## Remaining backlog (engineering)
 
-- Homebrew tap publish: run `bash scripts/update-homebrew-sha.sh vX.Y.Z` after tagging (P2-10)
-- REL-01 manual smoke on target OSes (automated subset: `scripts/smoke_rel01.sh` + CI `smoke-rel01` job)
 - MCP sampling interactive TUI approval (plan/smart currently deny inbound sampling)
 - DatabaseTool / NotebookTool / DockerTool
 - New providers (Mistral, Gemini, Bedrock)
@@ -105,4 +147,5 @@ Post-`433065d` MIT-style audit. All actionable P1–P2 code/doc/CI items below a
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo build --profile release-lto` (CI + local)
 
-Manual smoke (REL-01): see [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) §3.
+Manual smoke (REL-01): see [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) §3.  
+Draft release: [`docs/RELEASE_NOTES_v0.1.2-beta.md`](docs/RELEASE_NOTES_v0.1.2-beta.md).

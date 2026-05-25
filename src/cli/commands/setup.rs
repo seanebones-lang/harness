@@ -146,3 +146,21 @@ pub fn maybe_run_first_time_wizard(cfg: &Config) -> Result<()> {
     }
     Ok(())
 }
+
+/// Non-agent commands that must not block on the interactive setup wizard.
+pub fn command_skips_first_run_wizard(cmd: Option<&crate::cli::Commands>) -> bool {
+    use crate::cli::Commands::*;
+    matches!(
+        cmd,
+        Some(
+            Setup { .. }
+                | Update
+                | Project { .. }
+                | Doctor
+                | Completions { .. }
+                | Init { .. }
+                | Sessions
+                | Status
+        )
+    )
+}

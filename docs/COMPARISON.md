@@ -1,21 +1,44 @@
 # Harness vs Other AI Coding Tools
 
-| Feature                    | Harness          | Aider         | Claude Code   | Cursor        |
-|---------------------------|------------------|---------------|---------------|---------------|
-| **Language**              | Rust            | Python        | -             | Electron      |
-| **Terminal-first**        | Yes             | Yes           | Partial       | No            |
-| **Local / Privacy**       | Strong          | Strong        | Medium        | Weak          |
-| **Multi-provider**        | Excellent       | Good          | Limited       | Limited       |
-| **Sub-agents / Parallel** | Yes             | Limited       | No            | No            |
-| **Cost tracking**         | Built-in        | Basic         | No            | No            |
-| **MCP Support**           | Yes             | No            | No            | No            |
-| **Cross-machine sync**    | Yes             | No            | No            | No            |
-| **Prebuilt binaries**     | Yes (GitHub Releases) | No            | No            | N/A           |
+High-level comparison for evaluators. The real test is your own workflow on your stack.
 
-**Key differentiators of Harness:**
-- Written in Rust for performance and safety
-- Strong emphasis on local-first + hybrid memory
-- Built-in cost controls and observability
-- Designed for power users who want scriptability and automation
+| Feature | Harness | Aider | Claude Code | Cursor |
+|---------|---------|-------|-------------|--------|
+| **Language** | Rust | Python | — | Electron |
+| **Terminal-first** | Yes | Yes | Partial | No |
+| **Local / privacy** | Strong (Ollama, MLX) | Strong | Medium | Weak |
+| **Multi-provider** | Excellent (Anthropic, xAI, OpenAI, Ollama, MLX) | Good | Limited | Limited |
+| **Default models (May 2026)** | Claude Sonnet 4.6, Grok 4.3, GPT-5.5, Qwen3-Coder | Varies | Claude-only | Proprietary |
+| **Sub-agents / parallel swarm** | Yes (SQLite registry) | Limited | No | No |
+| **Cost tracking** | Built-in SQLite dashboard | Basic | No | No |
+| **MCP support** | Yes (2025-03-26: tools, resources, sampling, roots) | No | No | Partial |
+| **Browser automation** | Chrome CDP tool | No | No | No |
+| **Cross-machine sync** | Age-encrypted git sync | No | No | No |
+| **Editor integration** | VS Code extension + daemon (Unix socket / TCP) | No | VS Code plugin | IDE-native |
+| **Desktop app** | Tauri 2 (macOS; CI check) | No | No | Yes |
+| **Prebuilt binaries** | Yes (GitHub Releases: macOS, Linux, Windows) | No | No | N/A |
+| **Open source** | MIT | Apache 2.0 | Proprietary | Proprietary |
 
-This table is intentionally high-level. The real test is trying the tools on your own workflow.
+## Key differentiators
+
+- **Rust performance and safety** — Low memory footprint; no Python runtime required for the agent itself.
+- **Safety-first approvals** — Auto, smart, and plan modes; explicit gates for destructive tools.
+- **Local-first + hybrid memory** — Vector memory, project facts (`.harness/memory/`), ambient consolidation with configurable `[ambient]` providers.
+- **Built-in observability** — Cost DB, optional OTLP traces, session export to Markdown.
+- **Scriptability** — One-shot CLI, HTTP/SSE server, swarm CLI, GitHub PR review, bridges (Obsidian, Notes, Calendar).
+- **Power-user tooling** — MCP client, browser CDP, voice (Whisper + Realtime API), diff review in plan mode.
+
+## When Harness fits best
+
+- You live in the terminal and want a fast, hackable agent you can extend in Rust.
+- You switch between cloud providers (Claude, Grok, GPT) or run local models (Ollama, MLX on Apple Silicon).
+- You care about spend visibility, session export, and encrypted cross-machine sync.
+- You want MCP servers, sub-agents, or custom tools without leaving the CLI.
+
+## When to consider alternatives
+
+- **Cursor** — You want a full IDE with inline edits and are fine with a closed, Electron-based product.
+- **Claude Code** — You are all-in on Anthropic and want their official VS Code integration.
+- **Aider** — You prefer Python, git-centric pair programming, and already know that workflow.
+
+This table is intentionally high-level and may lag vendor feature changes. See [`README.md`](../README.md) and [`CHANGELOG.md`](../CHANGELOG.md) for current Harness capabilities.

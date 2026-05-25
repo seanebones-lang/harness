@@ -40,10 +40,10 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 use cli::args::BridgeAction;
 use cli::{
-    build_prompt_with_image, build_tools, connect_to_server, delete_session, export_session,
-    graceful_ambient_shutdown, handle_doctor_command, handle_models_command,
-    handle_project_command, list_sessions, maybe_run_first_time_wizard, run_init, run_self_dev,
-    run_setup_interactive, run_status, run_update,
+    build_prompt_with_image, build_tools, command_skips_first_run_wizard, connect_to_server,
+    delete_session, export_session, graceful_ambient_shutdown, handle_doctor_command,
+    handle_models_command, handle_project_command, list_sessions, maybe_run_first_time_wizard,
+    run_init, run_self_dev, run_setup_interactive, run_status, run_update,
 };
 use cli::{CheckpointAction, Cli, Commands, CostAction, SwarmAction, SyncAction};
 
@@ -80,10 +80,12 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    maybe_run_first_time_wizard(&cfg)?;
-    cfg = config::load(cli.config.as_deref())?;
-    swarm::configure(&cfg.swarm);
-    daemon::configure(&cfg.daemon);
+    if !command_skips_first_run_wizard(cli.command.as_ref()) {
+        maybe_run_first_time_wizard(&cfg)?;
+        cfg = config::load(cli.config.as_deref())?;
+        swarm::configure(&cfg.swarm);
+        daemon::configure(&cfg.daemon);
+    }
 
     // Detect available API keys (router priority: anthropic > xai > openai > ollama > mlx)
     let has_xai = cfg.provider.api_key.is_some()
