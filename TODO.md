@@ -26,10 +26,10 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 
 | ID | Task | Status |
 |----|------|--------|
-| REL-01 | Manual smoke §3 (macOS, Linux, Windows) | [ ] maintainer — [`PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) §3 |
-| P2-10 | Homebrew tap SHA after tag | [ ] maintainer — `scripts/update-homebrew-sha.sh v0.1.2-beta` |
-| REL-02 | Tag v0.1.2-beta + verify prebuilts on Releases | [ ] maintainer — [`RELEASE_NOTES_v0.1.2-beta.md`](docs/RELEASE_NOTES_v0.1.2-beta.md) |
-| REL-03 | Log REL-01 per OS in `RELEASE_STATUS.md` | [ ] maintainer |
+| REL-01 | Manual smoke §3 (macOS, Linux, Windows) | [~] macOS partial — export, serve, auth; one-shot/TUI need keys; Linux/Windows pending |
+| P2-10 | Homebrew tap SHA after tag | [~] macOS arm64 SHA set; x64/Linux after CI billing fixed |
+| REL-02 | Tag v0.1.2-beta + verify prebuilts on Releases | [~] tagged; macOS arm64 on Releases; other platforms pending CI |
+| REL-03 | Log REL-01 per OS in `RELEASE_STATUS.md` | [x] macOS partial logged in [`RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) |
 
 ### Tier 2 — High-impact polish (1–2 days)
 

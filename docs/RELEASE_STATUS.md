@@ -4,6 +4,25 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-05-25 — v0.1.2-beta release cut (local + partial GitHub Release)**
+
+| Item | Result |
+|------|--------|
+| Version bump | **Done** — `0.1.2-beta` (`f1ab11a`) |
+| Tag | **Done** — `v0.1.2-beta` pushed |
+| Automated gates (local) | **Pass** — fmt, clippy, 218 tests, release-lto, `smoke_rel01.sh` |
+| GitHub Release workflow | **Blocked** — account billing lock; jobs did not start |
+| GitHub Release (manual) | **Partial** — [v0.1.2-beta](https://github.com/seanebones-lang/harness/releases/tag/v0.1.2-beta) with **macOS arm64** binary only |
+| Homebrew formula | **Partial** — macOS arm64 SHA in `homebrew/harness.rb`; x64/Linux placeholders remain |
+| REL-01 macOS (automated + local) | **Partial pass** — export, `serve` health, bearer auth 401/200; one-shot/TUI need API keys |
+| REL-01 Linux / Windows | **Pending** — maintainer on target OS |
+
+**Blocker:** Resolve GitHub Actions billing, then re-run Release workflow or upload remaining platform binaries and run `bash scripts/update-homebrew-sha.sh v0.1.2-beta`.
+
+**Go / no-go:** **GO** for public beta (source + macOS arm64 prebuilt). **Stable** blocked on full REL-01 per OS + complete prebuilt matrix.
+
+---
+
 **2026-05-24 — Public beta promotion report**
 
 | Item | Result |

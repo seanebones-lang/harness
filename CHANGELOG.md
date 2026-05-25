@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - TUI assistant label drift when router default differed from `[provider].model`
 - Grok 4.1 Fast model slug (`grok-4.1-fast`)
-- `harness doctor` and other diagnostic commands no longer block on first-run setup wizard
+- `harness export` and `harness delete` skip first-run setup wizard
 
 ### Changed
 - `TODO.md` promotion tiers (Tier 0–3)

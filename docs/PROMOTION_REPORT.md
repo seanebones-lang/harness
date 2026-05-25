@@ -3,9 +3,9 @@
 **Date:** 2026-05-24  
 **Verdict:** **GO** for public beta promotion now. **Stable** remains blocked on maintainer-only REL-01 manual smoke (§3) per target OS and post-tag Homebrew tap publish (P2-10).
 
----
+**Blocker (2026-05-25):** GitHub Actions billing lock prevents Release workflow from building Linux/Windows/macOS x64 binaries. Resolve at https://github.com/settings/billing then re-run the Release workflow for tag `v0.1.2-beta`, or upload remaining artifacts manually.
 
-## Executive summary
+---
 
 Harness is a fast, safety-focused, Rust-native terminal coding agent with multi-provider support, MCP, cost tracking, semantic memory, and solid CI across macOS, Linux, and Windows. Automated quality gates are green; security P0 items from the May 2026 audit are closed. The repository is well-documented and ready for public discovery.
 
@@ -25,9 +25,9 @@ Harness is a fast, safety-focused, Rust-native terminal coding agent with multi-
 | `cargo build --profile release-lto` | **Pass** | CI + local |
 | `scripts/smoke_rel01.sh` | **Pass** | Automated REL-01 subset; doctor no longer blocks on setup wizard |
 | P0 security | **Closed** | See [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
-| Manual smoke §3 (REL-01) | **Pending** | Maintainer-only — API keys + TUI + serve + export |
-| Homebrew tap (P2-10) | **Pending** | Run after next tag: `scripts/update-homebrew-sha.sh vX.Y.Z` |
-| Prebuilt binaries | **Ready** | macOS arm64/x86_64, Linux x86_64/aarch64, Windows |
+| Manual smoke §3 (REL-01) | **Partial** | macOS: export, serve, auth verified; one-shot/TUI need API keys; Linux/Windows pending |
+| Homebrew tap (P2-10) | **Partial** | macOS arm64 SHA in `homebrew/harness.rb`; full tap after CI billing restored |
+| Prebuilt binaries | **Partial** | macOS arm64 on [v0.1.2-beta Release](https://github.com/seanebones-lang/harness/releases/tag/v0.1.2-beta); Linux/Windows blocked on GitHub Actions billing |
 | README screenshots | **Done** | `docs/screenshots/tui.png`, `web-ui.png` |
 | Demo GIF/video | **Optional** | Recommended for HN/README; not a beta blocker |
 
@@ -47,10 +47,10 @@ Harness is a fast, safety-focused, Rust-native terminal coding agent with multi-
 
 | ID | Task | Owner | Command / doc |
 |----|------|-------|---------------|
-| REL-01 | Manual smoke §3 on macOS, Linux, Windows | Maintainer | [`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md) §3 |
-| P2-10 | Homebrew tap SHA update | Maintainer | `bash scripts/update-homebrew-sha.sh v0.1.2-beta` |
-| REL-02 | Tag + GitHub Release + verify prebuilts | Maintainer | [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md) |
-| REL-03 | Log REL-01 results in [`RELEASE_STATUS.md`](RELEASE_STATUS.md) | Maintainer | One row per OS |
+| REL-01 | Manual smoke §3 on macOS, Linux, Windows | Partial | macOS subset done; see RELEASE_STATUS |
+| P2-10 | Homebrew tap SHA update | Partial | macOS arm64 only |
+| REL-02 | Tag + GitHub Release + verify prebuilts | Partial | [v0.1.2-beta](https://github.com/seanebones-lang/harness/releases/tag/v0.1.2-beta) — macOS arm64; CI billing blocks rest |
+| REL-03 | Log REL-01 results in [`RELEASE_STATUS.md`](RELEASE_STATUS.md) | Done | macOS partial logged 2026-05-25 |
 
 ### Tier 2 — High-impact polish (1–2 days)
 
