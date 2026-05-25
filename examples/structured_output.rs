@@ -113,9 +113,8 @@ async fn main() -> Result<()> {
 
     println!("Raw JSON:\n{json_output}\n");
 
-    let review: CodeReview = serde_json::from_str(&json_output).map_err(|e| {
-        anyhow::anyhow!("Failed to parse CodeReview: {e}\nRaw: {json_output}")
-    })?;
+    let review: CodeReview = serde_json::from_str(&json_output)
+        .map_err(|e| anyhow::anyhow!("Failed to parse CodeReview: {e}\nRaw: {json_output}"))?;
 
     println!("Summary:       {}", review.summary);
     println!("Quality score: {}/10", review.quality_score);

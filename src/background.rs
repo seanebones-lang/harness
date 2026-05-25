@@ -1,9 +1,9 @@
 //! Background run management: `harness run-bg` spawns agents in detached processes.
 //!
 //! Each background run gets:
-//!   ~/.harness/runs/<id>/status.json  — live status (queued/running/done/failed)
-//!   ~/.harness/runs/<id>/output.log   — streamed output
-//!   ~/.harness/runs/<id>/prompt.txt   — original prompt
+//!   `~/.harness/runs/<id>/status.json`  — live status (queued/running/done/failed)
+//!   `~/.harness/runs/<id>/output.log`   — streamed output
+//!   `~/.harness/runs/<id>/prompt.txt`   — original prompt
 //!
 //! The TUI reads these files for the background-runs panel.
 

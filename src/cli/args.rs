@@ -119,7 +119,7 @@ pub enum Commands {
     /// Check if the harness daemon is running and print its status.
     DaemonStatus,
     /// Run a prompt as a background agent (detached process).
-    /// Output is streamed to ~/.harness/runs/<id>/output.log.
+    /// Output is streamed to `~/.harness/runs/<id>/output.log`.
     RunBg {
         /// Prompt to run in the background.
         prompt: String,
@@ -190,7 +190,7 @@ pub enum Commands {
         #[arg(long)]
         comment: Option<String>,
     },
-    /// Store a project memory fact in .harness/memory/<topic>.md.
+    /// Store a project memory fact in `.harness/memory/<topic>.md`.
     /// These are automatically injected into the system prompt each session.
     Memorize {
         /// Topic name (used as filename, e.g. "architecture").
