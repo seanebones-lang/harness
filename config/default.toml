@@ -65,6 +65,14 @@ embed_model = "nomic-embed-text"
 # Override the SQLite path for the memory store.
 # db_path = "~/.harness/memory.db"
 
+[ambient]
+# Background consolidation: merge recent memory fragments via router fast + embed routes.
+# enabled = true
+# interval_secs = 300
+# min_new = 5
+# top_k = 20
+# consolidation_model = "grok-4.1-fast"
+
 [tools]
 # Filesystem sandbox for read_file / write_file / patch_file / list_dir / apply_patch.
 # strict = paths must stay under the workspace root (default).

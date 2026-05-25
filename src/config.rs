@@ -54,6 +54,9 @@ pub struct Config {
     /// Editor daemon transport (`[daemon]`).
     #[serde(default)]
     pub daemon: crate::daemon::DaemonConfig,
+    /// Background memory consolidation (`[ambient]`).
+    #[serde(default)]
+    pub ambient: AmbientConfigSection,
 }
 
 /// Tools and sandbox settings.
@@ -271,6 +274,28 @@ pub struct MemoryConfig {
     pub embed_model: Option<String>,
     /// Override path for the memory SQLite DB.
     pub db_path: Option<PathBuf>,
+}
+
+/// Background ambient memory consolidation (`[ambient]`).
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct AmbientConfigSection {
+    /// Set to false to disable the background consolidation loop (default: true when memory is on).
+    pub enabled: Option<bool>,
+    /// Seconds between consolidation passes (default: 300).
+    pub interval_secs: Option<u64>,
+    /// Minimum new memories since last pass before consolidating (default: 5).
+    pub min_new: Option<usize>,
+    /// Max recent memories to consider per pass (default: 20).
+    pub top_k: Option<usize>,
+    /// Override model id for merge summaries; defaults to router fast provider model.
+    pub consolidation_model: Option<String>,
+}
+
+impl AmbientConfigSection {
+    /// Whether ambient consolidation should run (default true).
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
 }
 
 pub fn load(path: Option<&Path>) -> Result<Config> {

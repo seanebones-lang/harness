@@ -155,8 +155,26 @@ async fn main() -> Result<()> {
     // ambient_shutdown is (sender, join_handle); send () then await handle for a clean exit.
     let ambient_shutdown: Option<(tokio::sync::watch::Sender<()>, tokio::task::JoinHandle<()>)> =
         if let (Some(mem), Some(em)) = (&memory_store, &embed_model) {
-            let mem_arc = std::sync::Arc::new(mem.clone());
-            Some(ambient::spawn(provider.clone(), mem_arc, em.clone()))
+            if cfg.ambient.is_enabled() {
+                let mem_arc = std::sync::Arc::new(mem.clone());
+                match crate::provider_build::build_ambient_providers(&cfg, cli.model.as_deref()) {
+                    Ok(providers) => {
+                        let ambient_cfg = ambient::AmbientConfig::from_section(&cfg.ambient);
+                        Some(ambient::spawn_with_config(
+                            providers,
+                            mem_arc,
+                            em.clone(),
+                            ambient_cfg,
+                        ))
+                    }
+                    Err(e) => {
+                        tracing::warn!("ambient: failed to build providers, skipping: {e}");
+                        None
+                    }
+                }
+            } else {
+                None
+            }
         } else {
             None
         };
