@@ -7,7 +7,7 @@ use harness_provider_router::ProviderRouter;
 use harness_provider_xai::{XaiConfig, XaiProvider};
 
 use crate::ambient::AmbientProviders;
-use crate::config::Config;
+use crate::config::{self, Config};
 
 fn has_anthropic_key() -> bool {
     std::env::var("ANTHROPIC_API_KEY")
@@ -40,7 +40,7 @@ fn default_model_for_keys(has_xai: bool, has_anthropic: bool, has_openai: bool) 
     }
 }
 
-fn resolved_model(cfg: &Config, cli_model: Option<&str>) -> String {
+pub fn resolved_model(cfg: &Config, cli_model: Option<&str>) -> String {
     cli_model
         .map(|s| s.to_string())
         .or_else(|| cfg.provider.model.clone())
@@ -104,11 +104,20 @@ pub fn build_ambient_providers(cfg: &Config, cli_model: Option<&str>) -> Result<
 
 /// Match `main.rs` provider construction (May 2026 smart router + xAI-only fast path).
 pub fn build_arc_provider(cfg: &Config, cli_model: Option<&str>) -> Result<ArcProvider> {
-    if uses_router_path(cfg) {
-        Ok(build_router(cfg)?.into_arc())
-    } else if uses_xai_only_path(cfg) {
-        build_xai_provider(cfg, cli_model)
+    let mut cfg = cfg.clone();
+    if let Some(m) = cli_model {
+        cfg.provider.model = Some(m.to_string());
+        let default = cfg.router.default.clone().unwrap_or_else(|| "xai".into());
+        if let Some(entry) = cfg.providers.get_mut(&default) {
+            entry.model = Some(m.to_string());
+        }
+        config::sync_provider_model(&mut cfg);
+    }
+    if uses_router_path(&cfg) {
+        Ok(build_router(&cfg)?.into_arc())
+    } else if uses_xai_only_path(&cfg) {
+        build_xai_provider(&cfg, cli_model)
     } else {
-        Ok(build_router(cfg)?.into_arc())
+        Ok(build_router(&cfg)?.into_arc())
     }
 }

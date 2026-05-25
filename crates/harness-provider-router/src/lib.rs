@@ -108,6 +108,15 @@ pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcPr
     }
 }
 
+/// Split `provider:model` route specs used in `[router].fast_model` etc.
+fn parse_route_spec(spec: &str) -> (String, Option<String>) {
+    if let Some((provider, model)) = spec.split_once(':') {
+        (provider.to_string(), Some(model.to_string()))
+    } else {
+        (spec.to_string(), None)
+    }
+}
+
 // ── ProviderRouter ────────────────────────────────────────────────────────────
 
 /// Routes requests to the appropriate provider, with fallback on error.
@@ -126,6 +135,10 @@ pub struct ProviderRouter {
     heavy_name: Option<String>,
     /// Embed provider name (for memory embeddings).
     embed_name: Option<String>,
+    /// Optional model overrides when route spec includes `provider:model`.
+    fast_model_override: Option<String>,
+    heavy_model_override: Option<String>,
+    embed_model_override: Option<String>,
     /// Ordered fallback list (names).
     fallback: Vec<String>,
 }
@@ -139,6 +152,9 @@ impl ProviderRouter {
             fast_name: None,
             heavy_name: None,
             embed_name: None,
+            fast_model_override: None,
+            heavy_model_override: None,
+            embed_model_override: None,
             fallback: vec![],
         }
     }
@@ -198,6 +214,20 @@ impl ProviderRouter {
             .as_ref()
             .and_then(|n| self.providers.get(n))
             .or_else(|| self.default_provider())
+    }
+
+    /// Model id for the fast route (from `provider:model` override when set).
+    pub fn fast_model_id(&self) -> Option<&str> {
+        self.fast_model_override
+            .as_deref()
+            .or_else(|| self.fast_provider().map(|p| p.model()))
+    }
+
+    /// Model id for the embed route.
+    pub fn embed_model_id(&self) -> Option<&str> {
+        self.embed_model_override
+            .as_deref()
+            .or_else(|| self.embed_provider().map(|p| p.model()))
     }
 
     /// Wrap this router as an `ArcProvider` (uses the default provider for all calls,
@@ -315,8 +345,9 @@ impl ProviderRouter {
 
         // Smart route overrides if not explicitly configured
         if let Some(ref f) = router_cfg.fast_model {
-            let pname = f.split(':').next().unwrap_or(f).to_string();
+            let (pname, model) = parse_route_spec(f);
             r.fast_name = Some(pname);
+            r.fast_model_override = model;
         } else {
             // fast: haiku > grok-fast > openai-mini > ollama
             let fast = if has_anthropic {
@@ -336,8 +367,9 @@ impl ProviderRouter {
         }
 
         if let Some(ref h) = router_cfg.heavy_model {
-            let pname = h.split(':').next().unwrap_or(h).to_string();
+            let (pname, model) = parse_route_spec(h);
             r.heavy_name = Some(pname);
+            r.heavy_model_override = model;
         } else {
             // heavy: opus > grok-reasoning > gpt-5.5 > ollama
             let heavy = if has_anthropic {
@@ -357,8 +389,9 @@ impl ProviderRouter {
         }
 
         if let Some(ref e) = router_cfg.embed_model {
-            let pname = e.split(':').next().unwrap_or(e).to_string();
+            let (pname, model) = parse_route_spec(e);
             r.embed_name = Some(pname);
+            r.embed_model_override = model;
         } else if has_ollama {
             r.embed_name = Some("ollama".to_string());
         } else if has_anthropic {
@@ -656,8 +689,32 @@ mod tests {
             fast_name: None,
             heavy_name: None,
             embed_name: None,
+            fast_model_override: None,
+            heavy_model_override: None,
+            embed_model_override: None,
             fallback: vec![],
         };
         assert!(router.default_provider().is_none());
+    }
+
+    #[test]
+    fn fast_model_id_from_route_spec() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "xai".into(),
+            ProviderEntry {
+                name: Some("xai".into()),
+                api_key: Some("xai-test".into()),
+                model: Some("grok-4.3".into()),
+                base_url: None,
+            },
+        );
+        let cfg = RouterConfig {
+            default: Some("xai".into()),
+            fast_model: Some("xai:grok-4.1-fast".into()),
+            ..Default::default()
+        };
+        let router = ProviderRouter::from_config(&entries, &cfg).expect("router");
+        assert_eq!(router.fast_model_id(), Some("grok-4.1-fast"));
     }
 }

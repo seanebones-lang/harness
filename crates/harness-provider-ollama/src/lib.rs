@@ -159,8 +159,9 @@ impl Provider for OllamaProvider {
         // Use OpenAI-compat endpoint if Ollama version >= 0.5.
         let url = format!("{}/api/chat", self.config.base_url);
 
+        let model = req.effective_model(&self.config.model);
         let mut body = json!({
-            "model": self.config.model,
+            "model": model,
             "messages": messages,
             "stream": true,
             "options": {

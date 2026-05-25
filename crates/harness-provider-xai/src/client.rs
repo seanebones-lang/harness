@@ -11,6 +11,15 @@ use crate::types::{ApiMessage, ApiRequest, ApiToolCall, StreamOptions};
 
 const XAI_BASE_URL: &str = "https://api.x.ai/v1";
 
+/// Canonicalize legacy Grok 4.1 Fast slug variants.
+pub fn normalize_xai_model(model: &str) -> String {
+    let m = model.to_lowercase();
+    if m.contains("grok-4-1-fast") || m.contains("grok-4.1-fast-reasoning") {
+        return "grok-4.1-fast".to_string();
+    }
+    model.to_string()
+}
+
 #[derive(Debug, Clone)]
 pub struct XaiConfig {
     pub api_key: String,
@@ -32,7 +41,8 @@ impl XaiConfig {
     }
 
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
-        self.model = model.into();
+        let m: String = model.into();
+        self.model = normalize_xai_model(&m);
         self
     }
 
@@ -246,8 +256,9 @@ impl Provider for XaiProvider {
             })
         });
 
+        let model = normalize_xai_model(req.effective_model(&self.config.model));
         let body = ApiRequest {
-            model: self.config.model.clone(),
+            model,
             messages,
             tools,
             max_tokens: self.config.max_tokens,
@@ -337,3 +348,15 @@ impl XaiProvider {
 }
 
 // tool_calls_to_message lives in harness-provider-core (shared wire format).
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::normalize_xai_model;
+
+    #[test]
+    fn grok_41_fast_aliases_canonicalize() {
+        assert_eq!(normalize_xai_model("grok-4-1-fast-reasoning"), "grok-4.1-fast");
+        assert_eq!(normalize_xai_model("grok-4.1-fast-reasoning"), "grok-4.1-fast");
+        assert_eq!(normalize_xai_model("grok-4.3"), "grok-4.3");
+    }
+}

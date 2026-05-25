@@ -280,7 +280,7 @@ impl Provider for OpenAIProvider {
         });
 
         let body = ApiRequest {
-            model: self.config.model.clone(),
+            model: req.effective_model(&self.config.model).to_string(),
             messages,
             tools,
             max_tokens: self.config.max_tokens,

@@ -22,7 +22,6 @@
 //! - Spinner during long operations
 //! - Status bar: persistent cost/tokens, transient messages above
 
-use std::time::Instant;
 
 use anyhow::Result;
 use crossterm::{
@@ -48,6 +47,7 @@ mod driver;
 mod events;
 mod input;
 mod render;
+mod resume;
 mod slash;
 mod state;
 mod theme;
@@ -83,9 +83,11 @@ pub async fn run(
     let has_confirm_gate = confirm_rx.is_some();
     // Labels + status must reflect the live provider model, not stale config text.
     let live_model = harness_provider_core::Provider::model(provider.as_ref()).to_string();
+    let provider_name = harness_provider_core::Provider::name(provider.as_ref()).to_string();
     let state = Arc::new(Mutex::new(AppState::new(&live_model)));
     {
         let mut st = state.lock();
+        st.provider_name = provider_name.clone();
         st.plan_mode = has_confirm_gate;
         st.confirm_bar_label = confirm_bar_label.map(str::to_string);
         st.computer_use_active = cfg.computer_use.is_enabled();
@@ -105,26 +107,19 @@ pub async fn run(
             .ok_or_else(|| anyhow::anyhow!("session not found: {id}"))?,
         None => Session::new(&live_model),
     };
+    session.model = live_model.clone();
 
-    if let Some(id) = resume_id {
+    {
         let mut st = state.lock();
-        st.session_id = id[..8.min(id.len())].to_string();
-        st.session_id_full = id.to_string();
+        let short = session.id[..8.min(session.id.len())].to_string();
+        st.session_id = short.clone();
+        st.session_id_full = session.id.clone();
         st.model = live_model.clone();
-        for msg in &session.messages {
-            let role = match msg.role {
-                harness_provider_core::Role::User => "user",
-                harness_provider_core::Role::Assistant => "assistant",
-                harness_provider_core::Role::Tool | harness_provider_core::Role::System => continue,
-            };
-            if let harness_provider_core::MessageContent::Text(text) = &msg.content {
-                st.chat.push(ChatMessage {
-                    role: role.to_string(),
-                    content: text.clone(),
-                    ts: Instant::now(),
-                });
-            }
+        if resume_id.is_some() {
+            resume::load_session_into_chat(&session, &mut st.chat);
         }
+        let turns = resume::count_user_turns(&session).max(1);
+        st.status_right = st.format_status_right(&short, turns);
     }
 
     let system_prompt = {

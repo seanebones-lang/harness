@@ -4,21 +4,53 @@ use crate::config::Config;
 use anyhow::Result;
 use harness_memory::SessionStore;
 
-pub fn run_status(cfg: &Config, model: &str, store: &SessionStore, _api_key: &str) -> Result<()> {
+pub fn run_status(cfg: &Config, model: &str, store: &SessionStore) -> Result<()> {
     println!("harness status\n");
 
-    let key_source = if cfg.provider.api_key.is_some() {
-        "config file"
-    } else if std::env::var("XAI_API_KEY").is_ok() {
-        "XAI_API_KEY env var"
-    } else if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-        "ANTHROPIC_API_KEY env var"
-    } else if std::env::var("OPENAI_API_KEY").is_ok() {
-        "OPENAI_API_KEY env var"
+    let has_config_key = cfg.provider.api_key.is_some();
+    let has_xai = std::env::var("XAI_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false);
+    let has_anthropic = std::env::var("ANTHROPIC_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false);
+    let has_openai = std::env::var("OPENAI_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false);
+    let has_ollama = cfg.providers.contains_key("ollama");
+    let has_provider_keys = cfg.providers.values().any(|e| {
+        e.api_key
+            .as_ref()
+            .map(|k| !k.is_empty())
+            .unwrap_or(false)
+    });
+
+    let configured = has_config_key
+        || has_xai
+        || has_anthropic
+        || has_openai
+        || has_ollama
+        || has_provider_keys
+        || harness_provider_mlx::mlx_runtime_available();
+
+    if configured {
+        let key_source = if has_config_key {
+            "config file"
+        } else if has_xai {
+            "XAI_API_KEY env var"
+        } else if has_anthropic {
+            "ANTHROPIC_API_KEY env var"
+        } else if has_openai {
+            "OPENAI_API_KEY env var"
+        } else if has_ollama {
+            "Ollama (local)"
+        } else {
+            "providers config / MLX"
+        };
+        println!("  API key : configured ({key_source})");
     } else {
-        "unknown"
-    };
-    println!("  API key : configured ({key_source})");
+        println!("  API key : not configured (run `harness setup`)");
+    }
     println!("  Model   : {model}");
 
     let cfg_path = {

@@ -58,6 +58,8 @@ pub(crate) struct AppState {
     pub(crate) cache_creation_tokens: u64,
     /// Active model name.
     pub(crate) model: String,
+    /// Provider name for cost attribution (e.g. `xai`, `anthropic`, `router`).
+    pub(crate) provider_name: String,
     /// Session start time.
     pub(crate) session_start: Instant,
     /// Plan mode: pending confirmation request.
@@ -186,6 +188,7 @@ impl AppState {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             model: model.to_string(),
+            provider_name: String::new(),
             session_start: Instant::now(),
             pending_confirm: None,
             show_welcome,
@@ -472,8 +475,8 @@ impl AppState {
             ("/compact", "compact context"),
             ("/runs", "list background runs"),
             ("/cost", "show cost estimate"),
-            ("/plan", "toggle plan mode"),
-            ("/model", "switch model (e.g. /model claude-haiku-4-5)"),
+            ("/plan", "plan mode info (use --plan at startup)"),
+            ("/model", "show live model (`harness models --set` + restart)"),
             ("/think", "set thinking budget (e.g. /think 10000)"),
             ("/remember", "store fact (e.g. /remember arch: monorepo)"),
             ("/forget", "delete memory topic"),

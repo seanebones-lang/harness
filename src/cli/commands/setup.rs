@@ -147,22 +147,25 @@ pub fn maybe_run_first_time_wizard(cfg: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Non-agent commands that must not block on the interactive setup wizard.
-pub fn command_skips_first_run_wizard(cmd: Option<&crate::cli::Commands>) -> bool {
+/// Agent-interactive commands that may prompt for API keys on first run.
+pub fn command_needs_agent_runtime(cli: &crate::cli::Cli) -> bool {
     use crate::cli::Commands::*;
-    matches!(
-        cmd,
-        Some(
-            Setup { .. }
-                | Update
-                | Project { .. }
-                | Doctor
-                | Completions { .. }
-                | Init { .. }
-                | Sessions
-                | Status
-                | Export { .. }
-                | Delete { .. }
-        )
-    )
+
+    if cli.prompt.is_some() {
+        return true;
+    }
+
+    match &cli.command {
+        None => true,
+        Some(Run { .. }) => true,
+        Some(Serve { .. }) => true,
+        Some(SelfDev { .. }) => true,
+        Some(Daemon) => true,
+        Some(Connect { .. }) => false,
+        Some(Pr { comment, .. }) => comment.is_none(),
+        Some(Voice { send, .. }) => *send,
+        Some(Swarm { action }) => matches!(action, crate::cli::SwarmAction::Run { .. }),
+        Some(RunBg { .. }) => false,
+        _ => false,
+    }
 }

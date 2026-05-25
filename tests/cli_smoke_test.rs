@@ -1,6 +1,7 @@
 //! CLI subprocess smoke tests (no API keys).
 
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 fn harness_bin() -> String {
     env!("CARGO_BIN_EXE_harness").to_string()
@@ -40,4 +41,34 @@ fn harness_help_exits_zero() {
         stdout.contains("Usage") || stdout.contains("harness"),
         "unexpected help: {stdout}"
     );
+}
+
+#[test]
+fn lightweight_commands_exit_quickly_without_stdin() {
+    let bin = harness_bin();
+    for args in [
+        &["sessions"][..],
+        &["doctor"][..],
+        &["status"][..],
+        &["--help"][..],
+    ] {
+        let start = Instant::now();
+        let out = Command::new(&bin)
+            .env("HARNESS_SKIP_LSP", "1")
+            .args(args)
+            .output()
+            .unwrap_or_else(|e| panic!("spawn harness {args:?}: {e}"));
+        assert!(
+            out.status.success(),
+            "harness {:?} failed: stderr={}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(8),
+            "harness {:?} took {:?} — expected lightweight startup",
+            args,
+            start.elapsed()
+        );
+    }
 }
