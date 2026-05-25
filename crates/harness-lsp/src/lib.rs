@@ -16,24 +16,65 @@ use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
 use harness_tools::registry::Tool;
 use serde_json::{json, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 /// A shared handle to a running LSP client.
 pub type SharedLspClient = Arc<Mutex<LspClient>>;
 
+/// Spawns LSP on first tool use (avoids blocking agent startup).
+#[derive(Clone)]
+pub struct LazyLspClient {
+    root: PathBuf,
+    inner: Arc<Mutex<Option<SharedLspClient>>>,
+}
+
+impl LazyLspClient {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self {
+            root: root.into(),
+            inner: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    async fn get(&self) -> anyhow::Result<SharedLspClient> {
+        let mut slot = self.inner.lock().await;
+        if let Some(c) = slot.clone() {
+            return Ok(c);
+        }
+        let spawned = detect_and_spawn(&self.root)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("LSP server unavailable for {}", self.root.display()))?;
+        *slot = Some(spawned.clone());
+        Ok(spawned)
+    }
+}
+
 /// Auto-detect the language server for `root`, spawn it, and return a shared client.
 /// Returns `None` if no supported language server is available for this project.
 pub async fn detect_and_spawn(root: &Path) -> Option<SharedLspClient> {
+    if std::env::var("HARNESS_SKIP_LSP")
+        .ok()
+        .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+    {
+        tracing::debug!("LSP skipped (HARNESS_SKIP_LSP)");
+        return None;
+    }
     let kind = detect_language_server(root)?;
-    match LspClient::spawn(&kind, root).await {
-        Ok(client) => {
+    let spawn_fut = LspClient::spawn(&kind, root);
+    match tokio::time::timeout(Duration::from_secs(10), spawn_fut).await {
+        Ok(Ok(client)) => {
             tracing::info!(server = kind.binary(), "LSP server started");
             Some(Arc::new(Mutex::new(client)))
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             tracing::warn!("LSP spawn failed: {e}");
+            None
+        }
+        Err(_) => {
+            tracing::warn!("LSP spawn timed out after 10s ({})", kind.binary());
             None
         }
     }
@@ -42,7 +83,7 @@ pub async fn detect_and_spawn(root: &Path) -> Option<SharedLspClient> {
 // ── find_definition ──────────────────────────────────────────────────────────
 
 pub struct FindDefinitionTool {
-    pub client: SharedLspClient,
+    pub client: LazyLspClient,
 }
 
 #[async_trait]
@@ -75,7 +116,8 @@ impl Tool for FindDefinitionTool {
         let col = args["col"]
             .as_u64()
             .ok_or_else(|| anyhow::anyhow!("missing col"))? as u32;
-        let mut c = self.client.lock().await;
+        let client = self.client.get().await?;
+        let mut c = client.lock().await;
         c.goto_definition(file, line.saturating_sub(1), col.saturating_sub(1))
             .await
     }
@@ -84,7 +126,7 @@ impl Tool for FindDefinitionTool {
 // ── find_references ──────────────────────────────────────────────────────────
 
 pub struct FindReferencesTool {
-    pub client: SharedLspClient,
+    pub client: LazyLspClient,
 }
 
 #[async_trait]
@@ -116,7 +158,8 @@ impl Tool for FindReferencesTool {
         let col = args["col"]
             .as_u64()
             .ok_or_else(|| anyhow::anyhow!("missing col"))? as u32;
-        let mut c = self.client.lock().await;
+        let client = self.client.get().await?;
+        let mut c = client.lock().await;
         c.references(file, line.saturating_sub(1), col.saturating_sub(1))
             .await
     }
@@ -125,7 +168,7 @@ impl Tool for FindReferencesTool {
 // ── rename_symbol ────────────────────────────────────────────────────────────
 
 pub struct RenameSymbolTool {
-    pub client: SharedLspClient,
+    pub client: LazyLspClient,
 }
 
 #[async_trait]
@@ -162,7 +205,8 @@ impl Tool for RenameSymbolTool {
         let new_name = args["new_name"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing new_name"))?;
-        let mut c = self.client.lock().await;
+        let client = self.client.get().await?;
+        let mut c = client.lock().await;
         c.rename(
             file,
             line.saturating_sub(1),
@@ -176,7 +220,7 @@ impl Tool for RenameSymbolTool {
 // ── diagnostics ──────────────────────────────────────────────────────────────
 
 pub struct DiagnosticsTool {
-    pub client: SharedLspClient,
+    pub client: LazyLspClient,
 }
 
 #[async_trait]
@@ -200,7 +244,8 @@ impl Tool for DiagnosticsTool {
 
     async fn execute(&self, args: Value) -> anyhow::Result<String> {
         let file = args["file"].as_str();
-        let mut c = self.client.lock().await;
+        let client = self.client.get().await?;
+        let mut c = client.lock().await;
         c.diagnostics(file).await
     }
 }

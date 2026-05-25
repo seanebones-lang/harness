@@ -213,8 +213,8 @@ pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
         " /test             run test suite",
         " /compact          compact context",
         " /cost             show cost/token breakdown",
-        " /plan             toggle plan mode",
-        " /model <name>     switch model (e.g. claude-haiku-4-5)",
+        " /plan             plan mode info (use --plan at startup)",
+        " /model            show live model (`harness models --set` + restart)",
         " /think [N]        thinking budget (off = adaptive)",
         " /remember t: f    store fact under topic t",
         " /forget t         delete memory topic",
@@ -397,13 +397,12 @@ pub(crate) async fn handle_slash_command(
 
         "/plan" => {
             let mut st = state.lock();
-            st.plan_mode = !st.plan_mode;
             if st.plan_mode {
-                st.confirm_bar_label = Some("PLAN".into());
-                st.status = "Plan mode ON (restart with --plan to fully gate).".to_string();
+                st.status = "Plan mode active (confirm gate enabled at startup).".to_string();
             } else {
-                st.confirm_bar_label = None;
-                st.status = "Plan mode OFF.".to_string();
+                st.status =
+                    "Plan mode requires `harness --plan` or `[approval] mode = \"plan\"` at startup."
+                        .to_string();
             }
         }
 

@@ -25,7 +25,7 @@ pub struct Cli {
     #[arg(long)]
     pub config: Option<PathBuf>,
 
-    /// Model override (e.g. grok-4.3, grok-4.1-fast-reasoning, claude-opus-4-7).
+    /// Model override (e.g. grok-4.3, grok-4.1-fast, claude-opus-4-7).
     #[arg(long, short)]
     pub model: Option<String>,
 

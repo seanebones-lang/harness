@@ -6,7 +6,7 @@ use crate::trust;
 use anyhow::{Context, Result};
 use harness_browser::BrowserTool;
 use harness_lsp::{
-    detect_and_spawn, DiagnosticsTool, FindDefinitionTool, FindReferencesTool, RenameSymbolTool,
+    LazyLspClient, DiagnosticsTool, FindDefinitionTool, FindReferencesTool, RenameSymbolTool,
 };
 use harness_mcp;
 use harness_provider_core::ArcProvider;
@@ -300,18 +300,17 @@ pub async fn build_tools_inner(
         || cwd.join("go.mod").exists();
 
     if has_supported_project {
-        if let Some(lsp) = detect_and_spawn(&cwd).await {
-            registry.register(FindDefinitionTool {
-                client: lsp.clone(),
-            });
-            registry.register(FindReferencesTool {
-                client: lsp.clone(),
-            });
-            registry.register(RenameSymbolTool {
-                client: lsp.clone(),
-            });
-            registry.register(DiagnosticsTool { client: lsp });
-        }
+        let lsp = LazyLspClient::new(cwd);
+        registry.register(FindDefinitionTool {
+            client: lsp.clone(),
+        });
+        registry.register(FindReferencesTool {
+            client: lsp.clone(),
+        });
+        registry.register(RenameSymbolTool {
+            client: lsp.clone(),
+        });
+        registry.register(DiagnosticsTool { client: lsp });
     }
 
     // Load MCP tools.

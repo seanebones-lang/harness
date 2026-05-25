@@ -323,7 +323,7 @@ impl Provider for AnthropicProvider {
         };
 
         let body = ApiRequest {
-            model: self.config.model.clone(),
+            model: req.effective_model(&self.config.model).to_string(),
             max_tokens: self.config.max_tokens,
             messages,
             system,

@@ -416,6 +416,15 @@ impl ChatRequest {
         self
     }
 
+    /// Model id to use for this request, preferring `self.model` when set.
+    pub fn effective_model<'a>(&'a self, provider_default: &'a str) -> &'a str {
+        if self.model.is_empty() {
+            provider_default
+        } else {
+            &self.model
+        }
+    }
+
     /// Attach conversation messages.
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
         self.messages = messages;
@@ -547,5 +556,13 @@ mod tests {
         let json = text.strip_prefix("__tool_calls__:").unwrap();
         let back: Vec<ToolCall> = serde_json::from_str(json).unwrap();
         assert_eq!(back[0].function.name, "read_file");
+    }
+
+    #[test]
+    fn effective_model_prefers_request_override() {
+        let req = ChatRequest::new("override-model");
+        assert_eq!(req.effective_model("default-model"), "override-model");
+        let empty = ChatRequest::new("");
+        assert_eq!(empty.effective_model("default-model"), "default-model");
     }
 }

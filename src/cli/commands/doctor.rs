@@ -1,9 +1,26 @@
 //! `harness doctor` — environment and dependency smoke check.
 
 use crate::config::Config;
+use crate::provider_build;
 
 pub async fn handle_doctor_command(cfg: &Config) {
     println!("harness doctor — system health check\n");
+
+    let resolved = provider_build::resolved_model(cfg, None);
+    match provider_build::build_arc_provider(cfg, None) {
+        Ok(p) => {
+            println!(
+                "  Resolved provider: {} · model {}",
+                harness_provider_core::Provider::name(p.as_ref()),
+                harness_provider_core::Provider::model(p.as_ref())
+            );
+        }
+        Err(e) => {
+            println!("  Resolved model (config): {resolved}");
+            println!("  Provider build skipped: {e}");
+        }
+    }
+    println!();
 
     let checks: &[(&str, &str, &str)] = &[
         (

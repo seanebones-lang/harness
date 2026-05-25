@@ -140,7 +140,8 @@ pub(super) async fn run_terminal_loop(
             st.tool_start = None;
             st.session_id = session.id[..8].to_string();
             st.status = "Done".to_string();
-            st.status_right = st.format_status_right(&session.id[..8], session.messages.len());
+            let turns = super::resume::count_user_turns(session).max(1);
+            st.status_right = st.format_status_right(&session.id[..8], turns);
             st.scroll_to_bottom();
         }
 

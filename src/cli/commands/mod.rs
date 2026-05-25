@@ -23,7 +23,7 @@ pub use prompt::build_prompt_with_image;
 pub use self_dev::run_self_dev;
 pub use sessions::{delete_session, export_session, list_sessions};
 pub use setup::{
-    command_skips_first_run_wizard, maybe_run_first_time_wizard, run_setup_interactive,
+    command_needs_agent_runtime, maybe_run_first_time_wizard, run_setup_interactive,
 };
 pub use status::run_status;
 pub use update::run_update;

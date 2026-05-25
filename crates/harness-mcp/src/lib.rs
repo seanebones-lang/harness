@@ -9,6 +9,7 @@ pub use tool::McpToolAdapter;
 use anyhow::Result;
 use harness_tools::ToolRegistry;
 use std::path::Path;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
@@ -59,16 +60,15 @@ pub async fn load_mcp_tools_with_progress(
             );
             continue;
         }
-        match McpClient::spawn_with_opts(
+        let spawn_fut = McpClient::spawn_with_opts(
             &name,
             &server_cfg,
             progress_tx.clone(),
             sampling_provider.clone(),
             sampling_auto_approve,
-        )
-        .await
-        {
-            Ok(client) => {
+        );
+        match tokio::time::timeout(Duration::from_secs(15), spawn_fut).await {
+            Ok(Ok(client)) => {
                 match client.list_tools().await {
                     Ok(tools) => {
                         let count = tools.len();
@@ -95,7 +95,8 @@ pub async fn load_mcp_tools_with_progress(
                     Err(e) => warn!(server = %name, "failed to list tools: {e}"),
                 }
             }
-            Err(e) => warn!(server = %name, "failed to spawn MCP server: {e}"),
+            Ok(Err(e)) => warn!(server = %name, "failed to spawn MCP server: {e}"),
+            Err(_) => warn!(server = %name, "MCP server spawn timed out after 15s"),
         }
     }
 

@@ -50,14 +50,6 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
     ];
 
     if let Some(ref model_spec) = set {
-        let local_cfg = std::path::PathBuf::from(".harness").join("config.toml");
-        let _ = std::fs::create_dir_all(".harness");
-        let text = if local_cfg.exists() {
-            std::fs::read_to_string(&local_cfg).unwrap_or_default()
-        } else {
-            String::new()
-        };
-
         let (provider_part, model_part) = if model_spec.contains(':') {
             let mut parts = model_spec.splitn(2, ':');
             (
@@ -68,25 +60,14 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             (String::new(), model_spec.clone())
         };
 
-        let mut doc: toml_edit::DocumentMut = text.parse().unwrap_or_default();
-
-        if !doc.contains_key("provider") {
-            doc["provider"] = toml_edit::Item::Table(toml_edit::Table::new());
+        let paths = config_paths_to_update();
+        for path in paths {
+            apply_model_set(&path, &provider_part, &model_part)?;
+            println!(
+                "✓ Default model set to '{model_spec}' in {}",
+                path.display()
+            );
         }
-        doc["provider"]["model"] = toml_edit::value(model_part.as_str());
-
-        if !provider_part.is_empty() {
-            if !doc.contains_key("router") {
-                doc["router"] = toml_edit::Item::Table(toml_edit::Table::new());
-            }
-            doc["router"]["default"] = toml_edit::value(provider_part.as_str());
-        }
-
-        std::fs::write(&local_cfg, doc.to_string())?;
-        println!(
-            "✓ Default model set to '{model_spec}' in {}",
-            local_cfg.display()
-        );
         return Ok(());
     }
 
@@ -124,5 +105,70 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
     println!("To switch: harness models --set <provider:model>");
     println!("Example:   harness models --set anthropic:claude-opus-4-7");
 
+    Ok(())
+}
+
+fn config_paths_to_update() -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    let local = std::path::PathBuf::from(".harness/config.toml");
+    if local.parent().is_some() {
+        let _ = std::fs::create_dir_all(".harness");
+        paths.push(local);
+    }
+    if let Some(home) = dirs::home_dir() {
+        let global = home.join(".harness/config.toml");
+        let _ = std::fs::create_dir_all(global.parent().unwrap_or(std::path::Path::new(".")));
+        if !paths.iter().any(|p| p == &global) {
+            paths.push(global);
+        }
+    }
+    paths
+}
+
+fn apply_model_set(
+    path: &std::path::Path,
+    provider_part: &str,
+    model_part: &str,
+) -> Result<()> {
+    let text = if path.exists() {
+        std::fs::read_to_string(path)?
+    } else {
+        String::new()
+    };
+
+    let mut doc: toml_edit::DocumentMut = text.parse().unwrap_or_default();
+
+    if !doc.contains_key("provider") {
+        doc["provider"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    doc["provider"]["model"] = toml_edit::value(model_part);
+
+    let router_default = if !provider_part.is_empty() {
+        if !doc.contains_key("router") {
+            doc["router"] = toml_edit::Item::Table(toml_edit::Table::new());
+        }
+        doc["router"]["default"] = toml_edit::value(provider_part);
+        provider_part.to_string()
+    } else {
+        doc.get("router")
+            .and_then(|r| r.get("default"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("xai")
+            .to_string()
+    };
+
+    if !doc.contains_key("providers") {
+        doc["providers"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    let providers = doc["providers"].as_table_mut().expect("providers table");
+    if !providers.contains_key(&router_default) {
+        providers[&router_default] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    providers[&router_default]["model"] = toml_edit::value(model_part);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, doc.to_string())?;
     Ok(())
 }

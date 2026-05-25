@@ -313,12 +313,41 @@ pub fn load(path: Option<&Path>) -> Result<Config> {
     for candidate in &candidates {
         if candidate.exists() {
             let raw = std::fs::read_to_string(candidate)?;
-            let cfg: Config = toml::from_str(&raw)?;
+            let mut cfg: Config = toml::from_str(&raw)?;
+            sync_provider_model(&mut cfg);
             return Ok(cfg);
         }
     }
 
     Ok(Config::default())
+}
+
+/// Mirror `[provider].model` into `[providers.{router.default}]` when set.
+pub fn sync_provider_model(cfg: &mut Config) {
+    let Some(model) = cfg.provider.model.clone() else {
+        return;
+    };
+    let default = cfg
+        .router
+        .default
+        .clone()
+        .or_else(|| {
+            if cfg.providers.contains_key("xai") {
+                Some("xai".into())
+            } else if cfg.providers.contains_key("anthropic") {
+                Some("anthropic".into())
+            } else if cfg.providers.contains_key("openai") {
+                Some("openai".into())
+            } else {
+                cfg.providers.keys().next().cloned()
+            }
+        });
+    if let Some(name) = default {
+        let entry = cfg.providers.entry(name).or_default();
+        if entry.model.as_deref() != Some(model.as_str()) {
+            entry.model = Some(model);
+        }
+    }
 }
 
 /// Path Harness would load first (project `.harness/` wins), or where a new file should be created.

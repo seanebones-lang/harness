@@ -12,6 +12,7 @@ use crate::cost;
 use crate::cost_db;
 use crate::events::AgentEvent;
 
+use super::resume::count_user_turns_from_chat;
 use super::{AppState, ChatMessage};
 
 pub(crate) fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent) {
@@ -80,7 +81,11 @@ pub(crate) fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent)
                 let row = cost_db::UsageRow {
                     session_id: st.session_id_full.clone(),
                     project,
-                    provider: "auto".to_string(),
+                    provider: if st.provider_name.is_empty() {
+                        "unknown".to_string()
+                    } else {
+                        st.provider_name.clone()
+                    },
                     model: st.model.clone(),
                     ts,
                     in_tok: input,
@@ -105,9 +110,8 @@ pub(crate) fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent)
                     }
                 }
             }
-            // Update right-side status (keep model/turns visible alongside cost)
-            let turns = st.chat.iter().filter(|m| m.role == "user").count();
-            st.status_right = st.format_status_right(&st.session_id, turns.max(1));
+            let turns = count_user_turns_from_chat(&st.chat).max(1);
+            st.status_right = st.format_status_right(&st.session_id, turns);
         }
         AgentEvent::CacheUsage { creation, read } => {
             st.cache_creation_tokens += creation as u64;
