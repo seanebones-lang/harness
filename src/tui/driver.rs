@@ -37,7 +37,7 @@ pub(super) async fn run_terminal_loop(
     memory_store: Option<&MemoryStore>,
     embed_model: Option<&str>,
     tools: &ToolExecutor,
-    model: &str,
+    _model: &str,
     system_prompt: &str,
     native_web_search: bool,
     native_code_execution: bool,
@@ -139,18 +139,9 @@ pub(super) async fn run_terminal_loop(
             st.busy = false;
             st.tool_start = None;
             st.session_id = session.id[..8].to_string();
-            let cost_str = st.cost_str();
-            let elapsed = st.elapsed_str();
-            let turns = session.messages.len();
             st.status = "Done".to_string();
-            st.status_right = format!(
-                "{} · {} · {} turns · {} · {}",
-                &session.id[..8],
-                model,
-                turns,
-                cost_str,
-                elapsed
-            );
+            st.status_right =
+                st.format_status_right(&session.id[..8], session.messages.len());
             st.scroll_to_bottom();
         }
 

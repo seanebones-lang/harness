@@ -256,6 +256,18 @@ impl AppState {
         }
     }
 
+    /// Right-side status: session · model · turns · tokens/cost · elapsed.
+    pub(crate) fn format_status_right(&self, session_id_short: &str, turns: usize) -> String {
+        format!(
+            "{} · {} · {} turns · {} · {}",
+            session_id_short,
+            self.model,
+            turns,
+            self.cost_str(),
+            self.elapsed_str()
+        )
+    }
+
     pub(crate) fn insert_char(&mut self, c: char) {
         self.input.insert(self.cursor_pos, c);
         self.cursor_pos += c.len_utf8();

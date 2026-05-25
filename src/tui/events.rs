@@ -105,8 +105,9 @@ pub(crate) fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent)
                     }
                 }
             }
-            // Update right-side status
-            st.status_right = st.cost_str();
+            // Update right-side status (keep model/turns visible alongside cost)
+            let turns = st.chat.iter().filter(|m| m.role == "user").count();
+            st.status_right = st.format_status_right(&st.session_id, turns.max(1));
         }
         AgentEvent::CacheUsage { creation, read } => {
             st.cache_creation_tokens += creation as u64;
