@@ -59,10 +59,16 @@ async fn main() -> Result<()> {
                 println!("\n\n[Done — {stop_reason:?}]");
                 break;
             }
-            Delta::Usage { input_tokens, output_tokens } => {
+            Delta::Usage {
+                input_tokens,
+                output_tokens,
+            } => {
                 println!("[Usage — in: {input_tokens}, out: {output_tokens}]");
             }
-            Delta::CacheUsage { cache_creation_tokens, cache_read_tokens } => {
+            Delta::CacheUsage {
+                cache_creation_tokens,
+                cache_read_tokens,
+            } => {
                 println!("[Cache — created: {cache_creation_tokens}, read: {cache_read_tokens}]");
             }
         }

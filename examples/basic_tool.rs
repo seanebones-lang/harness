@@ -19,7 +19,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
 use harness_tools::registry::Tool;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 // ── Custom tool ───────────────────────────────────────────────────────────────
 
@@ -47,7 +47,10 @@ impl Tool for TimestampTool {
     }
 
     async fn execute(&self, args: Value) -> Result<String> {
-        let format = args.get("format").and_then(Value::as_str).unwrap_or("rfc3339");
+        let format = args
+            .get("format")
+            .and_then(Value::as_str)
+            .unwrap_or("rfc3339");
         let now = std::time::SystemTime::now();
         match format {
             "unix_ms" => {
@@ -62,7 +65,9 @@ impl Tool for TimestampTool {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
-                Ok(format!("Unix epoch seconds: {secs} (use chrono for full RFC 3339)"))
+                Ok(format!(
+                    "Unix epoch seconds: {secs} (use chrono for full RFC 3339)"
+                ))
             }
         }
     }
