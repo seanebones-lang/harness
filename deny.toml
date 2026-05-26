@@ -4,7 +4,11 @@
 [advisories]
 version = 2
 yanked = "warn"
-ignore = []
+ignore = [
+    "RUSTSEC-2025-0141", # bincode unmaintained (via syntect)
+    "RUSTSEC-2024-0436", # paste unmaintained (via ratatui)
+    "RUSTSEC-2026-0002", # lru unsound (via ratatui)
+]
 
 [licenses]
 version = 2
@@ -23,6 +27,7 @@ allow = [
     "OpenSSL",
     "Unlicense",
 ]
+private = { ignore = true }
 confidence-threshold = 0.85
 
 [bans]
