@@ -157,7 +157,9 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
         }
 
         Some(Commands::Pr { number, comment }) if comment.is_some() => {
-            let body = comment.as_ref().expect("comment branch");
+            let body = comment
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("internal: pr comment missing body"))?;
             let out = GhTool
                 .execute(serde_json::json!({
                     "action": "pr_comment",

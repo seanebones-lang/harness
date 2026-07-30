@@ -161,12 +161,47 @@ In the interactive TUI (`harness` with no one-shot prompt):
 | `/swarm gc` | Reap orphans from the TUI (default stale window) |
 | `/swarm gc stale=900` | Custom stale seconds (`keep=N` also accepted) |
 | `PgUp` / `PgDn` | Scroll the swarm panel when it is open |
+| **Enter** (empty input) | Peek selected swarm task status/result into the Events panel |
 
 Legend in the panel: `*` = live worker, `!` = orphan non-terminal. A status chip `[SWARM N]` appears when tasks are active even if the panel is closed. Full shortcut list: [`SHORTCUTS.md`](SHORTCUTS.md).
 
 ### Demo script
 
 End-to-end queue + list without waiting on models: [`demo/scenario_2_swarm.sh`](../demo/scenario_2_swarm.sh).
+
+## 12. Browser tool troubleshooting
+
+**Prompt:** `Open https://example.com, take a screenshot, and summarize the title.`
+
+**Expected tools:** `browser` (`navigate`, `screenshot`, `page_info` / `get_text`).
+
+**Setup:** Chrome/Chromium with remote debugging — see [`BROWSER_CDP.md`](BROWSER_CDP.md).
+
+```bash
+# macOS example
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 --user-data-dir=/tmp/harness-chrome
+
+curl -s http://127.0.0.1:9222/json/version | head
+harness --browser "navigate to example.com and screenshot"
+```
+
+**If the tool fails**, read the full error string. Typical structured messages:
+
+| Error fragment | Meaning / fix |
+|----------------|---------------|
+| `Browser connect failed` / `Chrome DevTools HTTP unreachable` | Chrome not listening on the configured URL/port |
+| `CDP connection closed` / `WebSocket` | Tab/browser died mid-session — retry (harness resets the session) |
+| `unknown browser action` | Typo — valid: navigate, click, type, focus, get_text, get_links, evaluate, screenshot, page_info |
+| `CDP error N: …` | Page/selector issue; adjust selector or wait for load |
+
+Config:
+
+```toml
+[browser]
+enabled = true
+url = "http://127.0.0.1:9222"
+```
 
 ## See also
 
@@ -175,3 +210,4 @@ End-to-end queue + list without waiting on models: [`demo/scenario_2_swarm.sh`](
 - [`TODO.md`](../TODO.md) — severity-ranked backlog + roadmap (stable blocked on REL-01 manual smoke)
 - [`BROWSER_CDP.md`](BROWSER_CDP.md) — browser tool setup
 - [`SHORTCUTS.md`](SHORTCUTS.md) — TUI keys including F2 / `/swarm`
+- [`CTO_BACKLOG.md`](CTO_BACKLOG.md) — ordered engineering waves

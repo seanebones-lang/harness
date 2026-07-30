@@ -75,7 +75,7 @@ Goal: CI gate means something; panic surface shrinks.
 
 - [ ] **W2.1** Coverage plan: critical crates first (`harness-tools`, `agent`, `swarm`, auth paths, MCP client). Target **≥40%** workspace then **≥60%** on critical crates.
 - [x] **W2.2** Add integration tests: swarm gc dry-run (+ cancel-all); MCP/browser/daemon still open. *(partial 2026-07-30 — swarm tests done)*
-- [~] **W2.3** Unwrap burn-down pass — agent test lock poison-safe; more hot paths remain. *(partial 2026-07-30)*
+- [~] **W2.3** Unwrap burn-down — agent lock + models.toml + pr comment + more remain. *(partial 2026-07-30)*
 - [ ] **W2.4** `cargo deny` + clippy workspace clean on CI for `dev` and `main`.
 - [ ] **W2.5** Stabilize flaky checkpoint git tests if still flaking in CI (signing/config isolation).
 
@@ -84,10 +84,10 @@ Goal: TUI feels finished; swarm ops complete.
 
 - [x] **W3.1** TUI event/swarm scrollbars + event follow-scroll fix (`push_event` used stale len). *(2026-07-30)*
 - [x] **W3.2** Session display names — already via `display_name_for` in `/sessions`. *(verified 2026-07-30)*
-- [ ] **W3.3** Browser tool: structured errors + COOKBOOK troubleshooting link.
+- [x] **W3.3** Browser tool: structured connect/CDP errors + COOKBOOK §12 + session reset on disconnect. *(2026-07-30)*
 - [x] **W3.4** Swarm: `cancel --all` / `auto_gc_stale_secs` in `[swarm]` config. *(2026-07-30)*
 - [x] **W3.5** Swarm: `status|result --json` (`task_to_json`). Model/token on task still open. *(partial 2026-07-30)*
-- [ ] **W3.6** Swarm TUI: select row → full result; aggregate multi-count runs.
+- [x] **W3.6** Swarm TUI: Enter on selected row peeks result into Events. *(2026-07-30)*
 - [ ] **W3.7** Notification audit (voice done, swarm complete, CI) across OSes.
 
 ### WAVE 4 — Interop completeness (1–2 weeks)
