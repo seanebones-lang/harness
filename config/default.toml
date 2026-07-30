@@ -155,12 +155,33 @@ sandbox = "strict"
 # or paste into a sidecar — unknown top-level tables break `harness` today.
 
 [router]
-# Smart defaults when unset: anthropic → xai → openai → ollama (see CLAUDE.md).
+# Smart defaults when unset: anthropic → xai → openai → mistral → ollama (see CLAUDE.md).
 # default = "anthropic"
 # fast_model = "anthropic:claude-haiku-4-5"
 # heavy_model = "anthropic:claude-opus-4-7"
 # embed_model = "ollama:nomic-embed-text"
-# fallback = ["anthropic", "xai", "openai", "ollama"]
+# fallback = ["anthropic", "xai", "openai", "mistral", "ollama"]
+
+# Multi-provider table (keys = provider kind). Also auto-detected from env keys.
+# [providers.openai]
+# api_key = "sk-..."   # or OPENAI_API_KEY
+# model = "gpt-5.5"
+# # base_url = "https://api.openai.com/v1"   # optional override
+#
+# [providers.mistral]   # OpenAI-compatible → https://api.mistral.ai/v1
+# api_key = "..."       # or MISTRAL_API_KEY
+# model = "mistral-large-latest"
+#
+# [providers.openai-compatible]   # any OpenAI-format /v1 endpoint (requires base_url)
+# api_key = "..."
+# model = "my-model"
+# base_url = "http://127.0.0.1:8000/v1"
+#
+# # Or any custom name with base_url → treated as OpenAI-compatible under that name:
+# [providers.my-proxy]
+# api_key = "..."
+# model = "local"
+# base_url = "http://127.0.0.1:11434/v1"
 
 # [observability]
 # enabled = true
@@ -174,7 +195,7 @@ sandbox = "strict"
 
 # [collab]
 # enabled = false
-# max_users = 10
+# max_users = 10   # enforced on WS join; see docs/COLLAB.md
 
 # [bridges.obsidian]
 # enabled = false

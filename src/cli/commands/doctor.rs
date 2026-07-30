@@ -30,6 +30,7 @@ pub async fn handle_doctor_command(cfg: &Config) {
         ),
         ("XAI_API_KEY", "xAI Grok 4.x", "grok-4.3"),
         ("OPENAI_API_KEY", "OpenAI GPT-5.x", "gpt-5.5"),
+        ("MISTRAL_API_KEY", "Mistral (OpenAI-compatible)", "mistral-large-latest"),
     ];
     println!("  API Keys:");
     let mut any_key = false;
@@ -212,6 +213,17 @@ pub async fn handle_doctor_command(cfg: &Config) {
         ),
     }
     println!("  CLI: harness trace [id] · TUI: /trace last|list");
+
+    println!("\n  Collab:");
+    let c = &cfg.collab;
+    if c.enabled {
+        println!(
+            "  ✓ enabled — max_users={} (WS /ws/session/:id — docs/COLLAB.md)",
+            c.max_users.max(1)
+        );
+    } else {
+        println!("  ○ disabled (set [collab] enabled = true — docs/COLLAB.md)");
+    }
 
     let sock = dirs::home_dir()
         .unwrap_or_default()

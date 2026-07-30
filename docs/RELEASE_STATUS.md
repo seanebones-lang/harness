@@ -4,6 +4,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-07-30 — Collab max_users, checkpoint CI isolation, Mistral/OpenAI-compat**
+
+| Item | Result |
+|------|--------|
+| Branch | `dev` → `origin/dev` |
+| `cargo test --bin harness` collab/checkpoint | **Pass** |
+| `cargo test -p harness-provider-router` | **Pass** (mistral + openai-compatible) |
+| Features | collab rejoin seat fix; docs/COLLAB.md; Mistral + openai-compatible providers |
+| CTO | W2.5 [x], W4.4 [x], W5.1 [x] |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on REL-01 + prebuilts.
+
+---
+
+
 **2026-07-30 — Quality floor + doctor/OTLP (llvm-cov 40%, cargo-deny green)**
 
 | Item | Result |

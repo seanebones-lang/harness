@@ -232,4 +232,6 @@ url = "http://127.0.0.1:9222"
 - [`SHORTCUTS.md`](SHORTCUTS.md) — TUI keys including F2 / `/swarm`; MCP CLI
 - [`NOTIFICATIONS_AUDIT.md`](NOTIFICATIONS_AUDIT.md) — desktop notification kinds + call sites
 - [`OTLP_SMOKE.md`](OTLP_SMOKE.md) — local traces + experimental OTLP
+- [`COLLAB.md`](COLLAB.md) — multi-user WebSocket sessions + max_users
+- [`PROVIDERS_OPENAI_COMPAT.md`](PROVIDERS_OPENAI_COMPAT.md) — Mistral + OpenAI-compatible endpoints
 - [`CTO_BACKLOG.md`](CTO_BACKLOG.md) — ordered engineering waves

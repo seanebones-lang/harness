@@ -23,6 +23,8 @@ pub struct OpenAIConfig {
     pub max_tokens: u32,
     pub temperature: f32,
     pub base_url: String,
+    /// Reported by `Provider::name` (e.g. `openai`, `mistral`, custom compatible id).
+    pub provider_name: String,
 }
 
 impl OpenAIConfig {
@@ -33,6 +35,7 @@ impl OpenAIConfig {
             max_tokens: 8192,
             temperature: 0.7,
             base_url: OPENAI_BASE_URL.into(),
+            provider_name: "openai".into(),
         }
     }
 
@@ -44,6 +47,29 @@ impl OpenAIConfig {
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = url.into();
         self
+    }
+
+    pub fn with_provider_name(mut self, name: impl Into<String>) -> Self {
+        self.provider_name = name.into();
+        self
+    }
+
+    pub fn with_max_tokens(mut self, n: u32) -> Self {
+        self.max_tokens = n;
+        self
+    }
+
+    pub fn with_temperature(mut self, t: f32) -> Self {
+        self.temperature = t;
+        self
+    }
+
+    /// Mistral AI OpenAI-compatible API defaults.
+    pub fn mistral(api_key: impl Into<String>) -> Self {
+        Self::new(api_key)
+            .with_provider_name("mistral")
+            .with_base_url("https://api.mistral.ai/v1")
+            .with_model("mistral-large-latest")
     }
 }
 
@@ -145,7 +171,7 @@ fn build_tool_schemas(tools: &[harness_provider_core::ToolDefinition]) -> Vec<Va
 #[async_trait]
 impl Provider for OpenAIProvider {
     fn name(&self) -> &str {
-        "openai"
+        &self.config.provider_name
     }
 
     fn model(&self) -> &str {
