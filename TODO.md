@@ -39,6 +39,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 | CONTRIBUTING pathways + community section | [x] |
 | GitHub `good first issue` labels on backlog issues | [x] label exists; apply per issue when opened |
 | Demo GIF/video (15–30s TUI) | [ ] optional — link from README when ready |
+| Swarm CLI + TUI panel + GC (`dev` 2026-07-30) | [x] see [`docs/TEAM_UPDATE_2026-07-30.md`](docs/TEAM_UPDATE_2026-07-30.md) |
 
 ### Tier 3 — Next 1–2 weeks (growth)
 
@@ -49,6 +50,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 | New providers (Mistral, Gemini, Bedrock) | [ ] |
 | VS Code + Tauri packaging (icons, Windows/Linux) | [ ] |
 | Community channel (Discord / Matrix) | [ ] optional |
+| Roadmap H0–H3 execution | [ ] [`docs/ROADMAP.md`](docs/ROADMAP.md) |
 
 ---
 

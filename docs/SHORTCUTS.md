@@ -9,7 +9,8 @@
 | `Enter` | Send message |
 | `Shift+Enter` / `Alt+Enter` | Insert newline in input |
 | `↑` / `↓` | Scroll chat history |
-| `PgUp` / `PgDn` | Scroll event log |
+| `PgUp` / `PgDn` | Scroll event log (or swarm panel when open) |
+| `F2` | Toggle right panel: Events ↔ Swarm registry |
 | `Ctrl+L` | Scroll chat to bottom (latest) |
 | `Esc` | Cancel pending confirm / close overlay |
 
@@ -51,7 +52,7 @@
 |-----|--------|
 | `Ctrl+]` | Widen right panel |
 | `Ctrl+[` | Narrow right panel |
-| `Ctrl+T` | (reserved) Swarm panel toggle |
+| `F2` | Toggle Events ↔ Swarm panel (also `/swarm`) |
 
 ## Plan Mode
 
@@ -84,6 +85,9 @@ Type `/` to trigger autocomplete. All commands:
 | `/obsidian save` | Save last response to Obsidian vault |
 | `/schema <name> <json>` | Set strict JSON output schema |
 | `/schema clear` | Clear output schema |
+| `/swarm` | Toggle swarm panel |
+| `/swarm refresh` | Reload swarm registry into panel |
+| `/swarm gc […]` | Reap orphan swarm tasks from TUI |
 | `/help` / `/?` | Show help |
 
 ## @file Mentions
