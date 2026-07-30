@@ -80,6 +80,14 @@ pub struct ProgressEvent {
     pub total: Option<f64>,
 }
 
+/// Inbound MCP `sampling/createMessage` needs user approval (TUI or auto).
+#[derive(Debug)]
+pub struct SamplingApprovalRequest {
+    pub server: String,
+    pub preview: String,
+    pub reply: oneshot::Sender<bool>,
+}
+
 /// Server capabilities as reported during initialize.
 #[derive(Debug, Clone, Default)]
 pub struct ServerCapabilities {
@@ -109,6 +117,11 @@ struct IoShared {
 struct ReaderContext {
     server_name: String,
     progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
+    sampling_provider: Arc<Mutex<Option<ArcProvider>>>,
+    /// When true, sampling is approved without prompting.
+    sampling_auto_approve: bool,
+    /// Optional channel to ask the TUI (or other UI) for approval.
+    sampling_tx: Option<mpsc::UnboundedSender<SamplingApprovalRequest>>,
 }
 
 /// A handle to a running MCP server process.
@@ -152,13 +165,26 @@ async fn mcp_reader_loop<R: AsyncBufRead + Send + Unpin>(
             Err(_) => continue,
         };
 
-        if msg.id.is_none() {
+        // Server → client request: has method + id, no result/error.
+        if msg.method.is_some() && msg.result.is_none() && msg.error.is_none() {
+            if let Some(id) = msg.id.clone() {
+                let method = msg.method.clone().unwrap_or_default();
+                let params = msg.params.unwrap_or(Value::Null);
+                let ctx = ctx.clone();
+                let io = io.clone();
+                tokio::spawn(async move {
+                    handle_inbound_server_request(ctx, io, id, method, params).await;
+                });
+                continue;
+            }
+            // Notification (method, no id)
             if let Some(ref method_name) = msg.method {
                 dispatch_notification(&ctx, method_name, msg.params.unwrap_or(Value::Null));
             }
             continue;
         }
 
+        // Response to our outbound request
         let msg_id = match &msg.id {
             Some(Value::Number(n)) => n.as_u64(),
             _ => None,
@@ -224,10 +250,153 @@ fn dispatch_notification(ctx: &ReaderContext, method: &str, params: Value) {
     }
 }
 
+async fn write_rpc_result(io: &IoShared, id: Value, result: Value) {
+    let payload = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+    if let Ok(text) = serde_json::to_string(&payload) {
+        let mut stdin = io.stdin.lock().await;
+        let _ = stdin.write_all(text.as_bytes()).await;
+        let _ = stdin.write_all(b"\n").await;
+        let _ = stdin.flush().await;
+    }
+}
+
+async fn write_rpc_error(io: &IoShared, id: Value, message: &str) {
+    let payload = json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": { "code": -32000, "message": message }
+    });
+    if let Ok(text) = serde_json::to_string(&payload) {
+        let mut stdin = io.stdin.lock().await;
+        let _ = stdin.write_all(text.as_bytes()).await;
+        let _ = stdin.write_all(b"\n").await;
+        let _ = stdin.flush().await;
+    }
+}
+
+async fn request_sampling_approval(ctx: &ReaderContext, preview: &str) -> bool {
+    if ctx.sampling_auto_approve {
+        return true;
+    }
+    let Some(tx) = &ctx.sampling_tx else {
+        return false; // default deny without UI / auto
+    };
+    let (reply_tx, reply_rx) = oneshot::channel();
+    let req = SamplingApprovalRequest {
+        server: ctx.server_name.clone(),
+        preview: preview.to_string(),
+        reply: reply_tx,
+    };
+    if tx.send(req).is_err() {
+        return false;
+    }
+    reply_rx.await.unwrap_or(false)
+}
+
+async fn handle_inbound_server_request(
+    ctx: Arc<ReaderContext>,
+    io: Arc<IoShared>,
+    id: Value,
+    method: String,
+    params: Value,
+) {
+    match method.as_str() {
+        "sampling/createMessage" => {
+            let messages = params["messages"].as_array().cloned().unwrap_or_default();
+            let prompt_preview: Vec<String> = messages
+                .iter()
+                .map(|m| {
+                    let role = m["role"].as_str().unwrap_or("?");
+                    let text = m["content"]["text"].as_str().unwrap_or("(non-text)");
+                    format!("[{role}]: {text}")
+                })
+                .collect();
+            let preview = prompt_preview.join("\n");
+            if !request_sampling_approval(&ctx, &preview).await {
+                write_rpc_result(
+                    &io,
+                    id,
+                    json!({
+                        "role": "assistant",
+                        "content": { "type": "text", "text": "[sampling request denied by user]" },
+                        "stopReason": "endTurn"
+                    }),
+                )
+                .await;
+                return;
+            }
+            let provider = ctx.sampling_provider.lock().await.clone();
+            let Some(provider) = provider else {
+                write_rpc_error(
+                    &io,
+                    id,
+                    "MCP sampling requires an attached LLM provider",
+                )
+                .await;
+                return;
+            };
+            let mut core_messages = Vec::with_capacity(messages.len());
+            for m in &messages {
+                match mcp_sampling_message_to_core(m) {
+                    Ok(msg) => core_messages.push(msg),
+                    Err(e) => {
+                        write_rpc_error(&io, id, &format!("invalid sampling message: {e}")).await;
+                        return;
+                    }
+                }
+            }
+            let req = ChatRequest::new(provider.model().to_string()).with_messages(core_messages);
+            let mut stream = match provider.stream_chat(req).await {
+                Ok(s) => s,
+                Err(e) => {
+                    write_rpc_error(&io, id, &format!("sampling LLM call failed: {e}")).await;
+                    return;
+                }
+            };
+            let mut text = String::new();
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(Delta::Text(t)) => text.push_str(&t),
+                    Ok(Delta::Done { .. }) => break,
+                    Ok(_) => {}
+                    Err(e) => {
+                        write_rpc_error(&io, id, &format!("sampling stream error: {e}")).await;
+                        return;
+                    }
+                }
+            }
+            write_rpc_result(
+                &io,
+                id,
+                json!({
+                    "role": "assistant",
+                    "content": { "type": "text", "text": text },
+                    "stopReason": "endTurn",
+                    "model": provider.model(),
+                }),
+            )
+            .await;
+        }
+        other => {
+            debug!(
+                server = %ctx.server_name,
+                method = other,
+                "unhandled MCP server request"
+            );
+            write_rpc_error(
+                &io,
+                id,
+                &format!("method not supported by harness client: {other}"),
+            )
+            .await;
+        }
+    }
+}
+
 impl McpClient {
     /// Spawn an MCP server, run the initialization handshake, and return the client.
     pub async fn spawn(name: &str, cfg: &McpServerConfig) -> Result<Self> {
-        Self::spawn_with_opts(name, cfg, None, None).await
+        Self::spawn_with_opts(name, cfg, None, None, false, None).await
     }
 
     /// Spawn with an optional progress event sender and optional LLM for MCP sampling.
@@ -236,6 +405,8 @@ impl McpClient {
         cfg: &McpServerConfig,
         progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
         sampling_provider: Option<ArcProvider>,
+        sampling_auto_approve: bool,
+        sampling_tx: Option<mpsc::UnboundedSender<SamplingApprovalRequest>>,
     ) -> Result<Self> {
         let mut cmd = tokio::process::Command::new(&cfg.command);
         cmd.args(&cfg.args)
@@ -258,6 +429,8 @@ impl McpClient {
             name.to_string(),
             progress_tx,
             sampling_provider,
+            sampling_auto_approve,
+            sampling_tx,
         )
         .await
     }
@@ -275,6 +448,8 @@ impl McpClient {
         name: String,
         progress_tx: Option<mpsc::UnboundedSender<ProgressEvent>>,
         sampling_provider: Option<ArcProvider>,
+        sampling_auto_approve: bool,
+        sampling_tx: Option<mpsc::UnboundedSender<SamplingApprovalRequest>>,
     ) -> Result<Self>
     where
         R: AsyncRead + Send + Unpin + 'static,
@@ -288,9 +463,13 @@ impl McpClient {
             pending: Mutex::new(HashMap::new()),
             _keepalive: Box::new(keepalive),
         });
+        let sampling_provider = Arc::new(Mutex::new(sampling_provider));
         let ctx = Arc::new(ReaderContext {
             server_name: name.clone(),
             progress_tx,
+            sampling_provider: sampling_provider.clone(),
+            sampling_auto_approve,
+            sampling_tx,
         });
         let io_reader = io.clone();
         let ctx_reader = ctx.clone();
@@ -302,7 +481,7 @@ impl McpClient {
             io,
             server_name: name,
             capabilities: Arc::new(Mutex::new(ServerCapabilities::default())),
-            sampling_provider: Arc::new(Mutex::new(sampling_provider)),
+            sampling_provider,
         };
 
         client.initialize().await?;
@@ -710,7 +889,7 @@ mod tests {
             .await;
         });
 
-        let client = McpClient::from_streams(client_r, client_w, (), "test".into(), None, None)
+        let client = McpClient::from_streams(client_r, client_w, (), "test".into(), None, None, false, None)
             .await
             .expect("client construct");
         server.await.expect("server task");
@@ -765,7 +944,7 @@ mod tests {
         });
 
         let client =
-            McpClient::from_streams(client_r, client_w, (), "concurrent-test".into(), None, None)
+            McpClient::from_streams(client_r, client_w, (), "concurrent-test".into(), None, None, false, None)
                 .await
                 .expect("client construct");
 
@@ -821,7 +1000,7 @@ mod tests {
             server_w.flush().await.unwrap();
         });
 
-        let client = McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None)
+        let client = McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None, false, None)
             .await
             .unwrap();
 
@@ -852,7 +1031,7 @@ mod tests {
         });
 
         let client =
-            McpClient::from_streams(client_r, client_w, (), "close-test".into(), None, None)
+            McpClient::from_streams(client_r, client_w, (), "close-test".into(), None, None, false, None)
                 .await
                 .unwrap();
 
@@ -923,6 +1102,8 @@ mod tests {
             "progress-test".into(),
             Some(tx),
             None,
+            false,
+            None,
         )
         .await
         .unwrap();
@@ -962,6 +1143,8 @@ mod tests {
             "sample-test".into(),
             None,
             None, // no sampling provider attached
+            false,
+            None,
         )
         .await
         .unwrap();
@@ -995,7 +1178,7 @@ mod tests {
         });
 
         let client =
-            McpClient::from_streams(client_r, client_w, (), "deny-test".into(), None, None)
+            McpClient::from_streams(client_r, client_w, (), "deny-test".into(), None, None, false, None)
                 .await
                 .unwrap();
         server.await.unwrap();
@@ -1051,7 +1234,7 @@ mod tests {
         });
 
         let client =
-            McpClient::from_streams(client_r, client_w, (), "tools-test".into(), None, None)
+            McpClient::from_streams(client_r, client_w, (), "tools-test".into(), None, None, false, None)
                 .await
                 .unwrap();
 

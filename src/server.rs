@@ -459,6 +459,7 @@ async fn persist_setup(
         mem,
         state.embed_model.clone(),
         None,
+        None, // server: no interactive MCP sampling UI
     )
     .await
     .map_err(|e| bad_persist(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

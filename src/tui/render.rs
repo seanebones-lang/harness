@@ -18,7 +18,7 @@ use crate::highlight::Highlighter;
 
 use super::state::RightPanelMode;
 use super::theme::Theme;
-use super::{AppState, PendingConfirm};
+use super::{AppState, PendingConfirm, PendingSampling};
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
     if width == 0 {
@@ -111,6 +111,9 @@ pub(crate) fn draw_all(
 
     if let Some(pc) = &state.pending_confirm {
         draw_confirm_overlay(f, pc, theme);
+    }
+    if let Some(ps) = &state.pending_sampling {
+        draw_sampling_overlay(f, ps, theme);
     }
 }
 
@@ -824,6 +827,73 @@ fn draw_confirm_overlay(f: &mut ratatui::Frame, pc: &PendingConfirm, _theme: &Th
         .block(block)
         .wrap(Wrap { trim: false });
     f.render_widget(para, popup_area);
+}
+
+fn draw_sampling_overlay(f: &mut ratatui::Frame, ps: &PendingSampling, _theme: &Theme) {
+    let area = f.area();
+    let width = (area.width as f32 * 0.70) as u16;
+    let height = (area.height as f32 * 0.50) as u16;
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let popup_area = Rect::new(x, y, width, height);
+
+    f.render_widget(Clear, popup_area);
+
+    let mut content: Vec<Line> = vec![
+        Line::from(Span::styled(
+            format!(" MCP sampling from `{}` ", ps.server),
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            " Server wants the agent LLM to complete a message:",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::raw("")),
+    ];
+    for l in ps.preview.lines().take(14) {
+        content.push(Line::from(Span::styled(
+            format!(" {l}"),
+            Style::default().fg(Color::White),
+        )));
+    }
+    if ps.preview.lines().count() > 14 {
+        content.push(Line::from(Span::styled(
+            " …",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    content.push(Line::from(Span::raw("")));
+    content.push(Line::from(vec![
+        Span::styled(
+            " y",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" allow   "),
+        Span::styled(
+            "n/Esc",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" deny"),
+    ]));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Magenta))
+        .title(Span::styled(
+            " MCP sampling approval ",
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ));
+    f.render_widget(
+        Paragraph::new(content).block(block).wrap(Wrap { trim: false }),
+        popup_area,
+    );
 }
 
 #[cfg(test)]

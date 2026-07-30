@@ -173,6 +173,13 @@ async fn main() -> Result<()> {
     } else {
         (None, None)
     };
+    // MCP sampling: TUI can approve; auto mode auto-approves; otherwise default deny.
+    let (sampling_tx, sampling_rx) = if interactive_tui {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
     let confirm_bar_label = if confirm_active && interactive_tui {
         Some(if cli.plan || approval_mode == "plan" {
             "PLAN"
@@ -193,6 +200,7 @@ async fn main() -> Result<()> {
         memory_store.clone(),
         embed_model.clone(),
         confirm_gate,
+        sampling_tx,
     )
     .await?;
 
@@ -527,6 +535,7 @@ async fn main() -> Result<()> {
                     ambient_tx,
                     confirm_rx,
                     confirm_bar_label,
+                    sampling_rx,
                 )
                 .await;
                 graceful_ambient_shutdown(ambient_shutdown).await;
