@@ -226,7 +226,7 @@ pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
         " /focus [N]        silence notifications N minutes",
         " /ts               toggle timestamps",
         " /notify test      test desktop notification",
-        " /trace [last]     show last turn trace",
+        " /trace [last|list] show last turn / list traces",
         " /schema           set structured output JSON schema",
         " /obsidian save    save response to Obsidian",
         " /swarm [gc|refresh]  toggle swarm panel (F2)",
@@ -649,15 +649,256 @@ pub(crate) async fn handle_slash_command(
         }
 
         "/obsidian" => {
-            state
-                .lock()
-                .push_event("[obsidian] bridge coming in Phase E12.");
+            let rest = cmd.trim_start_matches("/obsidian").trim();
+            match rest {
+                "" | "help" | "?" => {
+                    let mut st = state.lock();
+                    st.push_event("[obsidian] usage:");
+                    st.push_event("  /obsidian save   save last assistant reply to Obsidian");
+                    st.push_event("  /obsidian help   this message");
+                    st.push_event(
+                        "Enable in config (project .harness/config.toml or ~/.harness/config.toml):",
+                    );
+                    st.push_event("  [bridges.obsidian]");
+                    st.push_event("  enabled = true");
+                    st.push_event("  vault = \"MyVault\"    # optional vault name");
+                    st.push_event("  folder = \"Harness\"   # optional folder (default Harness)");
+                    st.push_event(
+                        "See config/default.toml [bridges.obsidian] and `harness bridge obsidian`.",
+                    );
+                    st.status = "Obsidian help in event log →".into();
+                }
+                "save" => {
+                    let (content, obs_cfg) = {
+                        let st = state.lock();
+                        let content = st
+                            .chat
+                            .iter()
+                            .rev()
+                            .find(|m| m.role == "assistant")
+                            .map(|m| m.content.clone());
+                        (content, st.obsidian.clone())
+                    };
+                    let Some(content) = content else {
+                        state
+                            .lock()
+                            .push_event("[obsidian] no assistant response to save yet.");
+                        return;
+                    };
+                    if !obs_cfg.enabled {
+                        let mut st = state.lock();
+                        st.push_event(
+                            "[obsidian] bridge not enabled. Add to config (see config/default.toml):",
+                        );
+                        st.push_event("  [bridges.obsidian]");
+                        st.push_event("  enabled = true");
+                        st.push_event("  vault = \"MyVault\"    # optional");
+                        st.push_event("  folder = \"Harness\"   # optional");
+                        st.push_event(
+                            "Then restart harness (or `harness bridge obsidian <title> <content>`).",
+                        );
+                        st.status = "Obsidian disabled — see event log".into();
+                        return;
+                    }
+                    // Prefer a short title from the first non-empty line; fallback to timestamp.
+                    let title = content
+                        .lines()
+                        .map(str::trim)
+                        .find(|l| !l.is_empty())
+                        .map(|l| {
+                            let t = l.trim_start_matches('#').trim();
+                            let t = if t.chars().count() > 60 {
+                                format!("{}…", t.chars().take(57).collect::<String>())
+                            } else {
+                                t.to_string()
+                            };
+                            // Obsidian path-safe-ish title
+                            t.replace(['/', '\\', ':'], "-")
+                        })
+                        .filter(|t| !t.is_empty())
+                        .unwrap_or_else(|| {
+                            chrono::Local::now()
+                                .format("Harness %Y-%m-%d %H%M")
+                                .to_string()
+                        });
+                    let state2 = state.clone();
+                    let title_log = title.clone();
+                    tokio::spawn(async move {
+                        match crate::bridges::obsidian_write(&obs_cfg, &title, &content).await {
+                            Ok(()) => {
+                                let mut st = state2.lock();
+                                st.push_event(format!(
+                                    "[obsidian] note queued: {title_log}"
+                                ));
+                                st.status = format!("Obsidian: {title_log}");
+                            }
+                            Err(e) => {
+                                let mut st = state2.lock();
+                                st.push_event(format!("[obsidian] failed: {e}"));
+                                st.status = "Obsidian save failed".into();
+                            }
+                        }
+                    });
+                }
+                other => {
+                    state.lock().push_event(format!(
+                        "[obsidian] unknown subcommand `{other}` — try /obsidian save or /obsidian help"
+                    ));
+                }
+            }
         }
 
         "/trace" => {
-            state
-                .lock()
-                .push_event("[trace] observability coming in Phase E7.");
+            let rest = cmd.trim_start_matches("/trace").trim();
+            match rest {
+                "" | "last" => {
+                    match crate::observability::load_last_trace() {
+                        Ok(spans) if spans.is_empty() => {
+                            let mut st = state.lock();
+                            st.push_event(
+                                "[trace] no traces found under ~/.harness/traces/.",
+                            );
+                            st.push_event(
+                                "[trace] enable local traces in config:",
+                            );
+                            st.push_event("  [observability]");
+                            st.push_event("  enabled = true");
+                            st.push_event("  local_traces = true");
+                            st.push_event(
+                                "See config/default.toml [observability] or `harness trace`.",
+                            );
+                            st.status = "No traces".into();
+                        }
+                        Ok(spans) => {
+                            let mut st = state.lock();
+                            let tid = &spans[0].trace_id;
+                            st.push_event(format!(
+                                "[trace] {tid} — {} span{}",
+                                spans.len(),
+                                if spans.len() == 1 { "" } else { "s" }
+                            ));
+                            for s in spans.iter().take(40) {
+                                let status = match &s.status {
+                                    crate::observability::SpanStatus::Ok => "ok".to_string(),
+                                    crate::observability::SpanStatus::Error(e) => {
+                                        format!("err:{e}")
+                                    }
+                                };
+                                st.push_event(format!(
+                                    "  {:<36} {:>6}ms  {status}",
+                                    s.name, s.duration_ms
+                                ));
+                            }
+                            if spans.len() > 40 {
+                                st.push_event(format!(
+                                    "  … {} more (use `harness trace {tid}`)",
+                                    spans.len() - 40
+                                ));
+                            }
+                            st.status = format!("Trace {tid}");
+                        }
+                        Err(e) => {
+                            state
+                                .lock()
+                                .push_event(format!("[trace] failed to load: {e}"));
+                        }
+                    }
+                }
+                "list" => {
+                    match crate::observability::list_traces(15) {
+                        Ok(files) if files.is_empty() => {
+                            let mut st = state.lock();
+                            st.push_event(
+                                "[trace] no traces found under ~/.harness/traces/.",
+                            );
+                            st.push_event(
+                                "[trace] enable [observability] local_traces = true (config/default.toml).",
+                            );
+                            st.status = "No traces".into();
+                        }
+                        Ok(files) => {
+                            let mut st = state.lock();
+                            st.push_event(format!(
+                                "[trace] {} recent file{} in ~/.harness/traces/:",
+                                files.len(),
+                                if files.len() == 1 { "" } else { "s" }
+                            ));
+                            for p in &files {
+                                let name = std::path::Path::new(p)
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or(p);
+                                st.push_event(format!("  {name}"));
+                            }
+                            st.push_event(
+                                "[trace] /trace last — detail last; CLI: harness trace <id>",
+                            );
+                            st.status = "Trace list in event log →".into();
+                        }
+                        Err(e) => {
+                            state
+                                .lock()
+                                .push_event(format!("[trace] list failed: {e}"));
+                        }
+                    }
+                }
+                "help" | "?" => {
+                    let mut st = state.lock();
+                    st.push_event("[trace] usage:");
+                    st.push_event("  /trace        show last turn trace (same as /trace last)");
+                    st.push_event("  /trace last   show last turn trace");
+                    st.push_event("  /trace list   list recent trace ids");
+                    st.push_event("CLI: harness trace | harness trace <id>");
+                    st.push_event("Config: [observability] in config/default.toml");
+                    st.status = "Trace help in event log →".into();
+                }
+                other => {
+                    // Treat bare id-like args as "show this trace" via load of that file.
+                    let dir = dirs::home_dir()
+                        .unwrap_or_default()
+                        .join(".harness/traces");
+                    let file = dir.join(format!("{other}.jsonl"));
+                    if file.exists() {
+                        match std::fs::read_to_string(&file) {
+                            Ok(text) => {
+                                let spans: Vec<crate::observability::Span> = text
+                                    .lines()
+                                    .filter(|l| !l.trim().is_empty())
+                                    .filter_map(|l| serde_json::from_str(l).ok())
+                                    .collect();
+                                let mut st = state.lock();
+                                if spans.is_empty() {
+                                    st.push_event(format!(
+                                        "[trace] {other}: file empty or unreadable spans"
+                                    ));
+                                } else {
+                                    st.push_event(format!(
+                                        "[trace] {other} — {} span{}",
+                                        spans.len(),
+                                        if spans.len() == 1 { "" } else { "s" }
+                                    ));
+                                    for s in spans.iter().take(40) {
+                                        st.push_event(format!(
+                                            "  {:<36} {:>6}ms",
+                                            s.name, s.duration_ms
+                                        ));
+                                    }
+                                }
+                                st.status = format!("Trace {other}");
+                            }
+                            Err(e) => {
+                                state
+                                    .lock()
+                                    .push_event(format!("[trace] read failed: {e}"));
+                            }
+                        }
+                    } else {
+                        state.lock().push_event(format!(
+                            "[trace] unknown `{other}` — try /trace, /trace last, /trace list, or /trace help"
+                        ));
+                    }
+                }
+            }
         }
 
         "/schema" => {

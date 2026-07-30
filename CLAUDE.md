@@ -14,7 +14,8 @@ cargo test --all                   # workspace integration + crates (root + test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt --all
 
-# PR coverage gate (see .github/workflows/coverage.yml): ≥ 60% line coverage
+# PR coverage gate TARGET (see .github/workflows/coverage.yml): ≥ 60% line coverage
+# Last measured: ~23% lines — source of truth: COVERAGE.md (not the gate value)
 
 # Optional: [.githooks/commit-msg](.githooks/commit-msg) drops `Co-authored-by`, `Co-developed-by`,
 # and `Made-with:` trailer lines locally (avoid polluting attribution when IDE aids compose messages).

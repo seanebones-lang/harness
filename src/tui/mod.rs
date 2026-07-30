@@ -93,6 +93,7 @@ pub async fn run(
         st.budget_daily_usd = cfg.budget.daily_usd;
         st.budget_monthly_usd = cfg.budget.monthly_usd;
         st.notifications = cfg.notifications.clone();
+        st.obsidian = cfg.bridges.obsidian.clone();
         st.thinking_budget = initial_thinking_budget;
         if model != live_model {
             st.push_event(format!(
