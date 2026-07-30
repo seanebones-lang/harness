@@ -119,10 +119,7 @@ pub(super) async fn run_terminal_loop(
             if let Some(rx) = &mut sampling_rx {
                 if let Ok(req) = rx.try_recv() {
                     let mut st = state.lock();
-                    st.push_event(format!(
-                        "[mcp sampling] request from `{}`",
-                        req.server
-                    ));
+                    st.push_event(format!("[mcp sampling] request from `{}`", req.server));
                     st.pending_sampling = Some(PendingSampling {
                         server: req.server,
                         preview: req.preview,
@@ -481,9 +478,7 @@ pub(super) async fn run_terminal_loop(
                         {
                             let mut st = state.lock();
                             let empty = st.input.trim().is_empty();
-                            if empty
-                                && st.right_panel_mode == super::state::RightPanelMode::Swarm
-                            {
+                            if empty && st.right_panel_mode == super::state::RightPanelMode::Swarm {
                                 if let Some(sel) = st.swarm_scroll.selected() {
                                     if let Some(line) = st.swarm_lines.get(sel).cloned() {
                                         if let Some(id) = extract_swarm_task_id(&line) {
@@ -493,7 +488,10 @@ pub(super) async fn run_terminal_loop(
                                                         "[swarm] {} [{}] {}",
                                                         t.id,
                                                         crate::swarm::status_label(&t.status),
-                                                        t.prompt.chars().take(80).collect::<String>()
+                                                        t.prompt
+                                                            .chars()
+                                                            .take(80)
+                                                            .collect::<String>()
                                                     ));
                                                     match t.result.as_deref() {
                                                         Some(r) if !r.is_empty() => {

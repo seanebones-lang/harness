@@ -215,7 +215,7 @@ mod tests {
         let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
         let id1 = store.insert("s", "keep", &[1.0]).unwrap();
         let id2 = store.insert("s", "drop", &[1.0]).unwrap();
-        store.delete_memories(&[id2.clone()]).unwrap();
+        store.delete_memories(std::slice::from_ref(&id2)).unwrap();
         assert_eq!(store.count_all().unwrap(), 1);
         let recent = store.recent_memories(5).unwrap();
         assert_eq!(recent.len(), 1);

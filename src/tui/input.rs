@@ -727,9 +727,7 @@ pub(crate) async fn handle_slash_command(
                         match crate::bridges::obsidian_write(&obs_cfg, &title, &content).await {
                             Ok(()) => {
                                 let mut st = state2.lock();
-                                st.push_event(format!(
-                                    "[obsidian] note queued: {title_log}"
-                                ));
+                                st.push_event(format!("[obsidian] note queued: {title_log}"));
                                 st.status = format!("Obsidian: {title_log}");
                             }
                             Err(e) => {
@@ -751,97 +749,83 @@ pub(crate) async fn handle_slash_command(
         "/trace" => {
             let rest = cmd.trim_start_matches("/trace").trim();
             match rest {
-                "" | "last" => {
-                    match crate::observability::load_last_trace() {
-                        Ok(spans) if spans.is_empty() => {
-                            let mut st = state.lock();
-                            st.push_event(
-                                "[trace] no traces found under ~/.harness/traces/.",
-                            );
-                            st.push_event(
-                                "[trace] enable local traces in config:",
-                            );
-                            st.push_event("  [observability]");
-                            st.push_event("  enabled = true");
-                            st.push_event("  local_traces = true");
-                            st.push_event(
-                                "See config/default.toml [observability] or `harness trace`.",
-                            );
-                            st.status = "No traces".into();
-                        }
-                        Ok(spans) => {
-                            let mut st = state.lock();
-                            let tid = &spans[0].trace_id;
-                            st.push_event(format!(
-                                "[trace] {tid} — {} span{}",
-                                spans.len(),
-                                if spans.len() == 1 { "" } else { "s" }
-                            ));
-                            for s in spans.iter().take(40) {
-                                let status = match &s.status {
-                                    crate::observability::SpanStatus::Ok => "ok".to_string(),
-                                    crate::observability::SpanStatus::Error(e) => {
-                                        format!("err:{e}")
-                                    }
-                                };
-                                st.push_event(format!(
-                                    "  {:<36} {:>6}ms  {status}",
-                                    s.name, s.duration_ms
-                                ));
-                            }
-                            if spans.len() > 40 {
-                                st.push_event(format!(
-                                    "  … {} more (use `harness trace {tid}`)",
-                                    spans.len() - 40
-                                ));
-                            }
-                            st.status = format!("Trace {tid}");
-                        }
-                        Err(e) => {
-                            state
-                                .lock()
-                                .push_event(format!("[trace] failed to load: {e}"));
-                        }
+                "" | "last" => match crate::observability::load_last_trace() {
+                    Ok(spans) if spans.is_empty() => {
+                        let mut st = state.lock();
+                        st.push_event("[trace] no traces found under ~/.harness/traces/.");
+                        st.push_event("[trace] enable local traces in config:");
+                        st.push_event("  [observability]");
+                        st.push_event("  enabled = true");
+                        st.push_event("  local_traces = true");
+                        st.push_event(
+                            "See config/default.toml [observability] or `harness trace`.",
+                        );
+                        st.status = "No traces".into();
                     }
-                }
-                "list" => {
-                    match crate::observability::list_traces(15) {
-                        Ok(files) if files.is_empty() => {
-                            let mut st = state.lock();
-                            st.push_event(
-                                "[trace] no traces found under ~/.harness/traces/.",
-                            );
-                            st.push_event(
+                    Ok(spans) => {
+                        let mut st = state.lock();
+                        let tid = &spans[0].trace_id;
+                        st.push_event(format!(
+                            "[trace] {tid} — {} span{}",
+                            spans.len(),
+                            if spans.len() == 1 { "" } else { "s" }
+                        ));
+                        for s in spans.iter().take(40) {
+                            let status = match &s.status {
+                                crate::observability::SpanStatus::Ok => "ok".to_string(),
+                                crate::observability::SpanStatus::Error(e) => {
+                                    format!("err:{e}")
+                                }
+                            };
+                            st.push_event(format!(
+                                "  {:<36} {:>6}ms  {status}",
+                                s.name, s.duration_ms
+                            ));
+                        }
+                        if spans.len() > 40 {
+                            st.push_event(format!(
+                                "  … {} more (use `harness trace {tid}`)",
+                                spans.len() - 40
+                            ));
+                        }
+                        st.status = format!("Trace {tid}");
+                    }
+                    Err(e) => {
+                        state
+                            .lock()
+                            .push_event(format!("[trace] failed to load: {e}"));
+                    }
+                },
+                "list" => match crate::observability::list_traces(15) {
+                    Ok(files) if files.is_empty() => {
+                        let mut st = state.lock();
+                        st.push_event("[trace] no traces found under ~/.harness/traces/.");
+                        st.push_event(
                                 "[trace] enable [observability] local_traces = true (config/default.toml).",
                             );
-                            st.status = "No traces".into();
-                        }
-                        Ok(files) => {
-                            let mut st = state.lock();
-                            st.push_event(format!(
-                                "[trace] {} recent file{} in ~/.harness/traces/:",
-                                files.len(),
-                                if files.len() == 1 { "" } else { "s" }
-                            ));
-                            for p in &files {
-                                let name = std::path::Path::new(p)
-                                    .file_stem()
-                                    .and_then(|s| s.to_str())
-                                    .unwrap_or(p);
-                                st.push_event(format!("  {name}"));
-                            }
-                            st.push_event(
-                                "[trace] /trace last — detail last; CLI: harness trace <id>",
-                            );
-                            st.status = "Trace list in event log →".into();
-                        }
-                        Err(e) => {
-                            state
-                                .lock()
-                                .push_event(format!("[trace] list failed: {e}"));
-                        }
+                        st.status = "No traces".into();
                     }
-                }
+                    Ok(files) => {
+                        let mut st = state.lock();
+                        st.push_event(format!(
+                            "[trace] {} recent file{} in ~/.harness/traces/:",
+                            files.len(),
+                            if files.len() == 1 { "" } else { "s" }
+                        ));
+                        for p in &files {
+                            let name = std::path::Path::new(p)
+                                .file_stem()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or(p);
+                            st.push_event(format!("  {name}"));
+                        }
+                        st.push_event("[trace] /trace last — detail last; CLI: harness trace <id>");
+                        st.status = "Trace list in event log →".into();
+                    }
+                    Err(e) => {
+                        state.lock().push_event(format!("[trace] list failed: {e}"));
+                    }
+                },
                 "help" | "?" => {
                     let mut st = state.lock();
                     st.push_event("[trace] usage:");
@@ -854,9 +838,7 @@ pub(crate) async fn handle_slash_command(
                 }
                 other => {
                     // Treat bare id-like args as "show this trace" via load of that file.
-                    let dir = dirs::home_dir()
-                        .unwrap_or_default()
-                        .join(".harness/traces");
+                    let dir = dirs::home_dir().unwrap_or_default().join(".harness/traces");
                     let file = dir.join(format!("{other}.jsonl"));
                     if file.exists() {
                         match std::fs::read_to_string(&file) {
@@ -887,9 +869,7 @@ pub(crate) async fn handle_slash_command(
                                 st.status = format!("Trace {other}");
                             }
                             Err(e) => {
-                                state
-                                    .lock()
-                                    .push_event(format!("[trace] read failed: {e}"));
+                                state.lock().push_event(format!("[trace] read failed: {e}"));
                             }
                         }
                     } else {

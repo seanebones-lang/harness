@@ -3,7 +3,8 @@ pub mod config;
 pub mod tool;
 
 pub use client::{
-    McpClient, McpResource, ProgressEvent, SamplingApprovalRequest, ServerCapabilities,
+    collect_roots, McpClient, McpResource, ProgressEvent, SamplingApprovalRequest,
+    ServerCapabilities,
 };
 pub use config::{McpConfig, McpServerConfig};
 pub use tool::McpToolAdapter;
@@ -159,5 +160,18 @@ mod allowlist_tests {
         assert!(command_is_allowed("/usr/local/bin/npx", Some(&list)));
         assert!(command_is_allowed("/opt/bin/mcp", Some(&list)));
         assert!(!command_is_allowed("python3", Some(&list)));
+    }
+
+    #[test]
+    fn default_allowlist_includes_common_runners() {
+        for cmd in ["npx", "node", "python3", "uvx"] {
+            assert!(command_is_allowed(cmd, None), "{cmd}");
+            assert!(
+                command_is_allowed(&format!("/usr/local/bin/{cmd}"), None),
+                "path {cmd}"
+            );
+        }
+        assert!(!command_is_allowed("bash", None));
+        assert!(!command_is_allowed("/bin/sh", None));
     }
 }

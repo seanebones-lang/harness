@@ -891,7 +891,9 @@ fn draw_sampling_overlay(f: &mut ratatui::Frame, ps: &PendingSampling, _theme: &
                 .add_modifier(Modifier::BOLD),
         ));
     f.render_widget(
-        Paragraph::new(content).block(block).wrap(Wrap { trim: false }),
+        Paragraph::new(content)
+            .block(block)
+            .wrap(Wrap { trim: false }),
         popup_area,
     );
 }

@@ -4,6 +4,24 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-07-30 — Wave 2/3/4 eng slice (coverage, MCP CLI, notifications, clippy)**
+
+| Item | Result |
+|------|--------|
+| Branch | `dev` → `origin/dev` |
+| `cargo test --bin harness` | **Pass** — 96 tests |
+| `cargo test -p harness-tools` | **Pass** — 54 tests |
+| `cargo test -p harness-mcp` | **Pass** — 21 tests |
+| `cargo test -p harness-memory` | **Pass** — 8 tests |
+| `cargo clippy --workspace --all-targets --all-features -- -D warnings` | **Pass** |
+| Features | `harness mcp roots|resources|read`; spawn_agent desktop notify; COVERAGE_PLAN + NOTIFICATIONS_AUDIT |
+| CTO items | W2.1 [~], W2.2 [x], W2.3 audit [~], W2.4 clippy [~], W3.7 [x], W4.2 [x] |
+| REL-01 / prebuilt matrix | **Unchanged** — user keys/billing |
+
+**Go / no-go:** **GO** for public beta (unchanged). **Stable** still blocked on REL-01 + full prebuilts/Homebrew.
+
+---
+
 **2026-07-30 — Swarm operability + `dev` branch (local + GitHub)**
 
 | Item | Result |

@@ -74,4 +74,62 @@ mod tests {
             &json!({"action": "stash", "stash_action": "push"})
         ));
     }
+
+    #[test]
+    fn unknown_and_readonly_tools_skip_checkpoint() {
+        assert!(!tool_requires_checkpoint("read_file", &json!({})));
+        assert!(!tool_requires_checkpoint("search_code", &json!({})));
+        assert!(!tool_requires_checkpoint("spawn_swarm", &json!({})));
+        assert!(!tool_requires_checkpoint("git", &json!({"action": "log"})));
+        assert!(!tool_requires_checkpoint(
+            "git",
+            &json!({"action": "blame"})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "git",
+            &json!({"action": "fetch"})
+        ));
+        assert!(!tool_requires_checkpoint("git", &json!({})));
+        assert!(!tool_requires_checkpoint(
+            "git",
+            &json!({"action": "unknown_action"})
+        ));
+    }
+
+    #[test]
+    fn confirmation_mirrors_checkpoint_policy() {
+        assert_eq!(
+            tool_requires_confirmation("write_file", &json!({})),
+            tool_requires_checkpoint("write_file", &json!({}))
+        );
+        assert_eq!(
+            tool_requires_confirmation("git", &json!({"action": "status"})),
+            tool_requires_checkpoint("git", &json!({"action": "status"}))
+        );
+        assert_eq!(
+            tool_requires_confirmation("git", &json!({"action": "checkout"})),
+            tool_requires_checkpoint("git", &json!({"action": "checkout"}))
+        );
+    }
+
+    #[test]
+    fn git_stash_list_is_readonly_pop_is_mutating() {
+        assert!(!tool_requires_checkpoint(
+            "git",
+            &json!({"action": "stash", "stash_action": "list"})
+        ));
+        assert!(tool_requires_checkpoint(
+            "git",
+            &json!({"action": "stash", "stash_action": "pop"})
+        ));
+        assert!(tool_requires_checkpoint(
+            "git",
+            &json!({"action": "stash", "stash_action": "drop"})
+        ));
+        // stash without stash_action is not treated as mutating
+        assert!(!tool_requires_checkpoint(
+            "git",
+            &json!({"action": "stash"})
+        ));
+    }
 }

@@ -559,11 +559,7 @@ pub fn gc(opts: &GcOptions) -> Result<GcReport> {
         }
         let reason = format!("stale: orphaned after {age}s with no live worker");
         if !opts.dry_run {
-            update_status(
-                &t.id,
-                &TaskStatus::Failed(reason.clone()),
-                Some(&reason),
-            )?;
+            update_status(&t.id, &TaskStatus::Failed(reason.clone()), Some(&reason))?;
         }
         report.reaped.push((t.id.clone(), reason));
     }
@@ -817,6 +813,91 @@ mod tests {
         assert_eq!(fmt_ts(0), "1970-01-01 00:00:00 UTC");
         // 2024-01-01 00:00:00 UTC
         assert_eq!(fmt_ts(1_704_067_200), "2024-01-01 00:00:00 UTC");
+        // Negative timestamps clamp to epoch
+        assert_eq!(fmt_ts(-1), "1970-01-01 00:00:00 UTC");
+        // Time-of-day component
+        assert_eq!(fmt_ts(3661), "1970-01-01 01:01:01 UTC");
+    }
+
+    #[test]
+    fn trunc_chars_is_utf8_safe() {
+        assert_eq!(trunc_chars("hi", 10), "hi");
+        assert_eq!(trunc_chars("hello", 5), "hello");
+        assert_eq!(trunc_chars("hello", 3), "hel…");
+        // Multi-byte: take by chars, not bytes
+        let s = "✨✨✨";
+        assert_eq!(trunc_chars(s, 2), "✨✨…");
+        assert_eq!(trunc_chars(s, 3), s);
+    }
+
+    #[test]
+    fn task_status_labels_and_terminal() {
+        assert_eq!(TaskStatus::Pending.as_str(), "pending");
+        assert_eq!(TaskStatus::Running.as_str(), "running");
+        assert_eq!(TaskStatus::Done.as_str(), "done");
+        assert_eq!(TaskStatus::Cancelled.as_str(), "cancelled");
+        assert_eq!(TaskStatus::Failed("x".into()).as_str(), "failed");
+        assert!(!TaskStatus::Pending.is_terminal());
+        assert!(!TaskStatus::Running.is_terminal());
+        assert!(TaskStatus::Done.is_terminal());
+        assert!(TaskStatus::Cancelled.is_terminal());
+        assert!(TaskStatus::Failed("e".into()).is_terminal());
+        assert_eq!(status_label(&TaskStatus::Pending), "pending");
+        assert_eq!(status_label(&TaskStatus::Running), "running");
+        assert_eq!(status_label(&TaskStatus::Cancelled), "cancelled");
+        // Empty failure message falls back to plain "failed"
+        assert_eq!(status_label(&TaskStatus::Failed(String::new())), "failed");
+    }
+
+    #[test]
+    fn swarm_counts_aggregates() {
+        let c = SwarmCounts {
+            pending: 1,
+            running: 2,
+            done: 3,
+            failed: 4,
+            cancelled: 5,
+        };
+        assert_eq!(c.total(), 15);
+        assert_eq!(c.active(), 3);
+        assert_eq!(c.label(), "p=1 r=2 d=3 f=4 c=5 (n=15)");
+        assert_eq!(SwarmCounts::default().total(), 0);
+        assert_eq!(SwarmCounts::default().active(), 0);
+    }
+
+    #[test]
+    fn gc_report_summary_and_default_opts() {
+        let r = GcReport {
+            reaped: vec![("a".into(), "orphan".into())],
+            deleted: 2,
+        };
+        assert_eq!(
+            r.summary(),
+            "reaped 1 orphan(s), deleted 2 terminal task(s)"
+        );
+        let d = GcOptions::default();
+        assert_eq!(d.stale_secs, 3600);
+        assert!(d.keep_terminal.is_none());
+        assert!(d.older_than_secs.is_none());
+        assert!(!d.dry_run);
+    }
+
+    #[test]
+    fn task_to_json_failed_includes_error() {
+        let task = TaskEntry {
+            id: "abc".into(),
+            prompt: "p".into(),
+            status: TaskStatus::Failed("nope".into()),
+            result: Some("trace".into()),
+            created_ts: 0,
+            completed_ts: Some(1),
+        };
+        let v = task_to_json(&task);
+        assert_eq!(v["status"], "failed");
+        assert_eq!(v["error"], "nope");
+        assert_eq!(v["terminal"], true);
+        assert_eq!(v["created"], "1970-01-01 00:00:00 UTC");
+        assert_eq!(v["completed"], "1970-01-01 00:00:01 UTC");
     }
 
     #[test]
