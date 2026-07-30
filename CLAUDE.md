@@ -94,6 +94,8 @@ harness swarm status <task-id>
 harness swarm result <task-id>
 harness swarm cancel <task-id>
 harness swarm wait <task-id>
+harness swarm gc                 # reap orphans; --keep / --older-than-secs / --dry-run
+# TUI: F2 or /swarm toggles the swarm panel
 
 # External bridges (Obsidian, Notes, Calendar, GitHub Projects)
 harness bridge obsidian "Title" "content"
@@ -287,7 +289,7 @@ New MCP 2.0 features:
 
 ### `swarm` (E9)
 
-`TaskEntry`, `TaskStatus`, SQLite at `~/.harness/swarm.db`, `[swarm]` config (`max_concurrency`, `db_path`). CLI: `harness swarm run|list|status|result|cancel|wait`.
+`TaskEntry`, `TaskStatus`, SQLite at `~/.harness/swarm.db`, `[swarm]` config (`max_concurrency`, `db_path`). CLI: `harness swarm run|list|status|result|cancel|wait|gc`. TUI: F2 / `/swarm` panel; `gc` reaps orphan pending/running tasks.
 
 ### `bridges` (E12)
 

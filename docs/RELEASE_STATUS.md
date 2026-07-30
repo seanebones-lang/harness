@@ -4,6 +4,23 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-07-30 — Swarm operability + `dev` branch (local + GitHub)**
+
+| Item | Result |
+|------|--------|
+| Branch | **Done** — `dev` tracking `origin/dev` |
+| Feature commit | **Done** — `0c7d59e` feat(swarm): TUI panel, orphan GC, richer status CLI |
+| `cargo test --bin harness` | **Pass** — 84 tests |
+| Swarm unit tests | **Pass** — 11 tests |
+| `cargo clippy --bin harness -- -D warnings` | **Pass** |
+| Team brief | [`TEAM_UPDATE_2026-07-30.md`](TEAM_UPDATE_2026-07-30.md) |
+| Roadmap | [`ROADMAP.md`](ROADMAP.md) |
+| REL-01 / prebuilt matrix | **Unchanged** — still stable blockers |
+
+**Go / no-go:** **GO** for public beta (unchanged). **Stable** still blocked on REL-01 + full prebuilts/Homebrew. Swarm daily-driver path is materially better on `dev`.
+
+---
+
 **2026-05-25 — v0.1.2-beta release cut (local + partial GitHub Release)**
 
 | Item | Result |
