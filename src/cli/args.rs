@@ -291,10 +291,13 @@ pub enum SwarmAction {
         /// Task ID.
         id: String,
     },
-    /// Cancel a pending or running task.
+    /// Cancel a pending or running task (or all with `--all`).
     Cancel {
-        /// Task ID (prefix ok).
-        id: String,
+        /// Task ID (prefix ok). Required unless `--all`.
+        id: Option<String>,
+        /// Cancel every pending/running task.
+        #[arg(long)]
+        all: bool,
     },
     /// Wait until a task completes (or timeout).
     Wait {

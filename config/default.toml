@@ -170,6 +170,7 @@ sandbox = "strict"
 # [swarm]
 # max_concurrency = 4
 # db_path = "~/.harness/swarm.db"
+# auto_gc_stale_secs = 86400   # optional: reap orphans older than N seconds on startup
 
 # [collab]
 # enabled = false

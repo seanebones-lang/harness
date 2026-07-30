@@ -103,6 +103,7 @@ harness swarm wait <task-id> --timeout-secs 120
 
 harness swarm result <task-id>     # full stored output when Done (or status text if not)
 harness swarm cancel <task-id>     # cancel pending/running when the spawner is still live
+harness swarm cancel --all         # cancel every non-terminal task
 ```
 
 Typical flow after `run --count 3`:

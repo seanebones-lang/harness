@@ -28,6 +28,8 @@ pub type TaskId = String;
 pub struct SwarmConfig {
     pub max_concurrency: Option<usize>,
     pub db_path: Option<PathBuf>,
+    /// When set, `configure` reaps orphan pending/running older than this many seconds.
+    pub auto_gc_stale_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -175,6 +177,16 @@ pub fn configure(cfg: &SwarmConfig) {
         }),
         db_path: cfg.db_path.clone(),
     });
+    if let Some(stale) = cfg.auto_gc_stale_secs {
+        if stale > 0 {
+            let _ = gc(&GcOptions {
+                stale_secs: stale,
+                keep_terminal: None,
+                older_than_secs: None,
+                dry_run: false,
+            });
+        }
+    }
 }
 
 fn swarm_db_path() -> PathBuf {
@@ -375,6 +387,21 @@ pub fn cancel_task(id: &str) -> Result<bool> {
 
     update_status(&task.id, &TaskStatus::Cancelled, None)?;
     Ok(true)
+}
+
+/// Cancel every non-terminal task. Returns how many cancellations were initiated.
+pub fn cancel_all_tasks() -> Result<usize> {
+    let tasks = list_tasks(10_000)?;
+    let mut n = 0usize;
+    for t in tasks {
+        if t.status.is_terminal() {
+            continue;
+        }
+        if cancel_task(&t.id)? {
+            n += 1;
+        }
+    }
+    Ok(n)
 }
 
 /// Poll until a task reaches a terminal state or timeout elapses.
@@ -834,5 +861,57 @@ mod tests {
         assert_eq!(c2, counts);
         assert!(lines[0].starts_with("swarm "));
         assert!(lines.len() >= 3);
+    }
+
+    #[test]
+    fn cancel_all_tasks_cancels_non_terminal() {
+        let _db = TestDb::new();
+        let a = register_task("a").expect("a");
+        let b = register_task("b").expect("b");
+        update_status(&a, &TaskStatus::Running, None).expect("run");
+        update_status(&b, &TaskStatus::Pending, None).expect("pend");
+        let done = register_task("done").expect("d");
+        update_status(&done, &TaskStatus::Done, Some("ok")).expect("done");
+        let n = cancel_all_tasks().expect("cancel all");
+        assert_eq!(n, 2);
+        assert_eq!(
+            get_task(&a).expect("g").expect("f").status,
+            TaskStatus::Cancelled
+        );
+        assert_eq!(
+            get_task(&b).expect("g").expect("f").status,
+            TaskStatus::Cancelled
+        );
+        assert_eq!(
+            get_task(&done).expect("g").expect("f").status,
+            TaskStatus::Done
+        );
+    }
+
+    #[test]
+    fn gc_dry_run_does_not_mutate() {
+        let _db = TestDb::new();
+        let id = register_task("orphan").expect("reg");
+        update_status(&id, &TaskStatus::Running, None).expect("run");
+        {
+            let conn = open_db().expect("db");
+            conn.execute(
+                "UPDATE tasks SET created_ts = ?1 WHERE id = ?2",
+                params![now_ts() - 10_000, id],
+            )
+            .expect("backdate");
+        }
+        let report = gc(&GcOptions {
+            stale_secs: 60,
+            keep_terminal: None,
+            older_than_secs: None,
+            dry_run: true,
+        })
+        .expect("dry");
+        assert_eq!(report.reaped.len(), 1);
+        assert_eq!(
+            get_task(&id).expect("g").expect("f").status,
+            TaskStatus::Running
+        );
     }
 }
