@@ -8,7 +8,7 @@ Harness is a terminal-based AI coding assistant. It reads files, edits code, run
 
 Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
 
-**Status:** Beta — fine for daily use; expect ongoing polish. Before tagging a release, run the gates in [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md). Latest go/no-go notes: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md). Team brief (2026-07-30): [`docs/TEAM_UPDATE_2026-07-30.md`](docs/TEAM_UPDATE_2026-07-30.md). Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Status:** Beta — fine for daily use; expect ongoing polish. Before tagging a release, run the gates in [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md). Latest go/no-go: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md). Team brief: [`docs/TEAM_UPDATE_2026-07-30.md`](docs/TEAM_UPDATE_2026-07-30.md). Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md). **CTO backlog (ordered):** [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md).
 
 **Plain-language guide:** [`Start Here/USER MANUAL.md`](Start%20Here/USER%20MANUAL.md) — complements this README with the same first-run story.
 
