@@ -77,7 +77,7 @@ Goal: CI gate means something; panic surface shrinks.
 - [x] **W2.2** Add integration tests: swarm gc dry-run (+ cancel-all); MCP pure helpers / tools tests expanded. *(2026-07-30)*
 - [~] **W2.3** Unwrap burn-down — production paths in checkpoint/ambient/server/cost already 0; agent lock + crates remain. *(audit 2026-07-30)*
 - [x] **W2.4** Clippy workspace clean + `cargo deny check` green locally (2026-07-30): crate licenses, advisories (anyhow/crossbeam/notify-rust bumps; proc-macro-error2 ignored via age).
-- [ ] **W2.5** Stabilize flaky checkpoint git tests if still flaking in CI (signing/config isolation).
+- [x] **W2.5** Stabilize flaky checkpoint git tests if still flaking in CI (signing/config isolation). *(GIT_CONFIG isolation + gpgsign off + mutex; 2026-07-30)*
 
 ### WAVE 3 — Daily-driver polish (3–7 days)
 Goal: TUI feels finished; swarm ops complete.
@@ -96,13 +96,13 @@ Goal: MCP/LSP/bridges match marketing.
 - [x] **W4.1** MCP sampling interactive TUI approval — inbound `sampling/createMessage` + y/n overlay; auto mode auto-approves; else deny. *(2026-07-30)*
 - [x] **W4.2** MCP resources/roots browser in TUI or CLI list command. *(`harness mcp resources|roots|read` 2026-07-30)*
 - [x] **W4.3** Bridges: end-to-end tests or `doctor` checks for Obsidian/Notes/Calendar/Projects. *(`harness doctor` bridge section 2026-07-30)*
-- [ ] **W4.4** Collab: docs + smoke for multi-client; enforce/document `max_users`.
+- [x] **W4.4** Collab: docs + smoke for multi-client; enforce/document `max_users`. *(docs/COLLAB.md, rejoin seat fix, doctor; 2026-07-30)*
 - [x] **W4.5** Observability: `/trace` real path; OTLP smoke doc. *(`docs/OTLP_SMOKE.md` + doctor observability 2026-07-30)*
 
 ### WAVE 5 — Capability expansion (2–4 weeks)
 Goal: competitive breadth.
 
-- [ ] **W5.1** Providers: OpenAI-compatible generic endpoint + Mistral (highest leverage first).
+- [x] **W5.1** Providers: OpenAI-compatible generic endpoint + Mistral (highest leverage first). *(docs/PROVIDERS_OPENAI_COMPAT.md; 2026-07-30)*
 - [ ] **W5.2** Providers: Gemini + Bedrock.
 - [ ] **W5.3** Models picker + router policy tests for new keys.
 - [ ] **W5.4** DatabaseTool (read-only default) behind config flag.

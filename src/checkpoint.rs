@@ -135,6 +135,7 @@ mod tests {
     use std::process::Command;
     use std::sync::Mutex;
 
+    /// Serialize tests that chdir — process-global CWD is not parallel-safe.
     static GIT_REPO_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     struct CwdGuard {
@@ -155,9 +156,23 @@ mod tests {
         }
     }
 
+    /// Isolate from user/global git config and GPG signing (CI flakiness).
     fn git(dir: &Path, args: &[&str]) {
         let status = Command::new("git")
             .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GNUPGHOME", dir.join(".gnupg-empty"))
+            .env("GIT_AUTHOR_NAME", "harness-test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "harness-test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .args(["-c", "user.email=test@example.com"])
+            .args(["-c", "user.name=harness-test"])
+            .args(["-c", "commit.gpgsign=false"])
+            .args(["-c", "tag.gpgsign=false"])
+            .args(["-c", "init.defaultBranch=main"])
             .args(args)
             .status()
             .expect("spawn git");
@@ -165,9 +180,11 @@ mod tests {
     }
 
     fn init_repo(dir: &Path) {
+        let _ = std::fs::create_dir_all(dir.join(".gnupg-empty"));
         git(dir, &["init"]);
+        // Local-only identity (no write to ~/.gitconfig).
         git(dir, &["config", "user.email", "test@example.com"]);
-        git(dir, &["config", "user.name", "test"]);
+        git(dir, &["config", "user.name", "harness-test"]);
         git(dir, &["config", "commit.gpgsign", "false"]);
         std::fs::write(dir.join("tracked.txt"), "v1").unwrap();
         git(dir, &["add", "tracked.txt"]);
@@ -218,5 +235,19 @@ mod tests {
         init_repo(tmp.path());
         let _guard = CwdGuard::chdir(tmp.path());
         assert!(create("sess2", 0).is_none());
+    }
+
+    #[test]
+    fn outside_git_repo_helpers_are_safe() {
+        let _lock = GIT_REPO_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Not a git repo.
+        let _guard = CwdGuard::chdir(tmp.path());
+        assert!(!in_git_repo());
+        assert!(create("x", 0).is_none());
+        assert!(list().unwrap().is_empty());
+        assert!(undo().is_err());
     }
 }

@@ -108,15 +108,25 @@ pub fn join_session(
     user_id: &str,
     max_users: usize,
 ) -> Result<broadcast::Receiver<CollabEvent>> {
+    let max_users = max_users.max(1);
     let mut reg = registry.lock();
     let session = reg
         .entry(session_id.to_string())
         .or_insert_with(|| CollabSession::new(session_id));
-    if session.users.len() >= max_users && !session.users.iter().any(|u| u == user_id) {
+    let already = session.users.iter().any(|u| u == user_id);
+    if !already && session.users.len() >= max_users {
         anyhow::bail!("collab session full (max {max_users} users)");
     }
-    session.user_joined(user_id);
-    Ok(session.subscribe())
+    if !already {
+        session.user_joined(user_id);
+    }
+    let rx = session.subscribe();
+    // Fresh SessionInfo so the joiner (and peers) see live occupancy.
+    session.broadcast(CollabEvent::SessionInfo {
+        session_id: session.session_id.clone(),
+        user_count: session.users.len(),
+    });
+    Ok(rx)
 }
 
 /// Leave a session and notify peers.
@@ -169,6 +179,17 @@ mod tests {
         let reg = new_registry();
         join_session(&reg, "sess1", "alice", 1).expect("first join");
         join_session(&reg, "sess1", "alice", 1).expect("rejoin");
+        // Rejoin must not double-count toward max_users.
+        let sessions = list_sessions(&reg);
+        assert_eq!(sessions, vec![("sess1".into(), 1)]);
+    }
+
+    #[test]
+    fn max_users_zero_clamps_to_one() {
+        let reg = new_registry();
+        join_session(&reg, "s", "only", 0).expect("clamp allows one");
+        let err = join_session(&reg, "s", "two", 0).unwrap_err();
+        assert!(err.to_string().contains("full"));
     }
 
     #[test]
@@ -180,5 +201,15 @@ mod tests {
         let mut sessions = list_sessions(&reg);
         sessions.sort_by(|a, b| a.0.cmp(&b.0));
         assert_eq!(sessions, vec![("a".into(), 2), ("b".into(), 1)]);
+    }
+
+    #[test]
+    fn leave_session_decrements_count() {
+        let reg = new_registry();
+        join_session(&reg, "s", "a", 5).unwrap();
+        join_session(&reg, "s", "b", 5).unwrap();
+        leave_session(&reg, "s", "a");
+        let sessions = list_sessions(&reg);
+        assert_eq!(sessions, vec![("s".into(), 1)]);
     }
 }
