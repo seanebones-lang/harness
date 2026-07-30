@@ -227,13 +227,16 @@ pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
         " /ts               toggle timestamps",
         " /notify test      test desktop notification",
         " /trace [last]     show last turn trace",
+        " /schema           set structured output JSON schema",
         " /obsidian save    save response to Obsidian",
+        " /swarm [gc|refresh]  toggle swarm panel (F2)",
         " /help  F1         this list",
         "KEYBINDINGS",
         " Enter             send message",
         " Shift+Enter       new line in input",
         " ↑/↓              scroll chat (or input history when empty)",
-        " PgUp/PgDn         scroll event log",
+        " PgUp/PgDn         scroll event log / swarm panel",
+        " F2                toggle swarm panel",
         " Ctrl+S            voice record (5s, Whisper transcription)",
         " Ctrl+F            search chat",
         " Ctrl+Y            copy last response to clipboard",
@@ -683,6 +686,65 @@ pub(crate) async fn handle_slash_command(
                             .lock()
                             .push_event(format!("[schema] invalid JSON: {e}"));
                     }
+                }
+            }
+        }
+
+        "/swarm" => {
+            let rest = cmd.trim_start_matches("/swarm").trim();
+            match rest {
+                "" | "toggle" | "panel" => {
+                    state.lock().toggle_swarm_panel();
+                }
+                "refresh" => {
+                    let mut st = state.lock();
+                    st.refresh_swarm();
+                    if st.right_panel_mode != super::state::RightPanelMode::Swarm {
+                        st.right_panel_mode = super::state::RightPanelMode::Swarm;
+                    }
+                    st.status = "Swarm panel refreshed".into();
+                }
+                s if s == "gc" || s.starts_with("gc ") => {
+                    let mut stale_secs = 3600u64;
+                    let mut keep: Option<usize> = None;
+                    for tok in s.split_whitespace().skip(1) {
+                        if let Some(v) = tok.strip_prefix("stale=") {
+                            if let Ok(n) = v.parse() {
+                                stale_secs = n;
+                            }
+                        } else if let Some(v) = tok.strip_prefix("keep=") {
+                            if let Ok(n) = v.parse() {
+                                keep = Some(n);
+                            }
+                        } else if let Ok(n) = tok.parse::<u64>() {
+                            stale_secs = n;
+                        }
+                    }
+                    match crate::swarm::gc(&crate::swarm::GcOptions {
+                        stale_secs,
+                        keep_terminal: keep,
+                        older_than_secs: None,
+                        dry_run: false,
+                    }) {
+                        Ok(report) => {
+                            let mut st = state.lock();
+                            st.push_event(format!("[swarm] {}", report.summary()));
+                            for (id, reason) in report.reaped.iter().take(8) {
+                                st.push_event(format!("[swarm] reaped {id}: {reason}"));
+                            }
+                            st.refresh_swarm();
+                            st.right_panel_mode = super::state::RightPanelMode::Swarm;
+                            st.status = format!("[swarm] {}", report.summary());
+                        }
+                        Err(e) => {
+                            state.lock().push_event(format!("[swarm] gc failed: {e}"));
+                        }
+                    }
+                }
+                other => {
+                    state.lock().push_event(format!(
+                        "[swarm] unknown subcommand `{other}` — try /swarm, /swarm refresh, /swarm gc"
+                    ));
                 }
             }
         }

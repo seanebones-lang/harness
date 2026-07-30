@@ -23,6 +23,14 @@ pub(crate) struct ChatMessage {
     pub(crate) ts: Instant,
 }
 
+/// Right-panel mode: tool events vs swarm registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum RightPanelMode {
+    #[default]
+    Events,
+    Swarm,
+}
+
 #[allow(clippy::struct_excessive_bools)]
 pub(crate) struct AppState {
     pub(crate) input: String,
@@ -131,6 +139,16 @@ pub(crate) struct AppState {
     pub(crate) theme: Theme,
     /// Active response schema for strict JSON output (set via /schema).
     pub(crate) response_schema: Option<harness_provider_core::ResponseSchema>,
+    /// Right panel content mode (events vs swarm).
+    pub(crate) right_panel_mode: RightPanelMode,
+    /// Cached swarm panel lines.
+    pub(crate) swarm_lines: Vec<String>,
+    /// Compact swarm counts for the status bar (`None` = unknown / error).
+    pub(crate) swarm_active: usize,
+    /// Last time swarm panel was refreshed from SQLite.
+    pub(crate) swarm_last_refresh: Instant,
+    /// Scroll state for swarm panel.
+    pub(crate) swarm_scroll: ListState,
 }
 
 pub(crate) struct PendingConfirm {
@@ -163,6 +181,8 @@ impl AppState {
         chat_scroll.select(None);
         let mut event_scroll = ListState::default();
         event_scroll.select(None);
+        let mut swarm_scroll = ListState::default();
+        swarm_scroll.select(None);
 
         Self {
             input: String::new(),
@@ -225,6 +245,13 @@ impl AppState {
             focus_until: None,
             theme: Theme::load(),
             response_schema: None,
+            right_panel_mode: RightPanelMode::Events,
+            swarm_lines: Vec::new(),
+            swarm_active: 0,
+            swarm_last_refresh: Instant::now()
+                .checked_sub(Duration::from_secs(60))
+                .unwrap_or_else(Instant::now),
+            swarm_scroll,
         }
     }
 
@@ -460,10 +487,55 @@ impl AppState {
 
     pub(crate) fn scroll_to_bottom(&mut self) {
         self.chat_follow = true;
-        let max = self.chat_items_len.saturating_sub(1);
-        self.chat_scroll.select(Some(max));
+        let cmax = self.chat_items_len.saturating_sub(1);
+        self.chat_scroll.select(Some(cmax));
         let emax = self.event_items_len.saturating_sub(1);
         self.event_scroll.select(Some(emax));
+        let smax = self.swarm_lines.len().saturating_sub(1);
+        self.swarm_scroll.select(Some(smax));
+    }
+
+    /// Refresh swarm lines from SQLite (cheap; used by the TUI panel + status chip).
+    pub(crate) fn refresh_swarm(&mut self) {
+        match crate::swarm::tui_lines(40) {
+            Ok((counts, lines)) => {
+                self.swarm_active = counts.active();
+                self.swarm_lines = lines;
+            }
+            Err(e) => {
+                self.swarm_lines = vec![format!("swarm error: {e}")];
+            }
+        }
+        self.swarm_last_refresh = Instant::now();
+    }
+
+    /// Toggle right panel between Events and Swarm.
+    pub(crate) fn toggle_swarm_panel(&mut self) {
+        self.right_panel_mode = match self.right_panel_mode {
+            RightPanelMode::Events => {
+                self.refresh_swarm();
+                RightPanelMode::Swarm
+            }
+            RightPanelMode::Swarm => RightPanelMode::Events,
+        };
+        self.status = match self.right_panel_mode {
+            RightPanelMode::Swarm => {
+                "Swarm panel — F2 or /swarm to leave · /swarm gc to clean".into()
+            }
+            RightPanelMode::Events => "Events panel".into(),
+        };
+    }
+
+    /// Maybe refresh swarm snapshot (panel open or periodic status chip).
+    pub(crate) fn maybe_refresh_swarm(&mut self, force: bool) {
+        let interval = if self.right_panel_mode == RightPanelMode::Swarm {
+            Duration::from_millis(800)
+        } else {
+            Duration::from_secs(5)
+        };
+        if force || self.swarm_last_refresh.elapsed() >= interval {
+            self.refresh_swarm();
+        }
     }
 
     fn update_slash_suggestions(&mut self) {
@@ -494,6 +566,7 @@ impl AppState {
             ("/obsidian", "save to Obsidian vault"),
             ("/trace", "show/replay last turn trace"),
             ("/schema", "set structured output JSON schema"),
+            ("/swarm", "toggle swarm panel (gc / refresh)"),
             ("/help", "show all commands"),
         ];
         let trimmed = self.input.trim_start();
