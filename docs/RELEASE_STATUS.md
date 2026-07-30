@@ -4,6 +4,23 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-07-30 — Quality floor + doctor/OTLP (llvm-cov 40%, cargo-deny green)**
+
+| Item | Result |
+|------|--------|
+| Branch | `dev` → `origin/dev` |
+| `cargo llvm-cov --workspace --all-features --summary-only` | **40.22%** lines (7814/19430) |
+| `cargo deny check` | **Pass** (licenses + advisories + bans + sources) |
+| `cargo clippy --workspace … -D warnings` | **Pass** (prior) |
+| `harness doctor` | Bridges + observability sections |
+| Docs | `COVERAGE.md`, `docs/OTLP_SMOKE.md`, badge ~40% |
+| CTO | W2.1 [x]≥40%, W2.4 [x], W4.3 [x], W4.5 [x] |
+| REL-01 / billing | **Unchanged** |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on REL-01 + prebuilts. CI 60% coverage gate still a target.
+
+---
+
 **2026-07-30 — Wave 2/3/4 eng slice (coverage, MCP CLI, notifications, clippy)**
 
 | Item | Result |

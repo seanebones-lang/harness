@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/rust-1.76%2B-orange)](rust-toolchain.toml)
-[![Coverage](https://img.shields.io/badge/coverage-~23%25%20(target%2060%25)-orange)](COVERAGE.md)
+[![Coverage](https://img.shields.io/badge/coverage-~40%25%20(target%2060%25)-orange)](COVERAGE.md)
 
 Harness is a terminal-based AI coding assistant. It reads files, edits code, runs shell commands, searches your codebase, manages sessions with semantic memory, and can spawn sub-agents for parallel tasks.
 
@@ -37,7 +37,7 @@ docker compose up          # spins up harness + Ollama
 # Full test suite (no API keys required)
 cargo test --all           # 218+ tests, ~60s on modern hardware
 
-# Coverage report (last measured ~23% lines — see COVERAGE.md; CI target is 60%)
+# Coverage report (last measured ~40% lines — see COVERAGE.md; CI target is 60%)
 cargo llvm-cov --workspace --all-features --summary-only
 
 # Runtime check

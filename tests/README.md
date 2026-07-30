@@ -31,7 +31,7 @@ cargo test -p harness-mcp
 
 ## Coverage
 
-CI configures a **target** of ≥ **60%** line coverage on PRs (`.github/workflows/coverage.yml`). That is not current measured coverage — see root [`COVERAGE.md`](../COVERAGE.md) (**~23%** as of last measure). To measure locally:
+CI configures a **target** of ≥ **60%** line coverage on PRs (`.github/workflows/coverage.yml`). That is not current measured coverage — see root [`COVERAGE.md`](../COVERAGE.md) (**~40%** as of last measure). To measure locally:
 
 ```bash
 # Install the coverage tool (once)

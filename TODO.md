@@ -44,9 +44,11 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 | Session list display names | [x] CTO W3.2 |
 | Slash stubs (`/obsidian`, `/trace`) | [x] CTO W0.3 |
 | COOKBOOK swarm + MCP examples | [x] W0.5 / W4.2 |
-| Coverage honesty (badge vs ~23%) | [x] W0.2; climb W2.1 [~] |
+| Coverage honesty (badge vs measured) | [x] W0.2 + W2.1 llvm-cov ~40% |
 | MCP resources/roots CLI | [x] W4.2 `harness mcp` |
 | Notification audit | [x] W3.7 |
+| Bridge doctor checks | [x] W4.3 |
+| OTLP / trace smoke doc | [x] W4.5 |
 
 ### Tier 3 — Growth
 

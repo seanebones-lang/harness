@@ -4,9 +4,9 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 
 | Field | Value |
 |-------|--------|
-| **Current measured** | **~23.33%** lines (2407 / 10317; tarpaulin, 2026-05-25) |
+| **Current measured** | **40.22%** lines (7814 / 19430; llvm-cov, 2026-07-30) — near-term ≥40% **met** |
 | **CI gate (target)** | ≥ 60% lines via `cargo llvm-cov --fail-under-lines 60` — **not met** |
-| **Near-term goal** | Workspace **≥ 40%**, then critical crates **≥ 60%** |
+| **Near-term goal** | Workspace **≥ 40%** ✓, then critical crates **≥ 60%** |
 | **Stretch** | Meet CI **≥ 60%** workspace |
 
 ## Priority order (critical crates first)

@@ -73,10 +73,10 @@ Goal: stable path unblocked on paper and machine.
 ### WAVE 2 — Quality floor (3–7 days)
 Goal: CI gate means something; panic surface shrinks.
 
-- [~] **W2.1** Coverage plan: critical crates first (`harness-tools`, `agent`, `swarm`, auth paths, MCP client). Target **≥40%** workspace then **≥60%** on critical crates. *(plan + unit tests 2026-07-30 — see `docs/COVERAGE_PLAN.md`; remeasure still needed)*
+- [x] **W2.1** Coverage plan + climb: critical crates tests; llvm-cov **40.22%** lines (2026-07-30) — ≥40% met; ≥60% CI gate still open. See `COVERAGE.md` / `docs/COVERAGE_PLAN.md`.
 - [x] **W2.2** Add integration tests: swarm gc dry-run (+ cancel-all); MCP pure helpers / tools tests expanded. *(2026-07-30)*
 - [~] **W2.3** Unwrap burn-down — production paths in checkpoint/ambient/server/cost already 0; agent lock + crates remain. *(audit 2026-07-30)*
-- [~] **W2.4** Clippy workspace clean (`-D warnings` local 2026-07-30). `cargo deny` not installed locally — install/CI verify still open.
+- [x] **W2.4** Clippy workspace clean + `cargo deny check` green locally (2026-07-30): crate licenses, advisories (anyhow/crossbeam/notify-rust bumps; proc-macro-error2 ignored via age).
 - [ ] **W2.5** Stabilize flaky checkpoint git tests if still flaking in CI (signing/config isolation).
 
 ### WAVE 3 — Daily-driver polish (3–7 days)
@@ -95,9 +95,9 @@ Goal: MCP/LSP/bridges match marketing.
 
 - [x] **W4.1** MCP sampling interactive TUI approval — inbound `sampling/createMessage` + y/n overlay; auto mode auto-approves; else deny. *(2026-07-30)*
 - [x] **W4.2** MCP resources/roots browser in TUI or CLI list command. *(`harness mcp resources|roots|read` 2026-07-30)*
-- [ ] **W4.3** Bridges: end-to-end tests or `doctor` checks for Obsidian/Notes/Calendar/Projects.
+- [x] **W4.3** Bridges: end-to-end tests or `doctor` checks for Obsidian/Notes/Calendar/Projects. *(`harness doctor` bridge section 2026-07-30)*
 - [ ] **W4.4** Collab: docs + smoke for multi-client; enforce/document `max_users`.
-- [ ] **W4.5** Observability: `/trace` real path; OTLP smoke doc.
+- [x] **W4.5** Observability: `/trace` real path; OTLP smoke doc. *(`docs/OTLP_SMOKE.md` + doctor observability 2026-07-30)*
 
 ### WAVE 5 — Capability expansion (2–4 weeks)
 Goal: competitive breadth.

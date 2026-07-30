@@ -4,27 +4,28 @@
 
 | Field | Value |
 |-------|--------|
-| **Tool** | cargo-tarpaulin |
-| **Measured** | **23.33%** line coverage (2407 / 10317 lines) |
-| **Date** | 2026-05-25 |
+| **Tool** | cargo-llvm-cov |
+| **Measured lines** | **40.22%** (7814 covered / 19430 lines) |
+| **Regions** | 40.82% · **Functions** 46.62% |
+| **Date** | 2026-07-30 |
 | **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **not yet met** |
+| **Near-term target** | ≥ 40% workspace lines — **met** (this measure) |
 
-Note: Measured % is well below the 60% PR gate. The gate is a **target**, not current status. Acceptable for beta; uplift is tracked (CTO W2.1 / IMPROVEMENTS_TODO). HTML report, if generated, may appear under `coverage/` (gitignored or local-only).
+Prior measure (tarpaulin 2026-05-25): **23.33%** lines (2407 / 10317). Tooling differs; treat llvm-cov as current SoT going forward.
+
+Note: Measured % is still below the 60% PR gate. The gate is a **target**, not current status. Critical crates are uneven — e.g. `harness-tools` policy/shell/swarm_tool high; TUI driver/input and some CLI wiring still near 0%. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
 
 ## How to re-run
 
-Prefer a quick summary (minutes, not hours). Full instrumented runs can be slow on large workspaces.
-
 ```bash
-# Preferred (matches CI tool)
+# Preferred (matches CI)
 cargo install cargo-llvm-cov   # once
 cargo llvm-cov --workspace --all-features --summary-only
 
-# Alternate (matches this file’s historical tool)
-cargo install cargo-tarpaulin  # once
+# Alternate (historical)
 cargo tarpaulin --workspace --out Stdout --timeout 300
 ```
 
-After a fresh run, update **Measured**, **Date**, and tool above. Keep the badge in `README.md` aligned with the measured figure (or label it explicitly as “target 60%” if you drop the measured badge).
+After a fresh run, update **Measured**, **Date**, and tool above. Keep the badge in `README.md` aligned with the measured figure (or label it explicitly as “target 60%”).
 
 Do **not** invent higher numbers or imply the fail-under gate is green until a real measurement supports it.

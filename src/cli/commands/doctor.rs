@@ -144,6 +144,75 @@ pub async fn handle_doctor_command(cfg: &Config) {
         cost_path.display()
     );
 
+    println!("\n  Bridges ([bridges.*] in config):");
+    let b = &cfg.bridges;
+    let bridge_rows: &[(&str, bool, &str)] = &[
+        (
+            "obsidian",
+            b.obsidian.enabled,
+            if b.obsidian.vault.as_deref().unwrap_or("").is_empty() {
+                "enabled — vault unset (URI without vault=)"
+            } else {
+                "enabled"
+            },
+        ),
+        (
+            "notes",
+            b.notes.enabled,
+            "Apple Notes via osascript (macOS)",
+        ),
+        (
+            "calendar",
+            b.calendar.enabled,
+            "Calendar via osascript (macOS)",
+        ),
+        (
+            "github_projects",
+            b.github_projects.enabled,
+            if b.github_projects.enabled
+                && (b.github_projects.owner.is_none() || b.github_projects.project_number.is_none())
+            {
+                "enabled but owner/project_number incomplete"
+            } else {
+                "GitHub Project V2 list"
+            },
+        ),
+    ];
+    for (name, on, detail) in bridge_rows {
+        if *on {
+            println!("  ✓ {name} — {detail}");
+        } else {
+            println!("  ○ {name} — disabled (set [bridges.{name}] enabled = true)");
+        }
+    }
+    println!("  CLI: harness bridge obsidian|notes|calendar|github-project …");
+
+    println!("\n  Observability:");
+    let obs = &cfg.observability;
+    let traces_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".harness/traces");
+    if obs.enabled {
+        println!("  ✓ [observability] enabled");
+    } else {
+        println!("  ○ [observability] disabled");
+    }
+    println!(
+        "  {} local JSONL traces dir: {}",
+        if traces_dir.is_dir() { "✓" } else { "○" },
+        traces_dir.display()
+    );
+    match obs.otlp_experimental_endpoint.as_deref() {
+        Some(ep) if !ep.is_empty() => {
+            println!("  ✓ otlp_experimental_endpoint = {ep}");
+            println!("    (experimental JSON POST …/v1/traces — see docs/OTLP_SMOKE.md)");
+        }
+        _ => println!(
+            "  ○ otlp_experimental_endpoint unset (optional — docs/OTLP_SMOKE.md)"
+        ),
+    }
+    println!("  CLI: harness trace [id] · TUI: /trace last|list");
+
     let sock = dirs::home_dir()
         .unwrap_or_default()
         .join(".harness/daemon.sock");
