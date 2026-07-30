@@ -57,7 +57,7 @@ Goal: one backlog, honest metrics, vault usable, no lying checkboxes.
 - [x] **W0.3** Wire slash stubs to real implementations or honest “not available” with doc links (`/obsidian`, `/trace` at minimum). *(slash-impl)*
 - [x] **W0.4** Populate vault: `Architecture/Overview.md`, `Backlog/CTO-TODO.md` (link this file), refresh `Status/Current-Condition.md` for `dev`. *(2026-07-30)*
 - [x] **W0.5** COOKBOOK: add swarm worked example (run → list → status → gc → F2/`/swarm`). *(cookbook-writer)*
-- [ ] **W0.6** Open PR `dev` → `main` (or document hold reason); ensure CI green on PR. *(pr-shipper)*
+- [x] **W0.6** Open PR `dev` → `main` (or document hold reason); ensure CI green on PR. *(pr-shipper — https://github.com/seanebones-lang/harness/pull/5)*
 
 ### WAVE 1 — Release integrity (1–3 days, maintainer + eng)
 Goal: stable path unblocked on paper and machine.
