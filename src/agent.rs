@@ -738,7 +738,10 @@ mod tests {
         async fn stream_chat(&self, _req: ChatRequest) -> Result<DeltaStream, ProviderError> {
             let idx = self.calls.fetch_add(1, Ordering::SeqCst);
             let batch = {
-                let scripts = self.scripts.lock().expect("scripts lock");
+                let scripts = self
+                    .scripts
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 scripts.get(idx).cloned().unwrap_or_else(|| {
                     vec![Delta::Done {
                         stop_reason: StopReason::EndTurn,

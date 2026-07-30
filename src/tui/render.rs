@@ -16,8 +16,8 @@ use ratatui::{
 
 use crate::highlight::Highlighter;
 
-use super::theme::Theme;
 use super::state::RightPanelMode;
+use super::theme::Theme;
 use super::{AppState, PendingConfirm};
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
@@ -322,6 +322,17 @@ fn draw_event_log(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, them
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
     f.render_stateful_widget(list, area, &mut state.event_scroll);
+
+    let total = state.event_log.len();
+    if total > area.height.saturating_sub(2) as usize {
+        let position = state.event_scroll.selected().unwrap_or(0);
+        let mut scroll_state = ScrollbarState::new(total).position(position);
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight),
+            area,
+            &mut scroll_state,
+        );
+    }
 }
 
 fn draw_swarm_panel(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, theme: &Theme) {
@@ -351,6 +362,7 @@ fn draw_swarm_panel(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, th
         })
         .collect();
 
+    let total_items = items.len();
     let title = format!(
         " Swarm {} ",
         if state.swarm_active > 0 {
@@ -369,7 +381,27 @@ fn draw_swarm_panel(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, th
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
+    // Keep selection at bottom when following new swarm snapshots.
+    if total_items > 0 {
+        let sel = state.swarm_scroll.selected().unwrap_or(0);
+        if sel == 0 || sel + 1 >= total_items.saturating_sub(1) {
+            state
+                .swarm_scroll
+                .select(Some(total_items.saturating_sub(1)));
+        }
+    }
+
     f.render_stateful_widget(list, area, &mut state.swarm_scroll);
+
+    if total_items > area.height.saturating_sub(2) as usize {
+        let position = state.swarm_scroll.selected().unwrap_or(0);
+        let mut scroll_state = ScrollbarState::new(total_items).position(position);
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight),
+            area,
+            &mut scroll_state,
+        );
+    }
 }
 
 fn draw_input(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &Theme) {
