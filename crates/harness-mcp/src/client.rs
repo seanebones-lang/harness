@@ -400,6 +400,7 @@ impl McpClient {
     }
 
     /// Spawn with an optional progress event sender and optional LLM for MCP sampling.
+    #[allow(clippy::too_many_arguments)]
     pub async fn spawn_with_opts(
         name: &str,
         cfg: &McpServerConfig,
@@ -441,6 +442,7 @@ impl McpClient {
     ///
     /// `keepalive` is held until the client is dropped; pass `child` for spawned servers,
     /// `()` for tests.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn from_streams<R, W, K>(
         stdout: R,
         stdin: W,
