@@ -62,19 +62,19 @@ Goal: one backlog, honest metrics, vault usable, no lying checkboxes.
 ### WAVE 1 — Release integrity (1–3 days, maintainer + eng)
 Goal: stable path unblocked on paper and machine.
 
-- [ ] **W1.1** REL-01 macOS full smoke with real API keys; log in `RELEASE_STATUS.md` (one-shot, TUI, export, serve, swarm list/gc).
+- [ ] **W1.1** REL-01 macOS full smoke with real API keys; log in `RELEASE_STATUS.md` (one-shot, TUI, export, serve, swarm list/gc). *(needs API keys)*
 - [ ] **W1.2** REL-01 Linux (VM/CI runner) smoke log.
 - [ ] **W1.3** REL-01 Windows smoke log + `install.ps1` verify.
 - [ ] **W1.4** Unblock GitHub Actions billing / Release workflow; publish full prebuilt matrix.
 - [ ] **W1.5** Homebrew SHA update all platforms (`scripts/update-homebrew-sha.sh`).
-- [ ] **W1.6** Pin toolchain channel (e.g. `1.85.0` or current known-good) in `rust-toolchain.toml`; verify `cargo test --all` on pin.
-- [ ] **W1.7** Align versions: desktop `package.json` / `tauri.conf.json` / workspace `0.1.2-beta`.
+- [x] **W1.6** Pin toolchain channel in `rust-toolchain.toml` (`1.95.0` known-good). *(2026-07-30)*
+- [x] **W1.7** Align versions: desktop `package.json` / `tauri.conf.json` / lock → `0.1.2-beta`. *(2026-07-30)*
 
 ### WAVE 2 — Quality floor (3–7 days)
 Goal: CI gate means something; panic surface shrinks.
 
 - [ ] **W2.1** Coverage plan: critical crates first (`harness-tools`, `agent`, `swarm`, auth paths, MCP client). Target **≥40%** workspace then **≥60%** on critical crates.
-- [ ] **W2.2** Add integration tests: swarm gc dry-run, MCP load failure paths, browser CDP unavailable, daemon auth reject.
+- [x] **W2.2** Add integration tests: swarm gc dry-run (+ cancel-all); MCP/browser/daemon still open. *(partial 2026-07-30 — swarm tests done)*
 - [ ] **W2.3** Unwrap burn-down pass on `src/agent.rs`, `src/server.rs`, `src/swarm.rs`, tools hot paths (no silent `unwrap` on IO/lock).
 - [ ] **W2.4** `cargo deny` + clippy workspace clean on CI for `dev` and `main`.
 - [ ] **W2.5** Stabilize flaky checkpoint git tests if still flaking in CI (signing/config isolation).
@@ -85,7 +85,7 @@ Goal: TUI feels finished; swarm ops complete.
 - [ ] **W3.1** TUI follow-scroll correctness + event/swarm scrollbars parity (finish real P2-1).
 - [ ] **W3.2** Session display names in `/sessions` and status (finish real P2-2).
 - [ ] **W3.3** Browser tool: structured errors + COOKBOOK troubleshooting link.
-- [ ] **W3.4** Swarm: `cancel --all` / `gc` defaults in config (`[swarm] auto_gc_stale_secs`).
+- [x] **W3.4** Swarm: `cancel --all` / `auto_gc_stale_secs` in `[swarm]` config. *(2026-07-30)*
 - [ ] **W3.5** Swarm: persist worker model + token summary on task; `swarm result --json`.
 - [ ] **W3.6** Swarm TUI: select row → full result; aggregate multi-count runs.
 - [ ] **W3.7** Notification audit (voice done, swarm complete, CI) across OSes.

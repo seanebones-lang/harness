@@ -281,11 +281,18 @@ async fn dispatch_swarm_readonly(action: &SwarmAction, cfg: &Config) -> Result<(
             },
             None => println!("Task {id} not found."),
         },
-        SwarmAction::Cancel { id } => {
-            if crate::swarm::cancel_task(id)? {
-                println!("Cancelled task {id}.");
+        SwarmAction::Cancel { id, all } => {
+            if *all {
+                let n = crate::swarm::cancel_all_tasks()?;
+                println!("Cancelled {n} task(s).");
+            } else if let Some(id) = id {
+                if crate::swarm::cancel_task(id)? {
+                    println!("Cancelled task {id}.");
+                } else {
+                    println!("Task {id} not found or already finished.");
+                }
             } else {
-                println!("Task {id} not found or already finished.");
+                anyhow::bail!("specify a task id or pass --all");
             }
         }
         SwarmAction::Wait { id, timeout_secs } => {
