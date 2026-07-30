@@ -2,8 +2,10 @@
 
 **Date:** 2026-07-30  
 **Perspective:** CTO review of codebase + Obsidian vault  
-**Branch base:** `dev` @ `f06ee9b`  
-**Verdict:** Strong multi-provider agent core; **operability and truthfulness of docs/metrics lag the architecture**. Ship order below maximizes trust → stability → capability → scale.
+**Branch base:** `dev` @ `54da34e` (was f06ee9b at backlog create)  
+**Verdict:** Strong multi-provider agent core; **operability caught up substantially on 2026-07-30** (coverage honesty, swarm/MCP/collab/doctor, deny/clippy). Remaining blockers are **release smoke + billing matrix**, then capability/competition depth.
+
+**EOD pointer:** vault `Vault/Status/Session-Close-2026-07-30.md` · PR https://github.com/seanebones-lang/harness/pull/5
 
 **How to use:** Work top-to-bottom within each wave. Do not start Wave N+1 items that block Wave N release gates unless explicitly re-prioritized. Check boxes in this file as we execute.
 
@@ -15,34 +17,34 @@
 | Gap | Evidence | Risk |
 |-----|----------|------|
 | Stable blocked | REL-01 incomplete; Linux/Windows smoke missing | Cannot claim production-ready |
-| Prebuilt matrix partial | macOS arm64 only; CI billing history | Broken install story outside one arch |
-| Coverage myth | Badge “60%+”; `COVERAGE.md` ≈ **23%** lines | Credibility hit with judges/users |
-| Doc/status drift | `TODO.md` marks scrollbar/session-names **[x]**; vault says not started; chat scrollbar exists but follow-scroll/session UX incomplete | Team executes the wrong work |
-| Vault hollow | `Vault/Architecture/`, `Vault/Backlog/` empty; Condition still says `main` | Knowledge system not operational |
+| Prebuilt matrix partial | macOS arm64 only; CI billing history (W1.4–1.5 📌) | Broken install story outside one arch |
+| Coverage lag | `COVERAGE.md` **40.22%** lines (llvm-cov 2026-07-30); badge ~40%; CI 60% still target | OK if honest; not stable gate yet |
+| Doc/status drift | Largely reconciled 2026-07-30 (TODO + CTO + vault) | Keep checkboxes honest on ship days |
+| Vault | Populated Index/Status/Backlog + session close | Maintain on each ship day |
 
 ### B. Product honesty (UX debt)
 | Gap | Evidence | Risk |
 |-----|----------|------|
-| Slash stubs | `/obsidian` → “Phase E12”; `/trace` → “Phase E7” while features exist | Users think product is vapor |
-| COOKBOOK gap | No swarm / gc / F2 worked example | Feature undiscoverable |
-| Competition checklist open | Many **[C]** boxes still open despite Dockerfile/etc. | Submission not judge-ready |
+| Slash stubs | **Closed** — `/obsidian`, `/trace` wired | — |
+| COOKBOOK gap | **Closed** — swarm + MCP + browser sections | Keep examples current |
+| Competition checklist open | Many **[C]** boxes still open (W8) | Submission not judge-ready |
 
 ### C. Architecture & quality
 | Gap | Evidence | Risk |
 |-----|----------|------|
-| God files | `agent.rs` ~1k, `server.rs` ~1.2k, `tui/render|input|driver` large | Change risk, review cost |
-| Unwrap surface | ~130 `src/` + ~200 `crates/` unwrap/expect | Panic paths under poison/IO |
-| MCP sampling UX | Auto vs deny only; no interactive TUI approval | MCP servers half-usable in plan mode |
-| Version drift | Desktop `package.json` 0.1.0 vs crate 0.1.2-beta; tauri.conf 0.1.0 | Support confusion |
-| Toolchain pin | `rust-toolchain.toml` = `stable` not dated channel | Non-reproducible MSRV story |
-| Swarm next | No cancel-all, cost-on-task, auto-gc config, result aggregate | Ops ceiling after today’s win |
+| God files | `agent.rs` / `server.rs` / heavy TUI still large | Change risk (W7.4) |
+| Unwrap surface | `src/` production mostly clean; crates residual | Panic paths under poison/IO |
+| MCP sampling UX | **Closed** — TUI y/n + auto | — |
+| Version drift | **Closed** — desktop 0.1.2-beta aligned | — |
+| Toolchain pin | **Closed** — `1.95.0` | — |
+| Swarm next | cancel-all / auto-gc / --json done; model-on-task optional | Ops mostly unblocked |
 
 ### D. Compatibility surface
 | Gap | Notes |
 |-----|--------|
 | Windows/Linux release artifacts | Install scripts exist; Release matrix incomplete |
-| Provider breadth | No Mistral/Gemini/Bedrock first-class |
-| Editor/desktop | VS Code + Tauri early; packaging incomplete |
+| Provider breadth | **Mistral + openai-compatible done**; Gemini/Bedrock open (W5.2) |
+| Editor/desktop | VS Code + Tauri early; packaging incomplete (W6) |
 | i18n | ES manual partial/draft |
 
 ---
