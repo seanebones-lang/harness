@@ -5,9 +5,10 @@
 version = 2
 yanked = "warn"
 ignore = [
-    "RUSTSEC-2025-0141", # bincode unmaintained (via syntect)
-    "RUSTSEC-2024-0436", # paste unmaintained (via ratatui)
-    "RUSTSEC-2026-0002", # lru unsound (via ratatui)
+    # Transitive / no safe upgrade yet
+    { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained via syntect" },
+    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained via ratatui" },
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained via age/i18n-embed-fl; no safe upgrade" },
 ]
 
 [licenses]
@@ -29,6 +30,10 @@ allow = [
 ]
 private = { ignore = true }
 confidence-threshold = 0.85
+exceptions = [
+    # keyring → turso path; tiny crate, no license field on crates.io
+    { allow = ["MIT"], crate = "cfg_block" },
+]
 
 [bans]
 multiple-versions = "warn"

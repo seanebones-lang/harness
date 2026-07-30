@@ -231,4 +231,5 @@ url = "http://127.0.0.1:9222"
 - [`BROWSER_CDP.md`](BROWSER_CDP.md) — browser tool setup
 - [`SHORTCUTS.md`](SHORTCUTS.md) — TUI keys including F2 / `/swarm`; MCP CLI
 - [`NOTIFICATIONS_AUDIT.md`](NOTIFICATIONS_AUDIT.md) — desktop notification kinds + call sites
+- [`OTLP_SMOKE.md`](OTLP_SMOKE.md) — local traces + experimental OTLP
 - [`CTO_BACKLOG.md`](CTO_BACKLOG.md) — ordered engineering waves
