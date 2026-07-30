@@ -53,6 +53,7 @@
 | `Ctrl+]` | Widen right panel |
 | `Ctrl+[` | Narrow right panel |
 | `F2` | Toggle Events ↔ Swarm panel (also `/swarm`) |
+| `Enter` (empty, Swarm panel) | Peek selected swarm task result into Events |
 
 ## Plan Mode
 

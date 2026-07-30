@@ -435,6 +435,63 @@ pub(super) async fn run_terminal_loop(
                             continue;
                         }
 
+                        // Swarm panel: empty Enter peeks selected task result into the event log.
+                        {
+                            let mut st = state.lock();
+                            let empty = st.input.trim().is_empty();
+                            if empty
+                                && st.right_panel_mode == super::state::RightPanelMode::Swarm
+                            {
+                                if let Some(sel) = st.swarm_scroll.selected() {
+                                    if let Some(line) = st.swarm_lines.get(sel).cloned() {
+                                        if let Some(id) = extract_swarm_task_id(&line) {
+                                            match crate::swarm::get_task(&id) {
+                                                Ok(Some(t)) => {
+                                                    st.push_event(format!(
+                                                        "[swarm] {} [{}] {}",
+                                                        t.id,
+                                                        crate::swarm::status_label(&t.status),
+                                                        t.prompt.chars().take(80).collect::<String>()
+                                                    ));
+                                                    match t.result.as_deref() {
+                                                        Some(r) if !r.is_empty() => {
+                                                            let preview: String =
+                                                                r.chars().take(800).collect();
+                                                            st.push_event(format!(
+                                                                "[swarm result] {preview}"
+                                                            ));
+                                                            if r.chars().count() > 800 {
+                                                                st.push_event(
+                                                                    "[swarm result] …truncated — use `harness swarm result <id>`"
+                                                                        .to_string(),
+                                                                );
+                                                            }
+                                                        }
+                                                        _ => st.push_event(format!(
+                                                            "[swarm] no result yet (status={})",
+                                                            crate::swarm::status_label(&t.status)
+                                                        )),
+                                                    }
+                                                    st.status = format!(
+                                                        "Swarm {id} detail in event log (F2 for panel)"
+                                                    );
+                                                }
+                                                Ok(None) => {
+                                                    st.push_event(format!(
+                                                        "[swarm] task {id} not found"
+                                                    ));
+                                                }
+                                                Err(e) => {
+                                                    st.push_event(format!("[swarm] {e}"));
+                                                }
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         let prompt = {
                             let mut st = state.lock();
                             st.tab_completions.clear();
@@ -709,6 +766,17 @@ pub(super) async fn run_terminal_loop(
     }
 
     Ok(())
+}
+
+/// Parse a task id from a swarm panel line (`*swabcdef01 status prompt…`).
+fn extract_swarm_task_id(line: &str) -> Option<String> {
+    let s = line.trim_start_matches(['*', '!', ' ']);
+    let id = s.split_whitespace().next()?;
+    if id.starts_with("sw") && id.len() >= 4 {
+        Some(id.to_string())
+    } else {
+        None
+    }
 }
 
 fn count_user_turns(messages: &[harness_provider_core::Message]) -> usize {

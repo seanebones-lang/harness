@@ -156,7 +156,9 @@ fn apply_model_set(path: &std::path::Path, provider_part: &str, model_part: &str
     if !doc.contains_key("providers") {
         doc["providers"] = toml_edit::Item::Table(toml_edit::Table::new());
     }
-    let providers = doc["providers"].as_table_mut().expect("providers table");
+    let providers = doc["providers"].as_table_mut().ok_or_else(|| {
+        anyhow::anyhow!("config root `providers` is not a table — fix config TOML")
+    })?;
     if !providers.contains_key(&router_default) {
         providers[&router_default] = toml_edit::Item::Table(toml_edit::Table::new());
     }
