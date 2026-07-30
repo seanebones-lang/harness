@@ -117,9 +117,9 @@ impl Tool for BrowserTool {
     }
 
     async fn execute(&self, args: Value) -> Result<String> {
-        let action = args["action"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("missing action (one of: {})", KNOWN_ACTIONS.join(", ")))?;
+        let action = args["action"].as_str().ok_or_else(|| {
+            anyhow::anyhow!("missing action (one of: {})", KNOWN_ACTIONS.join(", "))
+        })?;
         validate_action(action).with_context(|| {
             format!(
                 "unknown browser action `{action}` — valid: {}",

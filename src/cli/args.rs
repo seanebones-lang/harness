@@ -228,6 +228,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: BridgeAction,
     },
+    /// List MCP resources/roots or read a resource URI (from `.harness/mcp.json`).
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
     /// Export observability traces.
     Trace {
         /// Trace ID to export (omit for last trace).
@@ -350,6 +355,26 @@ pub enum BridgeAction {
     },
     /// List GitHub Project V2 items.
     GithubProject,
+}
+
+#[derive(Subcommand)]
+pub enum McpAction {
+    /// List resources across configured MCP servers.
+    Resources {
+        /// Only query this server name (from mcp.json).
+        #[arg(long)]
+        server: Option<String>,
+    },
+    /// Show workspace roots harness advertises to MCP servers.
+    Roots,
+    /// Read a resource by URI (tries servers that advertise resources).
+    Read {
+        /// Resource URI (e.g. `file:///…` or server-specific scheme).
+        uri: String,
+        /// Only query this server name (from mcp.json).
+        #[arg(long)]
+        server: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

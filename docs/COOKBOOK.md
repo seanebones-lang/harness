@@ -169,7 +169,27 @@ Legend in the panel: `*` = live worker, `!` = orphan non-terminal. A status chip
 
 End-to-end queue + list without waiting on models: [`demo/scenario_2_swarm.sh`](../demo/scenario_2_swarm.sh).
 
-## 12. Browser tool troubleshooting
+## 12. MCP resources & roots (CLI)
+
+Inspect what configured MCP servers expose without opening the TUI:
+
+```bash
+# Roots harness advertises during initialize / roots/list_changed
+harness mcp roots
+
+# List resources across servers in .harness/mcp.json (or ~/.harness/mcp.json)
+harness mcp resources
+harness mcp resources --server my-server
+
+# Read one URI (tries servers that advertise resources)
+harness mcp read 'file:///path/to/doc'
+harness mcp read 'memo://notes/1' --server memory
+```
+
+If no config is found, the CLI prints how to create a Claude Code–compatible `mcpServers` map.
+Command allowlisting matches agent startup (`[mcp] command_allowlist`).
+
+## 13. Browser tool troubleshooting
 
 **Prompt:** `Open https://example.com, take a screenshot, and summarize the title.`
 
@@ -209,5 +229,6 @@ url = "http://127.0.0.1:9222"
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — how to add tools
 - [`TODO.md`](../TODO.md) — severity-ranked backlog + roadmap (stable blocked on REL-01 manual smoke)
 - [`BROWSER_CDP.md`](BROWSER_CDP.md) — browser tool setup
-- [`SHORTCUTS.md`](SHORTCUTS.md) — TUI keys including F2 / `/swarm`
+- [`SHORTCUTS.md`](SHORTCUTS.md) — TUI keys including F2 / `/swarm`; MCP CLI
+- [`NOTIFICATIONS_AUDIT.md`](NOTIFICATIONS_AUDIT.md) — desktop notification kinds + call sites
 - [`CTO_BACKLOG.md`](CTO_BACKLOG.md) — ordered engineering waves

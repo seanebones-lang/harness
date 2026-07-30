@@ -101,3 +101,29 @@ The file contents are attached to the next message.
 `/focus 25` starts a 25-minute Pomodoro. The status bar shows `[FOCUS Nm]`.
 Notifications are silenced until the timer expires or `/focus off` is typed.
 Voice input auto-enables focus mode during recording.
+
+## CLI (related)
+
+| Command | Action |
+|---------|--------|
+| `harness swarm list\|status\|gc\|…` | Swarm registry ops |
+| `harness mcp roots` | Roots advertised to MCP servers |
+| `harness mcp resources [--server NAME]` | List MCP resources |
+| `harness mcp read <uri> [--server NAME]` | Read one MCP resource |
+| `harness bridge obsidian …` | Obsidian bridge write |
+| `harness trace [id]` | Dump last / named OTEL-ish trace |
+
+## MCP CLI (resources / roots)
+
+Outside the TUI, list or read MCP resources without starting a full agent session:
+
+```bash
+harness mcp roots                          # roots harness advertises (CWD + home)
+harness mcp resources                      # resources/list across mcp.json servers
+harness mcp resources --server filesystem  # one server only
+harness mcp read <uri>                     # resources/read (first server that succeeds)
+harness mcp read <uri> --server filesystem
+```
+
+Requires `.harness/mcp.json`, `.claude/mcp.json`, `~/.harness/mcp.json`, or `[mcp] config_path`.
+Respects `[mcp] command_allowlist` (same as tool loading).

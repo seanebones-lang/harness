@@ -149,6 +149,7 @@ pub async fn build_tools(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn build_tools_inner(
     provider: ArcProvider,
     model: String,
@@ -187,12 +188,14 @@ pub async fn build_tools_inner(
     } else {
         harness_tools::ConfirmPolicy::Off
     };
+    let sub_notifications = cfg.notifications.clone();
     let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |task: String| {
         let p: ArcProvider = sub_provider.clone();
         let m = sub_model.clone();
         let scfg = sub_shell_cfg.clone();
         let ws = sub_workspace.clone();
         let gate = sub_confirm.clone();
+        let notif = sub_notifications.clone();
         let sub_tools = {
             let mut r = ToolRegistry::new();
             r.register(ReadFileTool {
@@ -224,7 +227,7 @@ pub async fn build_tools_inner(
             use harness_provider_core::Message;
             let mut session = Session::new(&m);
             session.push(Message::user(&task));
-            agent::drive_agent(
+            let drive_result = agent::drive_agent(
                 &p,
                 &sub_tools,
                 None,
@@ -233,7 +236,7 @@ pub async fn build_tools_inner(
                 agent::DEFAULT_SYSTEM,
                 None,
             )
-            .await?;
+            .await;
             let reply = session
                 .messages
                 .iter()
@@ -241,6 +244,20 @@ pub async fn build_tools_inner(
                 .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
                 .map(|m| m.content.as_str().to_string())
                 .unwrap_or_else(|| "(no response)".into());
+            let preview: String = reply.chars().take(160).collect();
+            match &drive_result {
+                Ok(()) => {
+                    crate::notifications::subagent_done(&notif, "spawn_agent", &preview);
+                }
+                Err(e) => {
+                    crate::notifications::subagent_done(
+                        &notif,
+                        "spawn_agent",
+                        &format!("failed: {e}"),
+                    );
+                }
+            }
+            drive_result?;
             Ok(reply)
         })
     });

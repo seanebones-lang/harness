@@ -327,12 +327,7 @@ async fn handle_inbound_server_request(
             }
             let provider = ctx.sampling_provider.lock().await.clone();
             let Some(provider) = provider else {
-                write_rpc_error(
-                    &io,
-                    id,
-                    "MCP sampling requires an attached LLM provider",
-                )
-                .await;
+                write_rpc_error(&io, id, "MCP sampling requires an attached LLM provider").await;
                 return;
             };
             let mut core_messages = Vec::with_capacity(messages.len());
@@ -891,9 +886,18 @@ mod tests {
             .await;
         });
 
-        let client = McpClient::from_streams(client_r, client_w, (), "test".into(), None, None, false, None)
-            .await
-            .expect("client construct");
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "test".into(),
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .expect("client construct");
         server.await.expect("server task");
 
         let caps = client.capabilities.lock().await.clone();
@@ -945,10 +949,18 @@ mod tests {
             }
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "concurrent-test".into(), None, None, false, None)
-                .await
-                .expect("client construct");
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "concurrent-test".into(),
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .expect("client construct");
 
         // Fire 5 concurrent calls; collect results.
         let mut handles = Vec::new();
@@ -1002,9 +1014,18 @@ mod tests {
             server_w.flush().await.unwrap();
         });
 
-        let client = McpClient::from_streams(client_r, client_w, (), "err-test".into(), None, None, false, None)
-            .await
-            .unwrap();
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "err-test".into(),
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
 
         let err = client
             .call("bogus", json!({}))
@@ -1032,10 +1053,18 @@ mod tests {
             drop(reader);
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "close-test".into(), None, None, false, None)
-                .await
-                .unwrap();
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "close-test".into(),
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
 
         let res = tokio::time::timeout(
             Duration::from_secs(5),
@@ -1179,10 +1208,18 @@ mod tests {
             do_handshake(&mut reader, &mut server_w, json!({})).await;
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "deny-test".into(), None, None, false, None)
-                .await
-                .unwrap();
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "deny-test".into(),
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
         server.await.unwrap();
 
         let params = json!({
@@ -1235,10 +1272,18 @@ mod tests {
             server_w.flush().await.unwrap();
         });
 
-        let client =
-            McpClient::from_streams(client_r, client_w, (), "tools-test".into(), None, None, false, None)
-                .await
-                .unwrap();
+        let client = McpClient::from_streams(
+            client_r,
+            client_w,
+            (),
+            "tools-test".into(),
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
 
         let tools = client.list_tools().await.expect("list_tools");
         assert_eq!(tools.len(), 2);
@@ -1248,6 +1293,79 @@ mod tests {
         assert!(tools[1].description.is_none());
 
         server.await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod pure_helper_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extract_mcp_text_content_variants() {
+        assert_eq!(extract_mcp_text_content(None), "");
+        assert_eq!(extract_mcp_text_content(Some(&json!("plain"))), "plain");
+        assert_eq!(
+            extract_mcp_text_content(Some(&json!([
+                {"type": "text", "text": "a"},
+                {"type": "image", "data": "x"},
+                {"type": "text", "text": "b"}
+            ]))),
+            "a\n[image]\nb"
+        );
+        assert_eq!(
+            extract_mcp_text_content(Some(&json!({"text": "from-obj"}))),
+            "from-obj"
+        );
+        assert_eq!(
+            extract_mcp_text_content(Some(&json!({
+                "content": [{"type": "text", "text": "nested"}]
+            }))),
+            "nested"
+        );
+        assert_eq!(extract_mcp_text_content(Some(&json!(42))), "42");
+    }
+
+    #[test]
+    fn mcp_sampling_message_to_core_roles() {
+        let user = mcp_sampling_message_to_core(&json!({
+            "role": "user",
+            "content": "hi"
+        }))
+        .unwrap();
+        assert!(matches!(user.role, Role::User));
+        assert!(matches!(user.content, MessageContent::Text(ref t) if t == "hi"));
+
+        let asst = mcp_sampling_message_to_core(&json!({
+            "role": "assistant",
+            "content": "yo"
+        }))
+        .unwrap();
+        assert!(matches!(asst.role, Role::Assistant));
+
+        let sys = mcp_sampling_message_to_core(&json!({
+            "role": "system",
+            "content": "sys"
+        }))
+        .unwrap();
+        assert!(matches!(sys.role, Role::System));
+
+        let tool = mcp_sampling_message_to_core(&json!({
+            "role": "tool",
+            "content": "out",
+            "tool_call_id": "tc1"
+        }))
+        .unwrap();
+        assert!(matches!(tool.role, Role::Tool));
+        assert_eq!(tool.tool_call_id.as_deref(), Some("tc1"));
+
+        // Unknown role defaults to user
+        let other = mcp_sampling_message_to_core(&json!({
+            "role": "mystery",
+            "content": "x"
+        }))
+        .unwrap();
+        assert!(matches!(other.role, Role::User));
     }
 }
 
@@ -1312,7 +1430,8 @@ mod prop_tests {
 }
 
 /// Collect workspace roots from the current directory and common project markers.
-fn collect_roots() -> Vec<Value> {
+/// Advertised during MCP initialize and `notifications/roots/list_changed`.
+pub fn collect_roots() -> Vec<Value> {
     let mut roots = vec![];
 
     if let Ok(cwd) = std::env::current_dir() {
