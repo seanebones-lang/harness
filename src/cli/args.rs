@@ -276,7 +276,7 @@ pub enum SwarmAction {
         #[arg(long)]
         model: Option<String>,
         /// Number of parallel tasks (default 1).
-        #[arg(long)]
+        #[arg(long, visible_alias = "agents", short = 'n')]
         count: Option<usize>,
     },
     /// List recent swarm tasks.
@@ -303,6 +303,21 @@ pub enum SwarmAction {
         /// Max seconds to wait (default 300).
         #[arg(long, default_value = "300")]
         timeout_secs: u64,
+    },
+    /// Reap orphan pending/running tasks and optionally purge old terminal rows.
+    Gc {
+        /// Mark non-live pending/running older than this many seconds as failed (default 3600).
+        #[arg(long, default_value = "3600")]
+        stale_secs: u64,
+        /// Keep only the newest N terminal tasks (done/failed/cancelled); delete the rest.
+        #[arg(long)]
+        keep: Option<usize>,
+        /// Delete terminal tasks completed more than this many seconds ago.
+        #[arg(long)]
+        older_than_secs: Option<u64>,
+        /// Report what would change without writing.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

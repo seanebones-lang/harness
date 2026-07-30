@@ -56,6 +56,7 @@ pub(super) async fn run_terminal_loop(
             if st.busy {
                 st.tick_spinner();
             }
+            st.maybe_refresh_swarm(false);
         }
 
         // Draw
@@ -660,17 +661,37 @@ pub(super) async fn run_terminal_loop(
                         }
                     }
 
-                    // ── PageUp/Down — scroll event log ────────────────────────
+                    // ── PageUp/Down — scroll event log / swarm panel ──────────
                     (KeyCode::PageUp, _) => {
-                        state.lock().scroll_event_up(5);
+                        let mut st = state.lock();
+                        if st.right_panel_mode == super::state::RightPanelMode::Swarm {
+                            let cur = st
+                                .swarm_scroll
+                                .selected()
+                                .unwrap_or(st.swarm_lines.len().saturating_sub(1));
+                            st.swarm_scroll.select(Some(cur.saturating_sub(5)));
+                        } else {
+                            st.scroll_event_up(5);
+                        }
                     }
                     (KeyCode::PageDown, _) => {
-                        state.lock().scroll_event_down(5);
+                        let mut st = state.lock();
+                        if st.right_panel_mode == super::state::RightPanelMode::Swarm {
+                            let cur = st.swarm_scroll.selected().unwrap_or(0);
+                            let max = st.swarm_lines.len().saturating_sub(1);
+                            st.swarm_scroll.select(Some((cur + 5).min(max)));
+                        } else {
+                            st.scroll_event_down(5);
+                        }
                     }
 
                     // ── F1 — help ─────────────────────────────────────────────
                     (KeyCode::F(1), _) => {
                         show_help(&state);
+                    }
+                    // ── F2 — swarm panel ──────────────────────────────────────
+                    (KeyCode::F(2), _) => {
+                        state.lock().toggle_swarm_panel();
                     }
 
                     // ── Regular char input ────────────────────────────────────

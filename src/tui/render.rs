@@ -17,6 +17,7 @@ use ratatui::{
 use crate::highlight::Highlighter;
 
 use super::theme::Theme;
+use super::state::RightPanelMode;
 use super::{AppState, PendingConfirm};
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
@@ -85,7 +86,10 @@ pub(crate) fn draw_all(
     state.event_items_len = event_item_count;
 
     draw_chat(f, state, main[0], hl, theme);
-    draw_event_log(f, state, main[1], theme);
+    match state.right_panel_mode {
+        RightPanelMode::Events => draw_event_log(f, state, main[1], theme),
+        RightPanelMode::Swarm => draw_swarm_panel(f, state, main[1], theme),
+    }
     draw_input(f, state, root[1], theme);
     draw_status(f, state, root[2], theme);
 
@@ -320,6 +324,54 @@ fn draw_event_log(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, them
     f.render_stateful_widget(list, area, &mut state.event_scroll);
 }
 
+fn draw_swarm_panel(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, theme: &Theme) {
+    let items: Vec<ListItem> = state
+        .swarm_lines
+        .iter()
+        .map(|line| {
+            let color = if line.starts_with("swarm ") {
+                Color::Cyan
+            } else if line.starts_with("active ") {
+                Color::LightCyan
+            } else if line.starts_with('*') {
+                Color::Green
+            } else if line.starts_with('!') {
+                Color::Yellow
+            } else if line.contains("failed") {
+                theme.error_color
+            } else if line.contains("done") {
+                theme.dim_color
+            } else {
+                theme.border_color
+            };
+            ListItem::new(Line::from(Span::styled(
+                line.as_str(),
+                Style::default().fg(color),
+            )))
+        })
+        .collect();
+
+    let title = format!(
+        " Swarm {} ",
+        if state.swarm_active > 0 {
+            format!("· {} active", state.swarm_active)
+        } else {
+            "· idle".into()
+        }
+    );
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
+        .style(Style::default().fg(Color::White))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+
+    f.render_stateful_widget(list, area, &mut state.swarm_scroll);
+}
+
 fn draw_input(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &Theme) {
     // Show cursor position as a visual block
     let input_with_cursor = if state.busy {
@@ -402,6 +454,11 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
     }
     if state.search_mode {
         indicators.push_str("[SEARCH] ");
+    }
+    if state.right_panel_mode == RightPanelMode::Swarm {
+        indicators.push_str("[SWARM] ");
+    } else if state.swarm_active > 0 {
+        indicators.push_str(&format!("[SWARM {}] ", state.swarm_active));
     }
 
     // Left side: indicators + status message

@@ -268,11 +268,17 @@ async fn dispatch_swarm_readonly(action: &SwarmAction, cfg: &Config) -> Result<(
     match action {
         SwarmAction::List => crate::swarm::print_status()?,
         SwarmAction::Status { id } => match crate::swarm::get_task(id)? {
-            Some(t) => println!("{} [{}] {}", t.id, t.status.as_str(), t.prompt),
+            Some(t) => crate::swarm::print_task_detail(&t),
             None => println!("Task {id} not found."),
         },
         SwarmAction::Result { id } => match crate::swarm::get_task(id)? {
-            Some(t) => println!("{}", t.result.as_deref().unwrap_or("(no result)")),
+            Some(t) => match t.result.as_deref() {
+                Some(r) if !r.is_empty() => println!("{r}"),
+                _ => println!(
+                    "(no result yet — status: {})",
+                    crate::swarm::status_label(&t.status)
+                ),
+            },
             None => println!("Task {id} not found."),
         },
         SwarmAction::Cancel { id } => {
@@ -286,12 +292,42 @@ async fn dispatch_swarm_readonly(action: &SwarmAction, cfg: &Config) -> Result<(
             use std::time::Duration;
             match crate::swarm::wait_task(id, Some(Duration::from_secs(*timeout_secs))).await? {
                 Some(t) => {
-                    println!("{} [{}]", t.id, t.status.as_str());
-                    if t.status == crate::swarm::TaskStatus::Done {
+                    crate::swarm::print_task_detail(&t);
+                    if matches!(t.status, crate::swarm::TaskStatus::Done) {
                         crate::notifications::swarm_complete(&cfg.notifications, 1, 0);
+                    } else if matches!(t.status, crate::swarm::TaskStatus::Failed(_)) {
+                        crate::notifications::swarm_complete(&cfg.notifications, 1, 1);
                     }
                 }
                 None => println!("Task {id} not found."),
+            }
+        }
+        SwarmAction::Gc {
+            stale_secs,
+            keep,
+            older_than_secs,
+            dry_run,
+        } => {
+            let opts = crate::swarm::GcOptions {
+                stale_secs: *stale_secs,
+                keep_terminal: *keep,
+                older_than_secs: *older_than_secs,
+                dry_run: *dry_run,
+            };
+            let report = crate::swarm::gc(&opts)?;
+            if *dry_run {
+                println!("dry-run: {}", report.summary());
+            } else {
+                println!("{}", report.summary());
+            }
+            for (id, reason) in &report.reaped {
+                println!("  reaped {id}: {reason}");
+            }
+            if report.deleted > 0 {
+                println!("  deleted {} row(s)", report.deleted);
+            }
+            if report.reaped.is_empty() && report.deleted == 0 {
+                println!("Nothing to clean.");
             }
         }
         SwarmAction::Run { .. } => anyhow::bail!("internal: swarm run requires agent runtime"),

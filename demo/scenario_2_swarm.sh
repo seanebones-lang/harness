@@ -16,7 +16,7 @@ echo "=== Scenario 2: Parallel sub-agent swarm ==="
 echo ""
 
 echo "--- Queuing swarm task (3 parallel agents) ---"
-harness swarm run --agents 3 "Review the harness-tools crate and summarize the three most important tools"
+harness swarm run --count 3 "Review the harness-tools crate and summarize the three most important tools"
 
 echo ""
 echo "--- Current swarm task list ---"
