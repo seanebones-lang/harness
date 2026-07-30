@@ -100,6 +100,8 @@ pub(crate) struct AppState {
     pub(crate) approval_counts: std::collections::HashMap<(String, String), usize>,
     /// Notifications config.
     pub(crate) notifications: crate::config::NotificationsConfig,
+    /// Obsidian bridge config (`[bridges.obsidian]`).
+    pub(crate) obsidian: crate::bridges::ObsidianConfig,
     // ── E1 new fields ─────────────────────────────────────────────────────────
     /// Input history (most recent at index 0).
     pub(crate) input_history: VecDeque<String>,
@@ -226,6 +228,7 @@ impl AppState {
             budget_monthly_usd: None,
             approval_counts: std::collections::HashMap::new(),
             notifications: crate::config::NotificationsConfig::default(),
+            obsidian: crate::bridges::ObsidianConfig::default(),
             input_history: VecDeque::with_capacity(HISTORY_MAX),
             history_idx: None,
             history_saved: String::new(),

@@ -52,12 +52,12 @@
 ### WAVE 0 — Truth & alignment (½–1 day)  ← **START HERE**
 Goal: one backlog, honest metrics, vault usable, no lying checkboxes.
 
-- [ ] **W0.1** Reconcile `TODO.md` P2-1/P2-2/P2-3 with reality (scrollbar partial, session names, notifications). Downgrade false [x] → [~] or [ ] with notes.
-- [ ] **W0.2** Fix coverage messaging: badge/README/CLAUDE vs `COVERAGE.md` (23%). Either remeasure and document true % or remove “60%+” badge until gate is real.
-- [ ] **W0.3** Wire slash stubs to real implementations or honest “not available” with doc links (`/obsidian`, `/trace` at minimum).
-- [ ] **W0.4** Populate vault: `Architecture/Overview.md`, `Backlog/CTO-TODO.md` (link this file), refresh `Status/Current-Condition.md` for `dev`.
-- [ ] **W0.5** COOKBOOK: add swarm worked example (run → list → status → gc → F2/`/swarm`).
-- [ ] **W0.6** Open PR `dev` → `main` (or document hold reason); ensure CI green on PR.
+- [x] **W0.1** Reconcile `TODO.md` P2-1/P2-2/P2-3 with reality (scrollbar partial, session names, notifications). Downgrade false [x] → [~] or [ ] with notes. *(2026-07-30)*
+- [x] **W0.2** Fix coverage messaging: badge/README/CLAUDE vs `COVERAGE.md` (23%). Either remeasure and document true % or remove “60%+” badge until gate is real. *(coverage-auditor)*
+- [x] **W0.3** Wire slash stubs to real implementations or honest “not available” with doc links (`/obsidian`, `/trace` at minimum). *(slash-impl)*
+- [x] **W0.4** Populate vault: `Architecture/Overview.md`, `Backlog/CTO-TODO.md` (link this file), refresh `Status/Current-Condition.md` for `dev`. *(2026-07-30)*
+- [x] **W0.5** COOKBOOK: add swarm worked example (run → list → status → gc → F2/`/swarm`). *(cookbook-writer)*
+- [ ] **W0.6** Open PR `dev` → `main` (or document hold reason); ensure CI green on PR. *(pr-shipper)*
 
 ### WAVE 1 — Release integrity (1–3 days, maintainer + eng)
 Goal: stable path unblocked on paper and machine.
