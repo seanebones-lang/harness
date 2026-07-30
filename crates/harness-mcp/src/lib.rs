@@ -2,7 +2,9 @@ pub mod client;
 pub mod config;
 pub mod tool;
 
-pub use client::{McpClient, McpResource, ProgressEvent, ServerCapabilities};
+pub use client::{
+    McpClient, McpResource, ProgressEvent, SamplingApprovalRequest, ServerCapabilities,
+};
 pub use config::{McpConfig, McpServerConfig};
 pub use tool::McpToolAdapter;
 
@@ -33,6 +35,7 @@ pub async fn load_mcp_tools(
         sampling_provider,
         command_allowlist,
         sampling_auto_approve,
+        None,
     )
     .await
 }
@@ -45,6 +48,7 @@ pub async fn load_mcp_tools_with_progress(
     sampling_provider: Option<ArcProvider>,
     command_allowlist: Option<&[String]>,
     sampling_auto_approve: bool,
+    sampling_tx: Option<mpsc::UnboundedSender<SamplingApprovalRequest>>,
 ) -> Result<()> {
     let cfg = match config::load(config_path) {
         Ok(c) => c,
@@ -65,8 +69,9 @@ pub async fn load_mcp_tools_with_progress(
             &server_cfg,
             progress_tx.clone(),
             sampling_provider.clone(),
+            sampling_auto_approve,
+            sampling_tx.clone(),
         );
-        let _ = sampling_auto_approve; // auto-approve config no longer forwarded to client
         match tokio::time::timeout(Duration::from_secs(15), spawn_fut).await {
             Ok(Ok(client)) => {
                 match client.list_tools().await {

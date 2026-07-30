@@ -120,6 +120,7 @@ pub async fn run_self_dev(
         None,
         None,
         None,
+        None, // no MCP sampling channel in self-dev
     )
     .await
 }

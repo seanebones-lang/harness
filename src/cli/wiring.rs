@@ -48,6 +48,7 @@ pub async fn build_tools(
     memory_store: Option<harness_memory::MemoryStore>,
     embed_model: Option<String>,
     confirm_gate: Option<ConfirmGate>,
+    sampling_tx: Option<tokio::sync::mpsc::UnboundedSender<harness_mcp::SamplingApprovalRequest>>,
 ) -> Result<ToolExecutor> {
     let browser_url_owned = browser_url.to_string();
     let cfg_clone = cfg.clone();
@@ -75,6 +76,7 @@ pub async fn build_tools(
                     &browser_url_owned,
                     None,
                     None,
+                    None, // sub-agents: no interactive sampling UI
                 )
                 .await?;
                 let mut ids = Vec::new();
@@ -142,6 +144,7 @@ pub async fn build_tools(
         browser_url,
         Some(swarm_enqueue),
         confirm_gate,
+        sampling_tx,
     )
     .await
 }
@@ -154,6 +157,7 @@ pub async fn build_tools_inner(
     browser_url: &str,
     swarm_enqueue: Option<SwarmEnqueueRunner>,
     confirm_gate: Option<ConfirmGate>,
+    sampling_tx: Option<tokio::sync::mpsc::UnboundedSender<harness_mcp::SamplingApprovalRequest>>,
 ) -> Result<ToolExecutor> {
     let workspace = tool_workspace(cfg)?;
 
@@ -318,12 +322,14 @@ pub async fn build_tools_inner(
     let mcp_sampling_auto = cfg.approval.effective_mode() == "auto";
     let builtin_before: HashSet<String> = registry.names().into_iter().collect();
     if let Some(mcp_path) = harness_mcp::find_config() {
-        if let Err(e) = harness_mcp::load_mcp_tools(
+        if let Err(e) = harness_mcp::load_mcp_tools_with_progress(
             &mcp_path,
             &mut registry,
+            None,
             Some(provider.clone()),
             mcp_allowlist,
             mcp_sampling_auto,
+            sampling_tx.clone(),
         )
         .await
         {
@@ -332,12 +338,14 @@ pub async fn build_tools_inner(
     }
     if let Some(mcp_path) = &cfg.mcp.config_path {
         if mcp_path.exists() {
-            if let Err(e) = harness_mcp::load_mcp_tools(
+            if let Err(e) = harness_mcp::load_mcp_tools_with_progress(
                 mcp_path,
                 &mut registry,
+                None,
                 Some(provider.clone()),
                 mcp_allowlist,
                 mcp_sampling_auto,
+                sampling_tx.clone(),
             )
             .await
             {

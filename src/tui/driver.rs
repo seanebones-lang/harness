@@ -25,7 +25,7 @@ use super::input::{
 };
 use super::render;
 use super::slash::{at_file_completions, expand_at_files};
-use super::{mark_welcomed, AppState, ChatMessage, PendingConfirm};
+use super::{mark_welcomed, AppState, ChatMessage, PendingConfirm, PendingSampling};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_terminal_loop(
@@ -44,6 +44,7 @@ pub(super) async fn run_terminal_loop(
     native_x_search: bool,
     ambient_shutdown: Option<watch::Sender<()>>,
     mut confirm_rx: Option<mpsc::Receiver<ConfirmRequest>>,
+    mut sampling_rx: Option<mpsc::UnboundedReceiver<harness_mcp::SamplingApprovalRequest>>,
 ) -> Result<()> {
     let highlighter = Highlighter::new();
     let (agent_tx, mut agent_rx) = crate::events::channel();
@@ -109,6 +110,26 @@ pub(super) async fn run_terminal_loop(
                         let label = st.confirm_bar_label.as_deref().unwrap_or("PLAN");
                         format!("{label} MODE — y approve · n skip · a always allow")
                     };
+                }
+            }
+        }
+
+        // Poll MCP sampling approval requests
+        if state.lock().pending_sampling.is_none() {
+            if let Some(rx) = &mut sampling_rx {
+                if let Ok(req) = rx.try_recv() {
+                    let mut st = state.lock();
+                    st.push_event(format!(
+                        "[mcp sampling] request from `{}`",
+                        req.server
+                    ));
+                    st.pending_sampling = Some(PendingSampling {
+                        server: req.server,
+                        preview: req.preview,
+                        reply: req.reply,
+                    });
+                    st.status =
+                        "MCP SAMPLING — y allow LLM call · n deny (default deny if ignored)".into();
                 }
             }
         }
@@ -278,6 +299,13 @@ pub(super) async fn run_terminal_loop(
                             st.status = "Fork cancelled.".to_string();
                         }
                         drop(st);
+                        if let Some(ps) = state.lock().pending_sampling.take() {
+                            let _ = ps.reply.send(false);
+                            let mut st = state.lock();
+                            st.push_event(format!("[mcp sampling] denied `{}`", ps.server));
+                            st.status = "MCP sampling denied.".into();
+                            continue;
+                        }
                         let confirm = state.lock().pending_confirm.take();
                         if let Some(pc) = confirm {
                             let tool = pc.tool_name.clone();
@@ -291,6 +319,13 @@ pub(super) async fn run_terminal_loop(
 
                     // ── Y — approve confirm ────────────────────────────────────
                     (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                        if let Some(ps) = state.lock().pending_sampling.take() {
+                            let _ = ps.reply.send(true);
+                            let mut st = state.lock();
+                            st.push_event(format!("[mcp sampling] approved `{}`", ps.server));
+                            st.status = "MCP sampling approved.".into();
+                            continue;
+                        }
                         let pc = state.lock().pending_confirm.take();
                         if let Some(mut pc) = pc {
                             if pc.file_diff.is_some() {
@@ -308,6 +343,13 @@ pub(super) async fn run_terminal_loop(
                     }
 
                     (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                        if let Some(ps) = state.lock().pending_sampling.take() {
+                            let _ = ps.reply.send(false);
+                            let mut st = state.lock();
+                            st.push_event(format!("[mcp sampling] denied `{}`", ps.server));
+                            st.status = "MCP sampling denied.".into();
+                            continue;
+                        }
                         if let Some(mut pc) = state.lock().pending_confirm.take() {
                             if pc.file_diff.is_some() {
                                 if let Some(result) = decide_hunk(&mut pc, false) {

@@ -51,7 +51,7 @@ mod slash;
 mod state;
 mod theme;
 
-pub(crate) use state::{mark_welcomed, AppState, ChatMessage, PendingConfirm};
+pub(crate) use state::{mark_welcomed, AppState, ChatMessage, PendingConfirm, PendingSampling};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
@@ -67,6 +67,7 @@ pub async fn run(
     ambient_shutdown: Option<watch::Sender<()>>,
     confirm_rx: Option<mpsc::Receiver<ConfirmRequest>>,
     confirm_bar_label: Option<&'static str>,
+    sampling_rx: Option<mpsc::UnboundedReceiver<harness_mcp::SamplingApprovalRequest>>,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -148,6 +149,7 @@ pub async fn run(
         cfg.native_tools.x_search_enabled(),
         ambient_shutdown,
         confirm_rx,
+        sampling_rx,
     )
     .await;
 

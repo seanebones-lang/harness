@@ -65,8 +65,8 @@ Goal: stable path unblocked on paper and machine.
 - [ ] **W1.1** REL-01 macOS full smoke with real API keys; log in `RELEASE_STATUS.md` (one-shot, TUI, export, serve, swarm list/gc). *(needs API keys)*
 - [ ] **W1.2** REL-01 Linux (VM/CI runner) smoke log.
 - [ ] **W1.3** REL-01 Windows smoke log + `install.ps1` verify.
-- [ ] **W1.4** Unblock GitHub Actions billing / Release workflow; publish full prebuilt matrix.
-- [ ] **W1.5** Homebrew SHA update all platforms (`scripts/update-homebrew-sha.sh`).
+- [ ] **W1.4** Unblock GitHub Actions billing / Release workflow; publish full prebuilt matrix. 📌 **PINNED** — user holding billing questions
+- [ ] **W1.5** Homebrew SHA update all platforms (`scripts/update-homebrew-sha.sh`). 📌 **PINNED** (depends on W1.4)
 - [x] **W1.6** Pin toolchain channel in `rust-toolchain.toml` (`1.95.0` known-good). *(2026-07-30)*
 - [x] **W1.7** Align versions: desktop `package.json` / `tauri.conf.json` / lock → `0.1.2-beta`. *(2026-07-30)*
 
@@ -93,7 +93,7 @@ Goal: TUI feels finished; swarm ops complete.
 ### WAVE 4 — Interop completeness (1–2 weeks)
 Goal: MCP/LSP/bridges match marketing.
 
-- [ ] **W4.1** MCP sampling interactive TUI approval (default deny; y/n with preview).
+- [x] **W4.1** MCP sampling interactive TUI approval — inbound `sampling/createMessage` + y/n overlay; auto mode auto-approves; else deny. *(2026-07-30)*
 - [ ] **W4.2** MCP resources/roots browser in TUI or CLI list command.
 - [ ] **W4.3** Bridges: end-to-end tests or `doctor` checks for Obsidian/Notes/Calendar/Projects.
 - [ ] **W4.4** Collab: docs + smoke for multi-client; enforce/document `max_users`.

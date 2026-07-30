@@ -72,6 +72,8 @@ pub(crate) struct AppState {
     pub(crate) session_start: Instant,
     /// Plan mode: pending confirmation request.
     pub(crate) pending_confirm: Option<PendingConfirm>,
+    /// MCP sampling approval waiting on the user.
+    pub(crate) pending_sampling: Option<PendingSampling>,
     /// First-run welcome overlay.
     pub(crate) show_welcome: bool,
     /// Plan mode toggle.
@@ -161,6 +163,13 @@ pub(crate) struct PendingConfirm {
     pub(crate) reply: tokio::sync::oneshot::Sender<harness_tools::ConfirmResult>,
 }
 
+/// MCP sampling/createMessage approval waiting on the user.
+pub(crate) struct PendingSampling {
+    pub(crate) server: String,
+    pub(crate) preview: String,
+    pub(crate) reply: tokio::sync::oneshot::Sender<bool>,
+}
+
 fn is_first_run() -> bool {
     let marker = dirs::home_dir()
         .unwrap_or_default()
@@ -213,6 +222,7 @@ impl AppState {
             provider_name: String::new(),
             session_start: Instant::now(),
             pending_confirm: None,
+            pending_sampling: None,
             show_welcome,
             plan_mode: false,
             confirm_bar_label: None,
