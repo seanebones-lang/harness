@@ -2,9 +2,11 @@
 
 **New here?** Start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+**CTO ordered backlog (execution order):** [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md) ← **use this first**.
+
 Canonical user docs: [`README.md`](README.md). Developer detail: [`CLAUDE.md`](CLAUDE.md), [`config/default.toml`](config/default.toml).
 
-Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · promotion plan: [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md)
+Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · team brief: [`docs/TEAM_UPDATE_2026-07-30.md`](docs/TEAM_UPDATE_2026-07-30.md)
 
 ---
 
@@ -26,128 +28,57 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 
 | ID | Task | Status |
 |----|------|--------|
-| REL-01 | Manual smoke §3 (macOS, Linux, Windows) | [~] macOS partial — export, serve, auth; one-shot/TUI need keys; Linux/Windows pending |
-| P2-10 | Homebrew tap SHA after tag | [~] macOS arm64 SHA set; x64/Linux after CI billing fixed |
-| REL-02 | Tag v0.1.2-beta + verify prebuilts on Releases | [~] tagged; macOS arm64 on Releases; other platforms pending CI |
-| REL-03 | Log REL-01 per OS in `RELEASE_STATUS.md` | [x] macOS partial logged in [`RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) |
+| REL-01 | Manual smoke §3 (macOS, Linux, Windows) | [~] macOS partial |
+| P2-10 | Homebrew tap SHA after tag | [~] macOS arm64 only |
+| REL-02 | Tag v0.1.2-beta + verify prebuilts | [~] macOS arm64 only |
+| REL-03 | Log REL-01 per OS | [x] partial |
 
-### Tier 2 — High-impact polish (1–2 days)
-
-| Task | Status |
-|------|--------|
-| Refresh `docs/COMPARISON.md` | [x] |
-| CONTRIBUTING pathways + community section | [x] |
-| GitHub `good first issue` labels on backlog issues | [x] label exists; apply per issue when opened |
-| Demo GIF/video (15–30s TUI) | [ ] optional — link from README when ready |
-| Swarm CLI + TUI panel + GC (`dev` 2026-07-30) | [x] see [`docs/TEAM_UPDATE_2026-07-30.md`](docs/TEAM_UPDATE_2026-07-30.md) |
-
-### Tier 3 — Next 1–2 weeks (growth)
+### Tier 2 — High-impact polish
 
 | Task | Status |
 |------|--------|
-| MCP sampling interactive TUI approval | [ ] |
-| DatabaseTool / NotebookTool / DockerTool | [ ] |
-| New providers (Mistral, Gemini, Bedrock) | [ ] |
-| VS Code + Tauri packaging (icons, Windows/Linux) | [ ] |
-| Community channel (Discord / Matrix) | [ ] optional |
-| Roadmap H0–H3 execution | [ ] [`docs/ROADMAP.md`](docs/ROADMAP.md) |
+| COMPARISON / CONTRIBUTING / labels | [x] |
+| Demo GIF/video | [ ] optional |
+| Swarm CLI + TUI + GC (2026-07-30) | [x] |
+| TUI scrollbar + follow-scroll | [~] CTO W3.1 |
+| Session list display names | [~] CTO W3.2 |
+| Slash stubs (`/obsidian`, `/trace`) | [ ] CTO W0.3 |
+| COOKBOOK swarm example | [ ] CTO W0.5 |
+| Coverage honesty (badge vs ~23%) | [ ] CTO W0.2 |
+
+### Tier 3 — Growth
+
+| Task | Status |
+|------|--------|
+| MCP sampling interactive TUI approval | [ ] CTO W4.1 |
+| DatabaseTool / NotebookTool / DockerTool | [ ] CTO W5.4–W5.6 |
+| New providers (Mistral, Gemini, Bedrock) | [ ] CTO W5.1–W5.2 |
+| VS Code + Tauri packaging | [ ] CTO W6.* |
+| Community channel | [ ] optional |
+| Full CTO waves 0–8 | [ ] [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md) |
 
 ---
 
-## Immediate Action Plan (May 2026 Audit)
+## Historical P0–P2 (May 2026)
 
-Execution order: **P0 → P1 → P2**. **Maintainer-only** items need API keys / manual GUI.
-
-### P0 — Critical
+Most P0/P1 closed. P2 reconciled 2026-07-30:
 
 | ID | Item | Status |
 |----|------|--------|
-| P0-1 | Eliminate `ProviderRouter has no providers` panic | [x] |
-| P0-2 | Replace XAI `.unwrap()` on missing API key | [x] |
-| P0-3 | Align prebuilt artifact names | [x] |
-| P0-4 | Add Windows to release workflow | [x] |
-| P0-5 | Reconcile version strings | [x] |
-| P0-6 | Delete merge artifacts; gitignore `*.orig`/`*.rej` | [x] |
-| P0-7 | Wizard robustness + `harness setup` | [x] |
-| P0-8 | Install scripts warn on binary path conflicts | [x] |
-
-### P1 — High priority
-
-| ID | Item | Status |
-|----|------|--------|
-| P1-1 | Wire MCP inbound requests (sampling) | [x] |
-| P1-2 | MCP spawn command allowlist default | [x] |
-| P1-3 | Escape AppleScript inputs in calendar bridge | [x] |
-| P1-4 | Protect `/api/setup/state` (strip config path) | [x] |
-| P1-5 | Constant-time bearer token comparison | [x] |
-| P1-6 | Replace production `.unwrap()`/`.expect()` hot paths | [x] |
-| P1-7 | Stale default model IDs → `claude-sonnet-4-6` | [x] |
-| P1-8 | Router unit tests | [x] |
-| P1-9 | Daemon/auth rejection tests | [x] |
-| P1-10 | Swarm CLI integration tests (prefix lookup) | [x] |
-| P1-11 | README factual fixes | [x] |
-| P1-12 | Refresh stale docs | [x] |
-| P1-13 | Implement `harness update` subcommand | [x] |
-| P1-14 | Add `release-lto` to CI | [x] |
-
-### P2 — Polish
-
-| ID | Item | Status |
-|----|------|--------|
-| P2-1 | TUI visible scrollbar + follow-scroll | [x] |
-| P2-2 | Session list display names (first-message fallback) | [x] |
-| P2-3 | Wire notification kinds (voice, swarm wait) | [x] |
-| P2-4 | Swarm background status updates | [x] (via existing `spawn_task`) |
-| P2-5 | Collab `max_users` enforcement | [x] |
-| P2-6 | Browser tool `unreachable!()` → `Err` | [x] |
-| P2-7 | Coverage uplift (auth, bridges, swarm prefix tests) | [x] |
-| P2-8 | VS Code extension README + packaging notes | [x] |
-| P2-9 | Desktop app CI check (Tauri `cargo check`) | [x] |
-| P2-10 | Homebrew tap publish | [ ] maintainer (`scripts/update-homebrew-sha.sh`) |
-
-### Maintainer-only
-
-| ID | Item | Status |
-|----|------|--------|
-| REL-01 | Manual smoke §3 | [ ] (`scripts/smoke_rel01.sh` for automated subset; CI `smoke-rel01` job added Round 2) |
+| P2-1 | Scrollbar + follow-scroll | [~] W3.1 |
+| P2-2 | Session names | [~] W3.2 |
+| P2-3 | Notification kinds | [~] W3.7 |
+| P2-4 | Swarm status | [x] + panel |
+| P2-5–P2-6 | Collab max_users; browser Err | [x] |
+| P2-7 | Coverage | [~] ~23% — W2.1 |
+| P2-8–P2-9 | VS Code / desktop CI | [~] W6 |
+| P2-10 | Homebrew | [ ] maintainer |
 
 ---
 
-## Round 2 re-inspection (2026-05-24)
+## Release checklist
 
-Post-`433065d` MIT-style audit. All actionable P1–P2 code/doc/CI items below are **closed** unless noted.
+- [x] test / clippy / fmt / release-lto (re-run before tag)
+- [ ] REL-01 full matrix — CTO W1.1–W1.3
 
-| ID | Item | Status |
-|----|------|--------|
-| R2-1 | GitHub Projects bridge stdin + JSON-safe GraphQL | [x] |
-| R2-2 | Apple Notes `escape_applescript` parity | [x] |
-| R2-3 | `apply_patch` parser `Err` paths + test | [x] |
-| R2-4 | `/api/health` `config_path` loopback gate | [x] |
-| R2-5 | `ProviderRouter::default_provider` no panic | [x] |
-| R2-6 | Unwrap hardening (rate_limit, swarm, diff_review, browser) | [x] |
-| R2-7 | Tests: voice, mlx, lsp detect, collab `max_users` | [x] |
-| R2-8 | CI smoke-rel01; release checksums; Windows prebuilt install | [x] |
-| R2-9 | Docs refresh (PEER_REVIEW Round 2, RELEASE_STATUS, README) | [x] |
-| R2-10 | Generic ambient provider (`AmbientProviders` + `[ambient]` config) | [x] |
-
----
-
-## Remaining backlog (engineering)
-
-- MCP sampling interactive TUI approval (plan/smart currently deny inbound sampling)
-- DatabaseTool / NotebookTool / DockerTool
-- New providers (Mistral, Gemini, Bedrock)
-- Tauri app icons generation (CI check only today)
-- Version drift: `apps/desktop/`, `extensions/vscode/`, `harness-lsp` still at `0.1.0` — optional `version.workspace` follow-up
-
----
-
-## Release checklist (maintainers)
-
-- [x] `cargo test --all`
-- [x] `cargo clippy --all-targets --all-features -- -D warnings`
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo build --profile release-lto` (CI + local)
-
-Manual smoke (REL-01): see [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) §3.  
-Draft release: [`docs/RELEASE_NOTES_v0.1.2-beta.md`](docs/RELEASE_NOTES_v0.1.2-beta.md).
+See [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) §3 · [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md).
