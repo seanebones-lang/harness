@@ -267,19 +267,49 @@ async fn dispatch_swarm_readonly(action: &SwarmAction, cfg: &Config) -> Result<(
     crate::swarm::configure(&cfg.swarm);
     match action {
         SwarmAction::List => crate::swarm::print_status()?,
-        SwarmAction::Status { id } => match crate::swarm::get_task(id)? {
-            Some(t) => crate::swarm::print_task_detail(&t),
-            None => println!("Task {id} not found."),
+        SwarmAction::Status { id, json } => match crate::swarm::get_task(id)? {
+            Some(t) => {
+                if *json {
+                    crate::swarm::print_task_json(&t);
+                } else {
+                    crate::swarm::print_task_detail(&t);
+                }
+            }
+            None => {
+                if *json {
+                    println!(
+                        "{}",
+                        serde_json::json!({"error": "not_found", "id": id})
+                    );
+                } else {
+                    println!("Task {id} not found.");
+                }
+            }
         },
-        SwarmAction::Result { id } => match crate::swarm::get_task(id)? {
-            Some(t) => match t.result.as_deref() {
-                Some(r) if !r.is_empty() => println!("{r}"),
-                _ => println!(
-                    "(no result yet — status: {})",
-                    crate::swarm::status_label(&t.status)
-                ),
-            },
-            None => println!("Task {id} not found."),
+        SwarmAction::Result { id, json } => match crate::swarm::get_task(id)? {
+            Some(t) => {
+                if *json {
+                    crate::swarm::print_task_json(&t);
+                } else {
+                    match t.result.as_deref() {
+                        Some(r) if !r.is_empty() => println!("{r}"),
+                        _ => println!(
+                            "(no result yet — status: {})",
+                            crate::swarm::status_label(&t.status)
+                        ),
+                    }
+                }
+            }
+            None => {
+                if *json {
+                    println!(
+                        "{}",
+                        serde_json::json!({"error": "not_found", "id": id})
+                    );
+                } else {
+                    println!("Task {id} not found.");
+                }
+            }
         },
         SwarmAction::Cancel { id, all } => {
             if *all {

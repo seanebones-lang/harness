@@ -101,7 +101,10 @@ harness swarm status a1b2
 harness swarm wait <task-id>                    # block until terminal (default 300s)
 harness swarm wait <task-id> --timeout-secs 120
 
+harness swarm status <task-id>     # human detail
+harness swarm status <task-id> --json
 harness swarm result <task-id>     # full stored output when Done (or status text if not)
+harness swarm result <task-id> --json
 harness swarm cancel <task-id>     # cancel pending/running when the spawner is still live
 harness swarm cancel --all         # cancel every non-terminal task
 ```

@@ -285,11 +285,17 @@ pub enum SwarmAction {
     Status {
         /// Task ID.
         id: String,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
     /// Show result of a completed task.
     Result {
         /// Task ID.
         id: String,
+        /// Emit machine-readable JSON (id, status, prompt, result, timestamps).
+        #[arg(long)]
+        json: bool,
     },
     /// Cancel a pending or running task (or all with `--all`).
     Cancel {

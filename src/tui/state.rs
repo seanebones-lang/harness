@@ -445,11 +445,9 @@ impl AppState {
         if self.event_log.len() > 500 {
             self.event_log.remove(0);
         }
-        // Auto-scroll event log to bottom
-        if self.event_items_len > 0 {
-            let last = self.event_items_len.saturating_sub(1);
-            self.event_scroll.select(Some(last));
-        }
+        // Auto-scroll event log to bottom (use live len — event_items_len lags until draw).
+        let last = self.event_log.len().saturating_sub(1);
+        self.event_scroll.select(Some(last));
     }
 
     pub(crate) fn scroll_chat_up(&mut self, n: usize) {

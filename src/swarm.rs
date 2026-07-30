@@ -492,6 +492,31 @@ pub fn print_task_detail(task: &TaskEntry) {
     }
 }
 
+/// Serialize a task to JSON (for CLI `--json`).
+pub fn task_to_json(task: &TaskEntry) -> serde_json::Value {
+    let (status, error) = match &task.status {
+        TaskStatus::Failed(msg) => ("failed".to_string(), Some(msg.clone())),
+        other => (other.as_str().to_string(), None),
+    };
+    serde_json::json!({
+        "id": task.id,
+        "status": status,
+        "error": error,
+        "prompt": task.prompt,
+        "result": task.result,
+        "created_ts": task.created_ts,
+        "completed_ts": task.completed_ts,
+        "created": fmt_ts(task.created_ts),
+        "completed": task.completed_ts.map(fmt_ts),
+        "terminal": task.status.is_terminal(),
+    })
+}
+
+/// Print task as a single JSON object.
+pub fn print_task_json(task: &TaskEntry) {
+    println!("{}", task_to_json(task));
+}
+
 /// Count every task in the registry.
 pub fn count_tasks() -> Result<SwarmCounts> {
     let conn = open_db()?;
@@ -886,6 +911,19 @@ mod tests {
             get_task(&done).expect("g").expect("f").status,
             TaskStatus::Done
         );
+    }
+
+    #[test]
+    fn task_to_json_includes_status_and_result() {
+        let _db = TestDb::new();
+        let id = register_task("json me").expect("reg");
+        update_status(&id, &TaskStatus::Done, Some("hello")).expect("done");
+        let task = get_task(&id).expect("g").expect("f");
+        let v = task_to_json(&task);
+        assert_eq!(v["id"], id);
+        assert_eq!(v["status"], "done");
+        assert_eq!(v["result"], "hello");
+        assert_eq!(v["terminal"], true);
     }
 
     #[test]
