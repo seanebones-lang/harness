@@ -64,7 +64,7 @@ Goal: one backlog, honest metrics, vault usable, no lying checkboxes.
 ### WAVE 1 — Release integrity (1–3 days, maintainer + eng)
 Goal: stable path unblocked on paper and machine.
 
-- [ ] **W1.1** REL-01 macOS full smoke with real API keys; log in `RELEASE_STATUS.md` (one-shot, TUI, export, serve, swarm list/gc). *(needs API keys)*
+- [~] **W1.1** REL-01 macOS full smoke with real API keys; log in `RELEASE_STATUS.md` (one-shot, TUI, export, serve, swarm list/gc). *(needs API keys)* — 2026-07-31: offline paths (doctor/swarm/TUI/binary) PASS per subagent smoke; key-dependent full TUI one-shot noted as expected limit.
 - [ ] **W1.2** REL-01 Linux (VM/CI runner) smoke log.
 - [ ] **W1.3** REL-01 Windows smoke log + `install.ps1` verify.
 - [ ] **W1.4** Unblock GitHub Actions billing / Release workflow; publish full prebuilt matrix. 📌 **PINNED** — user holding billing questions
@@ -115,10 +115,10 @@ Goal: competitive breadth.
 ### WAVE 6 — Surfaces (desktop / editor) (2–4 weeks)
 Goal: installable shells, not prototypes.
 
-- [ ] **W6.1** VS Code extension: version align, README, package script, minimal E2E.
-- [ ] **W6.2** Tauri: icons, signed macOS build notes, Windows/Linux packages.
-- [ ] **W6.3** Desktop CI build matrix (at least `cargo check` + frontend build).
-- [ ] **W6.4** Deep-link / open-folder → harness session story.
+- [x] **W6.1** VS Code extension: version align, README, package script, minimal E2E. *(2026-07-31)*
+- [x] **W6.2** Tauri: icons, signed macOS build notes, Windows/Linux packages. *(2026-07-31)*
+- [x] **W6.3** Desktop CI build matrix (at least `cargo check` + frontend build). *(2026-07-31)*
+- [x] **W6.4** Deep-link / open-folder → harness session story. *(2026-07-31)*
 
 ### WAVE 7 — Scale & differentiation (quarter)
 Goal: max multi-agent + measurable excellence.
@@ -181,3 +181,8 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 ---
 
 *Next action: start **W0.1** unless Sean overrides.*
+
+### 2026-07-31 Wave continuation (cont)
+- W1.1: Offline macOS REL-01 smoke PASS (doctor, swarm list/gc, TUI/binary launch, doctor bridges); key-dependent full TUI noted. RELEASE_STATUS.md appended.
+- W2.1: Coverage honest 40% (llvm-cov summary-only; compile errs block full). COVERAGE.md + TODO updated.
+- W2.3: 40 prod unwraps in src/ (no test unwraps); already [x] P1-6; no burn-down action needed.
