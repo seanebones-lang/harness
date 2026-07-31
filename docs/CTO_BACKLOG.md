@@ -188,3 +188,4 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 - W2.3: 40 prod unwraps in src/ (no test unwraps); already [x] P1-6; no burn-down action needed.
 
 - W5.2 partial: Gemini crate added (Cargo + client/types/stream/lib); router wiring + Bedrock pending. (2026-07-31)
+- W5.2: Gemini crate + PROVIDERS.md research/stub + router placeholder done (subagent); full integration pending. (2026-07-31)
