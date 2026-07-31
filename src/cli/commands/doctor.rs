@@ -30,7 +30,11 @@ pub async fn handle_doctor_command(cfg: &Config) {
         ),
         ("XAI_API_KEY", "xAI Grok 4.x", "grok-4.3"),
         ("OPENAI_API_KEY", "OpenAI GPT-5.x", "gpt-5.5"),
-        ("MISTRAL_API_KEY", "Mistral (OpenAI-compatible)", "mistral-large-latest"),
+        (
+            "MISTRAL_API_KEY",
+            "Mistral (OpenAI-compatible)",
+            "mistral-large-latest",
+        ),
     ];
     println!("  API Keys:");
     let mut any_key = false;
@@ -190,9 +194,7 @@ pub async fn handle_doctor_command(cfg: &Config) {
 
     println!("\n  Observability:");
     let obs = &cfg.observability;
-    let traces_dir = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".harness/traces");
+    let traces_dir = dirs::home_dir().unwrap_or_default().join(".harness/traces");
     if obs.enabled {
         println!("  ✓ [observability] enabled");
     } else {
@@ -208,9 +210,7 @@ pub async fn handle_doctor_command(cfg: &Config) {
             println!("  ✓ otlp_experimental_endpoint = {ep}");
             println!("    (experimental JSON POST …/v1/traces — see docs/OTLP_SMOKE.md)");
         }
-        _ => println!(
-            "  ○ otlp_experimental_endpoint unset (optional — docs/OTLP_SMOKE.md)"
-        ),
+        _ => println!("  ○ otlp_experimental_endpoint unset (optional — docs/OTLP_SMOKE.md)"),
     }
     println!("  CLI: harness trace [id] · TUI: /trace last|list");
 
