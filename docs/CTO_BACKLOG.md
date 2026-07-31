@@ -106,7 +106,7 @@ Goal: competitive breadth.
 
 - [x] **W5.1** Providers: OpenAI-compatible generic endpoint + Mistral (highest leverage first). *(docs/PROVIDERS_OPENAI_COMPAT.md; 2026-07-30)*
 - [ ] **W5.2** Providers: Gemini + Bedrock.
-- [ ] **W5.3** Models picker + router policy tests for new keys.
+- [~] **W5.3** Models picker + router policy tests for new keys. *(models catalogue now includes gemini; router has no-key StaticProvider policy tests in lib.rs; full Gemini router integration pending W5.2; 2026-07-31)*
 - [ ] **W5.4** DatabaseTool (read-only default) behind config flag.
 - [ ] **W5.5** NotebookTool (`.ipynb` read/edit cells).
 - [ ] **W5.6** DockerTool (allowlisted compose/ps/logs; no unbounded docker.sock).
