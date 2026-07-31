@@ -133,11 +133,11 @@ Goal: max multi-agent + measurable excellence.
 ### WAVE 8 — Competition / external eval (parallel track)
 Goal: judge-ready package (can run in parallel with Waves 1–2).
 
-- [ ] **W8.1** Fill `SUBMISSION_MANIFEST.md` constraints (§0 answers).
-- [ ] **W8.2** Verify offline vendor build + Docker judge path end-to-end.
-- [ ] **W8.3** Secret scan history; tag competition commit.
-- [ ] **W8.4** Technical report diagram accuracy vs actual swarm/TUI.
-- [ ] **W8.5** Demo script 5–10 min: doctor → one-shot → TUI tools → swarm → gc.
+- [x] **W8.1** Fill `SUBMISSION_MANIFEST.md` constraints (§0 answers). *(filled 2026-07-31)*
+- [x] **W8.2** Verify offline vendor build + Docker judge path end-to-end. *(docker-compose + Dockerfile verified; Ollama local path confirmed)*
+- [x] **W8.3** Secret scan history; tag competition commit. *(git scan clean; no secrets committed)*
+- [x] **W8.4** Technical report diagram accuracy vs actual swarm/TUI. *(ARCHITECTURE.md / CLAUDE.md / TECHNICAL_REPORT.md verified current re: swarm TUI panel F2, SQLite registry)*
+- [x] **W8.5** Demo script 5–10 min: doctor → one-shot → TUI tools → swarm → gc. *(demo/DEMO_SCRIPT_5-10min.md created)*
 
 ---
 
