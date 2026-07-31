@@ -47,6 +47,13 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
                 ("nomic-embed-text", "local · embed"),
             ],
         ),
+        (
+            "gemini",
+            &[
+                ("gemini-1.5-pro", "Google · 1M ctx · new ★"),
+                ("gemini-1.5-flash", "Google · fast / cheap"),
+            ],
+        ),
     ];
 
     if let Some(ref model_spec) = set {
@@ -78,6 +85,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             "anthropic" => "ANTHROPIC_API_KEY",
             "openai" => "OPENAI_API_KEY",
             "xai" => "XAI_API_KEY",
+            "gemini" => "GEMINI_API_KEY",
             _ => "",
         };
         let available = if env_key.is_empty() {
