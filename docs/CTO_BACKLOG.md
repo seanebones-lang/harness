@@ -186,3 +186,5 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 - W1.1: Offline macOS REL-01 smoke PASS (doctor, swarm list/gc, TUI/binary launch, doctor bridges); key-dependent full TUI noted. RELEASE_STATUS.md appended.
 - W2.1: Coverage honest 40% (llvm-cov summary-only; compile errs block full). COVERAGE.md + TODO updated.
 - W2.3: 40 prod unwraps in src/ (no test unwraps); already [x] P1-6; no burn-down action needed.
+
+- W5.2 partial: Gemini crate added (Cargo + client/types/stream/lib); router wiring + Bedrock pending. (2026-07-31)
