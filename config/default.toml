@@ -79,6 +79,23 @@ embed_model = "nomic-embed-text"
 # relaxed = warn but allow paths outside the root. off = disable checks.
 sandbox = "strict"
 
+# Optional SQLite tool (workspace-sandboxed paths only). Off by default.
+[tools.database]
+enabled = false
+readonly = true
+max_rows = 500
+
+# Optional Jupyter .ipynb cell read/edit. Off by default.
+[tools.notebook]
+enabled = false
+
+# Optional allowlisted Docker CLI (ps/logs/compose_ps/compose_logs/images). Off by default.
+# allow_mutating unlocks compose_up only — never run/build/rm or docker.sock mounts.
+[tools.docker]
+enabled = false
+allow_mutating = false
+timeout_secs = 60
+
 [approval]
 # auto = never pause (default). smart = pause for new-file writes + shell confirm patterns.
 # plan = pause for all destructive tool calls (same as harness --plan).
@@ -111,6 +128,7 @@ sandbox = "strict"
 # ⚠️  DANGER: When enabled, the agent can control your mouse, keyboard, and screen.
 # Only enable with Claude 4.7+ (claude-opus-4-7).
 # Requires: cliclick (macOS: brew install cliclick) or xdotool (Linux).
+# See docs/COMPUTER_USE.md for per-OS sandbox defaults and risks.
 # enabled = false
 
 [notifications]
@@ -155,12 +173,33 @@ sandbox = "strict"
 # or paste into a sidecar — unknown top-level tables break `harness` today.
 
 [router]
-# Smart defaults when unset: anthropic → xai → openai → ollama (see CLAUDE.md).
+# Smart defaults when unset: anthropic → xai → openai → mistral → ollama (see CLAUDE.md).
 # default = "anthropic"
 # fast_model = "anthropic:claude-haiku-4-5"
 # heavy_model = "anthropic:claude-opus-4-7"
 # embed_model = "ollama:nomic-embed-text"
-# fallback = ["anthropic", "xai", "openai", "ollama"]
+# fallback = ["anthropic", "xai", "openai", "mistral", "ollama"]
+
+# Multi-provider table (keys = provider kind). Also auto-detected from env keys.
+# [providers.openai]
+# api_key = "sk-..."   # or OPENAI_API_KEY
+# model = "gpt-5.5"
+# # base_url = "https://api.openai.com/v1"   # optional override
+#
+# [providers.mistral]   # OpenAI-compatible → https://api.mistral.ai/v1
+# api_key = "..."       # or MISTRAL_API_KEY
+# model = "mistral-large-latest"
+#
+# [providers.openai-compatible]   # any OpenAI-format /v1 endpoint (requires base_url)
+# api_key = "..."
+# model = "my-model"
+# base_url = "http://127.0.0.1:8000/v1"
+#
+# # Or any custom name with base_url → treated as OpenAI-compatible under that name:
+# [providers.my-proxy]
+# api_key = "..."
+# model = "local"
+# base_url = "http://127.0.0.1:11434/v1"
 
 # [observability]
 # enabled = true
@@ -170,10 +209,15 @@ sandbox = "strict"
 # [swarm]
 # max_concurrency = 4
 # db_path = "~/.harness/swarm.db"
+# auto_gc_stale_secs = 86400   # optional: reap orphans older than N seconds on startup
+# worker_tool_allowlist = ["read_file", "list_dir", "search_code", "test_runner"]
+# worker_max_tool_calls = 50   # reserved (agent loop hard-cap is 50)
+# worker_max_wall_secs = 600   # fail worker if wall clock exceeded
+# registry_url = ""            # optional remote swarm (stub until W7.1 HTTP client)
 
 # [collab]
 # enabled = false
-# max_users = 10
+# max_users = 10   # enforced on WS join; see docs/COLLAB.md
 
 # [bridges.obsidian]
 # enabled = false

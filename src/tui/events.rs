@@ -52,10 +52,12 @@ pub(crate) fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent)
         AgentEvent::SubAgentSpawned { task } => {
             let p: String = task.chars().take(60).collect();
             st.push_event(format!("swarm ↓ {p}…"));
+            st.maybe_refresh_swarm(true);
         }
         AgentEvent::SubAgentDone { task, .. } => {
             let p: String = task.chars().take(60).collect();
             st.push_event(format!("swarm ↑ done: {p}"));
+            st.maybe_refresh_swarm(true);
             // Notify (if not in focus mode and if enabled)
             if !st.focus_active() {
                 let notif_cfg = st.notifications.clone();

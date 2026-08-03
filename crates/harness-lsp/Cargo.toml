@@ -2,6 +2,7 @@
 name = "harness-lsp"
 version.workspace = true
 edition = "2021"
+license.workspace = true
 
 [dependencies]
 harness-provider-core = { path = "../harness-provider-core" }

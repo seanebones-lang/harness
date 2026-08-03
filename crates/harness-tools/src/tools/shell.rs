@@ -292,9 +292,194 @@ impl ShellTool {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::registry::Tool;
+    use crate::workspace_root::{SandboxMode, WorkspaceRoot};
+    use serde_json::json;
+    use std::sync::Arc;
+
+    struct ShellFixture {
+        _dir: tempfile::TempDir,
+        tool: ShellTool,
+    }
+
+    fn tool_with(cfg: ShellConfig) -> ShellFixture {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ws = WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap();
+        ShellFixture {
+            tool: ShellTool::new(cfg, Arc::new(ws)),
+            _dir: dir,
+        }
+    }
+
     #[test]
     fn shell_config_defaults_include_denylist() {
-        let cfg = super::ShellConfig::default();
+        let cfg = ShellConfig::default();
         assert!(!cfg.denylist.is_empty());
+        assert!(cfg.denylist.iter().any(|p| p.contains("rm -rf /")));
+        assert!(cfg.confirm_required.iter().any(|p| p == "git push"));
+    }
+
+    #[tokio::test]
+    async fn missing_command_errors() {
+        let f = tool_with(ShellConfig {
+            denylist: vec![],
+            confirm_required: vec![],
+            log_path: None,
+            cmd_allowlist: None,
+        });
+        let err = f.tool.execute(json!({})).await.unwrap_err();
+        assert!(err.to_string().contains("missing command"));
+    }
+
+    #[tokio::test]
+    async fn denylist_blocks_catastrophic_commands() {
+        let f = tool_with(ShellConfig {
+            denylist: vec!["rm -rf /".into()],
+            confirm_required: vec![],
+            log_path: None,
+            cmd_allowlist: None,
+        });
+        let err = f
+            .tool
+            .execute(json!({"command": "sudo rm -rf /"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("denylist"));
+    }
+
+    #[tokio::test]
+    async fn confirm_required_blocks_without_running() {
+        let f = tool_with(ShellConfig {
+            denylist: vec![],
+            confirm_required: vec!["git push".into()],
+            log_path: None,
+            cmd_allowlist: None,
+        });
+        let err = f
+            .tool
+            .execute(json!({"command": "git push origin main"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("requires confirmation"));
+    }
+
+    #[tokio::test]
+    async fn cmd_allowlist_rejects_unknown_absolute_path() {
+        let f = tool_with(ShellConfig {
+            denylist: vec![],
+            confirm_required: vec![],
+            log_path: None,
+            cmd_allowlist: Some(vec!["/usr/bin/safe".into()]),
+        });
+        let err = f
+            .tool
+            .execute(json!({"command": "/bin/evil -c 'x'"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("cmd_allowlist"));
+    }
+
+    #[tokio::test]
+    async fn safe_echo_runs() {
+        let f = tool_with(ShellConfig {
+            denylist: vec![],
+            confirm_required: vec![],
+            log_path: None,
+            cmd_allowlist: None,
+        });
+        let out = f
+            .tool
+            .execute(json!({"command": "echo hello-harness", "timeout_secs": 5}))
+            .await
+            .expect("echo");
+        assert!(out.contains("hello-harness"), "got: {out}");
+    }
+
+    #[test]
+    fn definition_name_is_shell() {
+        let f = tool_with(ShellConfig {
+            denylist: vec![],
+            confirm_required: vec![],
+            log_path: None,
+            cmd_allowlist: None,
+        });
+        assert_eq!(f.tool.definition().function.name, "shell");
+        assert!(f.tool.definition().function.description.contains("shell"));
+    }
+
+    #[tokio::test]
+    async fn denylist_is_case_insensitive_and_substring() {
+        let f = tool_with(ShellConfig {
+            denylist: vec!["MKFS".into()],
+            confirm_required: vec![],
+            log_path: None,
+            cmd_allowlist: None,
+        });
+        let err = f
+            .tool
+            .execute(json!({"command": "sudo mkfs.ext4 /dev/sda"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("denylist"));
+    }
+
+    #[tokio::test]
+    async fn confirm_required_rm_rf_blocks_without_spawn() {
+        let f = tool_with(ShellConfig {
+            denylist: vec![],
+            confirm_required: default_confirm_required(),
+            log_path: None,
+            cmd_allowlist: None,
+        });
+        let err = f
+            .tool
+            .execute(json!({"command": "rm -rf ./target"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("requires confirmation"));
+    }
+
+    #[tokio::test]
+    async fn empty_cmd_allowlist_does_not_block() {
+        // Some([]) is treated as unset (filter !a.is_empty())
+        let f = tool_with(ShellConfig {
+            denylist: vec![],
+            confirm_required: vec![],
+            log_path: None,
+            cmd_allowlist: Some(vec![]),
+        });
+        let out = f
+            .tool
+            .execute(json!({"command": "echo allow-empty", "timeout_secs": 5}))
+            .await
+            .expect("run");
+        assert!(out.contains("allow-empty"), "got: {out}");
+    }
+
+    #[tokio::test]
+    async fn non_string_command_errors() {
+        let f = tool_with(ShellConfig {
+            denylist: vec![],
+            confirm_required: vec![],
+            log_path: None,
+            cmd_allowlist: None,
+        });
+        let err = f
+            .tool
+            .execute(json!({"command": 123}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("missing command"));
+    }
+
+    #[test]
+    fn default_denylist_and_confirm_patterns() {
+        let d = default_denylist();
+        assert!(d.iter().any(|p| p.contains("rm -rf /")));
+        assert!(d.iter().any(|p| p.contains("mkfs")));
+        let c = default_confirm_required();
+        assert!(c.iter().any(|p| p == "git push"));
+        assert!(c.iter().any(|p| p == "rm -rf"));
     }
 }

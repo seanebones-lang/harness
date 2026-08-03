@@ -2,6 +2,7 @@
 name = "harness-tools"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 harness-provider-core = { path = "../harness-provider-core" }
@@ -20,3 +21,4 @@ tracing = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
 tempfile = "3"
+rusqlite = { workspace = true }

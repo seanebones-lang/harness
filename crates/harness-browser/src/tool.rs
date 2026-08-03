@@ -51,11 +51,30 @@ impl BrowserTool {
     async fn session(&self) -> Result<Arc<Mutex<Option<BrowserSession>>>> {
         let mut lock = self.session.lock().await;
         if lock.is_none() {
-            let s = BrowserSession::connect(&self.devtools_url).await?;
+            let s = BrowserSession::connect(&self.devtools_url)
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "Browser connect failed (url: {}): {e}\n\
+                         Tips:\n\
+                         • Start Chrome/Chromium with --remote-debugging-port matching this URL\n\
+                         • Verify: curl -s {}/json/version\n\
+                         • Use 127.0.0.1 if localhost/IPv6 fails\n\
+                         • Full guide: docs/BROWSER_CDP.md",
+                        self.devtools_url,
+                        self.devtools_url.trim_end_matches('/')
+                    )
+                })?;
             *lock = Some(s);
         }
         drop(lock);
         Ok(self.session.clone())
+    }
+
+    /// Drop a dead session so the next call reconnects.
+    async fn reset_session(&self) {
+        let mut lock = self.session.lock().await;
+        *lock = None;
     }
 }
 
@@ -98,65 +117,83 @@ impl Tool for BrowserTool {
     }
 
     async fn execute(&self, args: Value) -> Result<String> {
-        let action = args["action"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("missing action"))?;
-        validate_action(action)?;
-
-        let session_arc = self.session().await.with_context(|| {
+        let action = args["action"].as_str().ok_or_else(|| {
+            anyhow::anyhow!("missing action (one of: {})", KNOWN_ACTIONS.join(", "))
+        })?;
+        validate_action(action).with_context(|| {
             format!(
-                "Browser connect failed (url: {})\nEnsure Chrome is running with --remote-debugging-port=9222",
-                self.devtools_url
+                "unknown browser action `{action}` — valid: {}",
+                KNOWN_ACTIONS.join(", ")
             )
         })?;
 
-        let lock = session_arc.lock().await;
-        let session = lock
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("browser session not connected"))?;
+        let session_arc = self.session().await?;
 
-        match action {
-            "navigate" => {
-                let url = args["url"]
-                    .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("navigate requires url"))?;
-                session.navigate(url).await
+        let result = {
+            let lock = session_arc.lock().await;
+            let session = lock.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "browser session not connected — Chrome may have closed; retry the tool call"
+                )
+            })?;
+
+            match action {
+                "navigate" => {
+                    let url = args["url"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("navigate requires url"))?;
+                    session.navigate(url).await
+                }
+                "click" => {
+                    let sel = args["selector"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("click requires selector"))?;
+                    session.click(sel).await
+                }
+                "type" => {
+                    let text = args["text"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("type requires text"))?;
+                    session.type_text(text).await
+                }
+                "focus" => {
+                    let sel = args["selector"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("focus requires selector"))?;
+                    session.focus(sel).await
+                }
+                "get_text" => {
+                    let sel = args["selector"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("get_text requires selector"))?;
+                    session.get_text(sel).await
+                }
+                "get_links" => session.get_links().await,
+                "evaluate" => {
+                    let expr = args["expression"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("evaluate requires expression"))?;
+                    session.evaluate(expr).await
+                }
+                "screenshot" => session.screenshot().await,
+                "page_info" => session.page_info().await,
+                _ => anyhow::bail!(
+                    "unknown browser action: {action} — valid: {}",
+                    KNOWN_ACTIONS.join(", ")
+                ),
             }
-            "click" => {
-                let sel = args["selector"]
-                    .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("click requires selector"))?;
-                session.click(sel).await
+        };
+
+        if let Err(ref e) = result {
+            let msg = e.to_string();
+            if msg.contains("CDP connection closed")
+                || msg.contains("WebSocket")
+                || msg.contains("connection closed")
+            {
+                self.reset_session().await;
             }
-            "type" => {
-                let text = args["text"]
-                    .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("type requires text"))?;
-                session.type_text(text).await
-            }
-            "focus" => {
-                let sel = args["selector"]
-                    .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("focus requires selector"))?;
-                session.focus(sel).await
-            }
-            "get_text" => {
-                let sel = args["selector"]
-                    .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("get_text requires selector"))?;
-                session.get_text(sel).await
-            }
-            "get_links" => session.get_links().await,
-            "evaluate" => {
-                let expr = args["expression"]
-                    .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("evaluate requires expression"))?;
-                session.evaluate(expr).await
-            }
-            "screenshot" => session.screenshot().await,
-            "page_info" => session.page_info().await,
-            _ => anyhow::bail!("unknown browser action: {action}"),
         }
+        result
     }
 }
 
@@ -172,7 +209,11 @@ mod tests {
             .execute(json!({ "action": "bogus" }))
             .await
             .unwrap_err();
-        assert!(err.to_string().contains("unknown action"));
+        assert!(
+            err.to_string().contains("unknown action")
+                || err.to_string().contains("unknown browser action"),
+            "unexpected: {err}"
+        );
     }
 
     #[tokio::test]
@@ -180,6 +221,24 @@ mod tests {
         let tool = BrowserTool::new("http://127.0.0.1:19222");
         let err = tool.execute(json!({})).await.unwrap_err();
         assert!(err.to_string().contains("missing action"));
+    }
+
+    #[tokio::test]
+    async fn connect_failure_mentions_browser_docs() {
+        let tool = BrowserTool::new("http://127.0.0.1:19222");
+        let err = tool
+            .execute(json!({ "action": "page_info" }))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("Browser connect failed") || err.contains("DevTools"),
+            "unexpected: {err}"
+        );
+        assert!(
+            err.contains("BROWSER_CDP") || err.contains("remote-debugging"),
+            "expected setup tips: {err}"
+        );
     }
 
     #[test]

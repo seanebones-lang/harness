@@ -47,7 +47,12 @@ impl BrowserSession {
             .get(format!("{base}/json/list"))
             .send()
             .await
-            .context("Chrome DevTools HTTP unreachable")?
+            .with_context(|| {
+                format!(
+                    "Chrome DevTools HTTP unreachable at {base}/json/list \
+                     (is Chrome running with --remote-debugging-port? see docs/BROWSER_CDP.md)"
+                )
+            })?
             .json()
             .await
             .context("parsing /json/list")?;
@@ -100,7 +105,11 @@ impl BrowserSession {
                 let resp: CdpResponse = serde_json::from_str(&txt).context("CDP response parse")?;
                 if resp.id == Some(id) {
                     if let Some(err) = resp.error {
-                        anyhow::bail!("CDP error {}: {}", err.code, err.message);
+                        anyhow::bail!(
+                            "CDP error {}: {} (action may need a different selector/URL; see docs/BROWSER_CDP.md)",
+                            err.code,
+                            err.message
+                        );
                     }
                     return Ok(resp.result.unwrap_or(Value::Null));
                 }

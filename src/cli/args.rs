@@ -228,6 +228,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: BridgeAction,
     },
+    /// List MCP resources/roots or read a resource URI (from `.harness/mcp.json`).
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
     /// Export observability traces.
     Trace {
         /// Trace ID to export (omit for last trace).
@@ -235,6 +240,15 @@ pub enum Commands {
     },
     /// Run health checks: API keys, tools, config, daemon, MCP, LSP, and more.
     Doctor,
+    /// Run offline micro-benchmark pack (no API keys). See `demo/bench_tasks/`.
+    Bench {
+        /// Pack directory containing pack.json (default: demo/bench_tasks if present).
+        #[arg(long)]
+        pack: Option<PathBuf>,
+        /// Emit JSON report.
+        #[arg(long)]
+        json: bool,
+    },
     /// Generate shell completions (bash, zsh, fish, powershell, elvish).
     Completions {
         /// Shell type.
@@ -276,7 +290,7 @@ pub enum SwarmAction {
         #[arg(long)]
         model: Option<String>,
         /// Number of parallel tasks (default 1).
-        #[arg(long)]
+        #[arg(long, visible_alias = "agents", short = 'n')]
         count: Option<usize>,
     },
     /// List recent swarm tasks.
@@ -285,16 +299,25 @@ pub enum SwarmAction {
     Status {
         /// Task ID.
         id: String,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
     /// Show result of a completed task.
     Result {
         /// Task ID.
         id: String,
+        /// Emit machine-readable JSON (id, status, prompt, result, timestamps).
+        #[arg(long)]
+        json: bool,
     },
-    /// Cancel a pending or running task.
+    /// Cancel a pending or running task (or all with `--all`).
     Cancel {
-        /// Task ID (prefix ok).
-        id: String,
+        /// Task ID (prefix ok). Required unless `--all`.
+        id: Option<String>,
+        /// Cancel every pending/running task.
+        #[arg(long)]
+        all: bool,
     },
     /// Wait until a task completes (or timeout).
     Wait {
@@ -303,6 +326,21 @@ pub enum SwarmAction {
         /// Max seconds to wait (default 300).
         #[arg(long, default_value = "300")]
         timeout_secs: u64,
+    },
+    /// Reap orphan pending/running tasks and optionally purge old terminal rows.
+    Gc {
+        /// Mark non-live pending/running older than this many seconds as failed (default 3600).
+        #[arg(long, default_value = "3600")]
+        stale_secs: u64,
+        /// Keep only the newest N terminal tasks (done/failed/cancelled); delete the rest.
+        #[arg(long)]
+        keep: Option<usize>,
+        /// Delete terminal tasks completed more than this many seconds ago.
+        #[arg(long)]
+        older_than_secs: Option<u64>,
+        /// Report what would change without writing.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -326,6 +364,26 @@ pub enum BridgeAction {
     },
     /// List GitHub Project V2 items.
     GithubProject,
+}
+
+#[derive(Subcommand)]
+pub enum McpAction {
+    /// List resources across configured MCP servers.
+    Resources {
+        /// Only query this server name (from mcp.json).
+        #[arg(long)]
+        server: Option<String>,
+    },
+    /// Show workspace roots harness advertises to MCP servers.
+    Roots,
+    /// Read a resource by URI (tries servers that advertise resources).
+    Read {
+        /// Resource URI (e.g. `file:///…` or server-specific scheme).
+        uri: String,
+        /// Only query this server name (from mcp.json).
+        #[arg(long)]
+        server: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

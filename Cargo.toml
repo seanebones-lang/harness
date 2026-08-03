@@ -6,6 +6,8 @@ members = [
     "crates/harness-provider-openai",
     "crates/harness-provider-ollama",
     "crates/harness-provider-mlx",
+    "crates/harness-provider-gemini",
+    "crates/harness-provider-bedrock",
     "crates/harness-provider-router",
     "crates/harness-tools",
     "crates/harness-memory",

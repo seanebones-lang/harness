@@ -64,6 +64,81 @@ pub struct Config {
 pub struct ToolsConfig {
     /// Filesystem sandbox: `strict` (default), `relaxed`, or `off`.
     pub sandbox: Option<String>,
+    /// SQLite `database` tool (`[tools.database]`). Off by default.
+    #[serde(default)]
+    pub database: DatabaseToolSection,
+    /// Jupyter `notebook` tool (`[tools.notebook]`). Off by default.
+    #[serde(default)]
+    pub notebook: NotebookToolSection,
+    /// Allowlisted `docker` tool (`[tools.docker]`). Off by default.
+    #[serde(default)]
+    pub docker: DockerToolSection,
+}
+
+/// `[tools.database]` — SQLite queries under the workspace.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct DatabaseToolSection {
+    /// Register the `database` tool (default: false).
+    pub enabled: Option<bool>,
+    /// Reject non-SELECT/WITH/PRAGMA/EXPLAIN (default: true).
+    pub readonly: Option<bool>,
+    /// Max rows returned per query (default: 500).
+    pub max_rows: Option<usize>,
+}
+
+impl DatabaseToolSection {
+    /// Whether the tool should be registered.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(false)
+    }
+    /// Effective readonly flag.
+    pub fn is_readonly(&self) -> bool {
+        self.readonly.unwrap_or(true)
+    }
+    /// Effective max rows clamp.
+    pub fn effective_max_rows(&self) -> usize {
+        self.max_rows.unwrap_or(500).clamp(1, 10_000)
+    }
+}
+
+/// `[tools.notebook]` — `.ipynb` cell read/edit.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct NotebookToolSection {
+    /// Register the `notebook` tool (default: false).
+    pub enabled: Option<bool>,
+}
+
+impl NotebookToolSection {
+    /// Whether the tool should be registered.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(false)
+    }
+}
+
+/// `[tools.docker]` — allowlisted Docker CLI.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct DockerToolSection {
+    /// Register the `docker` tool (default: false).
+    pub enabled: Option<bool>,
+    /// Allow `compose_up` (still no run/build/rm). Default: false.
+    pub allow_mutating: Option<bool>,
+    /// CLI timeout seconds (default: 60).
+    pub timeout_secs: Option<u64>,
+}
+
+impl DockerToolSection {
+    /// Whether the tool should be registered.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(false)
+    }
+    /// Whether mutating compose actions are allowed.
+    pub fn allow_mutating(&self) -> bool {
+        self.allow_mutating.unwrap_or(false)
+    }
+    /// Effective timeout.
+    pub fn effective_timeout_secs(&self) -> u64 {
+        self.timeout_secs.unwrap_or(60).clamp(1, 600)
+    }
 }
 
 /// Shell execution safety configuration.

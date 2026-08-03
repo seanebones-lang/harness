@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/rust-1.76%2B-orange)](rust-toolchain.toml)
-[![Coverage](https://img.shields.io/badge/coverage-60%25%2B-brightgreen)](.github/workflows/coverage.yml)
+[![Coverage](https://img.shields.io/badge/coverage-~40%25%20(target%2060%25)-orange)](COVERAGE.md)
 
 Harness is a terminal-based AI coding assistant. It reads files, edits code, runs shell commands, searches your codebase, manages sessions with semantic memory, and can spawn sub-agents for parallel tasks.
 
 Default model: **claude-sonnet-4-6** (Anthropic). Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
 
-**Status:** Beta — fine for daily use; expect ongoing polish. Before tagging a release, run the gates in [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md). Latest go/no-go notes: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md).
+**Status:** Beta — fine for daily use; expect ongoing polish. Before tagging a release, run the gates in [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md). Latest go/no-go: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md). Team brief: [`docs/TEAM_UPDATE_2026-07-30.md`](docs/TEAM_UPDATE_2026-07-30.md). Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md). **CTO backlog (ordered):** [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md).
 
 **Plain-language guide:** [`Start Here/USER MANUAL.md`](Start%20Here/USER%20MANUAL.md) — complements this README with the same first-run story.
 
@@ -37,8 +37,8 @@ docker compose up          # spins up harness + Ollama
 # Full test suite (no API keys required)
 cargo test --all           # 218+ tests, ~60s on modern hardware
 
-# Coverage report
-cargo llvm-cov --all       # >= 60% line coverage
+# Coverage report (last measured ~40% lines — see COVERAGE.md; CI target is 60%)
+cargo llvm-cov --workspace --all-features --summary-only
 
 # Runtime check
 harness doctor             # verifies runtime dependencies
@@ -144,8 +144,9 @@ harness --think 10000            # enable extended thinking with 10k token budge
 harness status                   # show config, API key, recent sessions
 harness doctor                   # health checks (keys, daemon, MCP paths, …)
 harness completions zsh          # print completions → save to your shell's completion dir
-harness swarm run "your prompt"     # queue background agent work (--count, --model)
+harness swarm run "your prompt"     # queue background agent work (--count/--agents/-n, --model)
 harness swarm list                  # swarm task registry (see `harness swarm --help`)
+harness swarm gc                    # reap orphan tasks; optional --keep / --older-than-secs
 harness swarm status <task-id>   # one task
 harness swarm result <task-id>   # output when done
 harness trace                    # list spans from last local trace (needs observability)

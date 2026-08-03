@@ -2,6 +2,7 @@
 name = "harness-provider-mlx"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 harness-provider-core = { path = "../harness-provider-core" }

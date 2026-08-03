@@ -264,3 +264,129 @@ pub fn test_notification(cfg: &NotificationsConfig) {
         "Notifications are working! 🎉",
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::NotificationsConfig;
+
+    fn disabled() -> NotificationsConfig {
+        NotificationsConfig {
+            enabled: false,
+            on_background_done: true,
+            on_autotest_fail: true,
+            on_budget: true,
+        }
+    }
+
+    #[test]
+    fn group_id_maps_kinds_to_stable_buckets() {
+        assert_eq!(NotificationKind::BackgroundDone.group_id(), "harness.agent");
+        assert_eq!(
+            NotificationKind::LongSubagentDone.group_id(),
+            "harness.agent"
+        );
+        assert_eq!(NotificationKind::SwarmComplete.group_id(), "harness.agent");
+        assert_eq!(NotificationKind::AutotestFailed.group_id(), "harness.ci");
+        assert_eq!(NotificationKind::CiFailed.group_id(), "harness.ci");
+        assert_eq!(NotificationKind::PrOpened.group_id(), "harness.github");
+        assert_eq!(NotificationKind::BudgetAlert.group_id(), "harness.budget");
+        assert_eq!(
+            NotificationKind::VoiceResponseDone.group_id(),
+            "harness.voice"
+        );
+        assert_eq!(NotificationKind::DaemonDied.group_id(), "harness.daemon");
+        assert_eq!(
+            NotificationKind::UpdateAvailable.group_id(),
+            "harness.update"
+        );
+        assert_eq!(NotificationKind::Custom.group_id(), "harness.misc");
+    }
+
+    #[test]
+    fn subtitle_maps_each_kind() {
+        assert_eq!(
+            NotificationKind::BackgroundDone.subtitle(),
+            "Background Run"
+        );
+        assert_eq!(NotificationKind::AutotestFailed.subtitle(), "Test Runner");
+        assert_eq!(NotificationKind::BudgetAlert.subtitle(), "Cost Monitor");
+        assert_eq!(NotificationKind::PrOpened.subtitle(), "GitHub");
+        assert_eq!(NotificationKind::CiFailed.subtitle(), "CI/CD");
+        assert_eq!(NotificationKind::LongSubagentDone.subtitle(), "Sub-agent");
+        assert_eq!(NotificationKind::VoiceResponseDone.subtitle(), "Voice");
+        assert_eq!(NotificationKind::SwarmComplete.subtitle(), "Swarm");
+        assert_eq!(NotificationKind::DaemonDied.subtitle(), "Daemon");
+        assert_eq!(NotificationKind::UpdateAvailable.subtitle(), "Update");
+        assert_eq!(NotificationKind::Custom.subtitle(), "Harness");
+    }
+
+    #[test]
+    fn disabled_config_is_noop_for_all_entry_points() {
+        // Must not attempt desktop I/O when disabled — pure early-return paths.
+        let cfg = disabled();
+        notify(&cfg, "s", "b");
+        notify_rich(&cfg, NotificationKind::Custom, "s", "b");
+        background_done(&cfg, "job", true);
+        background_done(&cfg, "job", false);
+        autotest_failed(&cfg, "fail");
+        budget_alert(&cfg, "over");
+        pr_opened(&cfg, "t", "http://x");
+        ci_failed(&cfg, "job", "http://x");
+        subagent_done(&cfg, "id", "ok");
+        voice_response_done(&cfg);
+        swarm_complete(&cfg, 3, 1);
+        swarm_complete(&cfg, 2, 0);
+        daemon_died(&cfg);
+        update_available(&cfg, "1.2.3");
+        test_notification(&cfg);
+    }
+
+    #[test]
+    fn feature_flags_gate_specific_helpers() {
+        let mut cfg = NotificationsConfig {
+            enabled: true,
+            on_background_done: false,
+            on_autotest_fail: false,
+            on_budget: false,
+        };
+        // Flags off → no-op even when enabled=true (still no desktop I/O asserted).
+        background_done(&cfg, "x", true);
+        autotest_failed(&cfg, "x");
+        budget_alert(&cfg, "x");
+        cfg.on_background_done = true;
+        cfg.enabled = false;
+        background_done(&cfg, "x", true);
+    }
+
+    #[test]
+    fn kind_equality_and_clone() {
+        assert_eq!(NotificationKind::Custom, NotificationKind::Custom);
+        assert_ne!(NotificationKind::CiFailed, NotificationKind::PrOpened);
+        let k = NotificationKind::SwarmComplete.clone();
+        assert_eq!(k.group_id(), "harness.agent");
+        assert_eq!(k.subtitle(), "Swarm");
+    }
+
+    #[test]
+    fn disabled_gates_even_when_feature_flags_on() {
+        // enabled=false wins over on_* flags for entry points that check enabled first,
+        // and feature-flagged helpers still return before notify_rich when their flag is on
+        // only if enabled path is taken — exercise both flag-on + enabled-off.
+        let cfg = NotificationsConfig {
+            enabled: false,
+            on_background_done: true,
+            on_autotest_fail: true,
+            on_budget: true,
+        };
+        background_done(&cfg, "job", true);
+        background_done(&cfg, "job", false);
+        autotest_failed(&cfg, "details");
+        budget_alert(&cfg, "msg");
+        // helpers that only check enabled
+        pr_opened(&cfg, "t", "u");
+        swarm_complete(&cfg, 0, 0);
+        swarm_complete(&cfg, 5, 5);
+        test_notification(&cfg);
+    }
+}

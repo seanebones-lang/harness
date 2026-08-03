@@ -1,0 +1,11 @@
+{
+  "name": "harness-offline-default",
+  "description": "Offline microbench pack (no API keys). Cases filter built-in runner ids.",
+  "cases": [
+    "json_roundtrip",
+    "policy_checkpoint",
+    "workspace_strict",
+    "swarm_register_list_gc",
+    "swarm_task_json"
+  ]
+}

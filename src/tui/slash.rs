@@ -74,15 +74,18 @@ pub(crate) fn at_file_completions(partial: &str) -> Vec<String> {
 }
 
 pub(crate) fn detect_test_command() -> String {
-    if std::path::Path::new("Cargo.toml").exists() {
+    detect_test_command_in(std::path::Path::new("."))
+}
+
+/// Detect a project test command for files under `root` (does not depend on process cwd).
+pub(crate) fn detect_test_command_in(root: &std::path::Path) -> String {
+    if root.join("Cargo.toml").exists() {
         "cargo test 2>&1".into()
-    } else if std::path::Path::new("package.json").exists() {
+    } else if root.join("package.json").exists() {
         "npm test 2>&1".into()
-    } else if std::path::Path::new("pyproject.toml").exists()
-        || std::path::Path::new("setup.py").exists()
-    {
+    } else if root.join("pyproject.toml").exists() || root.join("setup.py").exists() {
         "python -m pytest 2>&1".into()
-    } else if std::path::Path::new("go.mod").exists() {
+    } else if root.join("go.mod").exists() {
         "go test ./... 2>&1".into()
     } else {
         "make test 2>&1".into()
@@ -92,13 +95,32 @@ pub(crate) fn detect_test_command() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn detect_test_command_prefers_cargo_in_rust_workspace() {
-        // This workspace root has Cargo.toml
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"t\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write Cargo.toml");
         assert!(
-            detect_test_command().starts_with("cargo test"),
-            "expected cargo test stub in harness repo root"
+            detect_test_command_in(dir.path()).starts_with("cargo test"),
+            "expected cargo test stub when Cargo.toml present"
         );
+    }
+
+    #[test]
+    fn detect_test_command_prefers_npm_when_package_json() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(dir.path().join("package.json"), "{}\n").expect("write package.json");
+        assert!(detect_test_command_in(dir.path()).starts_with("npm test"));
+    }
+
+    #[test]
+    fn detect_test_command_falls_back_to_make() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert!(detect_test_command_in(dir.path()).starts_with("make test"));
     }
 }

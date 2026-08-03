@@ -4,6 +4,73 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-07-30 — Collab max_users, checkpoint CI isolation, Mistral/OpenAI-compat**
+
+| Item | Result |
+|------|--------|
+| Branch | `dev` → `origin/dev` |
+| `cargo test --bin harness` collab/checkpoint | **Pass** |
+| `cargo test -p harness-provider-router` | **Pass** (mistral + openai-compatible) |
+| Features | collab rejoin seat fix; docs/COLLAB.md; Mistral + openai-compatible providers |
+| CTO | W2.5 [x], W4.4 [x], W5.1 [x] |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on REL-01 + prebuilts.
+
+---
+
+
+**2026-07-30 — Quality floor + doctor/OTLP (llvm-cov 40%, cargo-deny green)**
+
+| Item | Result |
+|------|--------|
+| Branch | `dev` → `origin/dev` |
+| `cargo llvm-cov --workspace --all-features --summary-only` | **40.22%** lines (7814/19430) |
+| `cargo deny check` | **Pass** (licenses + advisories + bans + sources) |
+| `cargo clippy --workspace … -D warnings` | **Pass** (prior) |
+| `harness doctor` | Bridges + observability sections |
+| Docs | `COVERAGE.md`, `docs/OTLP_SMOKE.md`, badge ~40% |
+| CTO | W2.1 [x]≥40%, W2.4 [x], W4.3 [x], W4.5 [x] |
+| REL-01 / billing | **Unchanged** |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on REL-01 + prebuilts. CI 60% coverage gate still a target.
+
+---
+
+**2026-07-30 — Wave 2/3/4 eng slice (coverage, MCP CLI, notifications, clippy)**
+
+| Item | Result |
+|------|--------|
+| Branch | `dev` → `origin/dev` |
+| `cargo test --bin harness` | **Pass** — 96 tests |
+| `cargo test -p harness-tools` | **Pass** — 54 tests |
+| `cargo test -p harness-mcp` | **Pass** — 21 tests |
+| `cargo test -p harness-memory` | **Pass** — 8 tests |
+| `cargo clippy --workspace --all-targets --all-features -- -D warnings` | **Pass** |
+| Features | `harness mcp roots|resources|read`; spawn_agent desktop notify; COVERAGE_PLAN + NOTIFICATIONS_AUDIT |
+| CTO items | W2.1 [~], W2.2 [x], W2.3 audit [~], W2.4 clippy [~], W3.7 [x], W4.2 [x] |
+| REL-01 / prebuilt matrix | **Unchanged** — user keys/billing |
+
+**Go / no-go:** **GO** for public beta (unchanged). **Stable** still blocked on REL-01 + full prebuilts/Homebrew.
+
+---
+
+**2026-07-30 — Swarm operability + `dev` branch (local + GitHub)**
+
+| Item | Result |
+|------|--------|
+| Branch | **Done** — `dev` tracking `origin/dev` |
+| Feature commit | **Done** — `0c7d59e` feat(swarm): TUI panel, orphan GC, richer status CLI |
+| `cargo test --bin harness` | **Pass** — 84 tests |
+| Swarm unit tests | **Pass** — 11 tests |
+| `cargo clippy --bin harness -- -D warnings` | **Pass** |
+| Team brief | [`TEAM_UPDATE_2026-07-30.md`](TEAM_UPDATE_2026-07-30.md) |
+| Roadmap | [`ROADMAP.md`](ROADMAP.md) |
+| REL-01 / prebuilt matrix | **Unchanged** — still stable blockers |
+
+**Go / no-go:** **GO** for public beta (unchanged). **Stable** still blocked on REL-01 + full prebuilts/Homebrew. Swarm daily-driver path is materially better on `dev`.
+
+---
+
 **2026-05-25 — v0.1.2-beta release cut (local + partial GitHub Release)**
 
 | Item | Result |
@@ -135,6 +202,24 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 **`3fa6d51` audit remediation closed (now also verified by tests):** OpenAI multi-tool SSE flush (regression-tested in `crates/harness-provider-openai`), **MCP dedicated stdout reader (regression-tested in `crates/harness-mcp`)**, MCP sampling paths tested, `WorkspaceRoot` jail boundary-tested, `src/cli/commands/project.rs` + `src/tui/{render,events}.rs` extracted, LSP framing hardened.
 
 **Next iteration:** manual release smoke §3; optional tools (`DatabaseTool`, `NotebookTool`, `DockerTool`); Tauri Windows/Linux packaging; CDP doc screenshots; full i18n of user manual.
+
+---
+
+**2026-08-03 — Max-opt swarm (W5.2–W5.7 + quality)**
+
+| Item | Result |
+|------|--------|
+| Branch | `dev` |
+| `cargo build --bin harness` | **Pass** |
+| `cargo clippy -p harness --bin harness -- -D warnings` | **Pass** |
+| `cargo test -p harness-tools` | **95 pass** |
+| Providers | Gemini OpenAI-compat + Bedrock Converse; router tests green |
+| Tools | `database` / `notebook` / `docker` config-gated (default off) |
+| Docs | PROVIDERS_GEMINI_BEDROCK.md, COMPUTER_USE.md, WAVE7_SCALE.md |
+| Offline smoke | smoke_rel01 + scripts/smoke_linux_docker.sh |
+| CTO | W5.2–W5.7 [x]; W1.4–W1.5 still 📌 |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on REL-01 full matrix + billing prebuilts.
 
 ---
 

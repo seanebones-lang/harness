@@ -2,7 +2,10 @@ pub mod client;
 pub mod config;
 pub mod tool;
 
-pub use client::{McpClient, McpResource, ProgressEvent, ServerCapabilities};
+pub use client::{
+    collect_roots, McpClient, McpResource, ProgressEvent, SamplingApprovalRequest,
+    ServerCapabilities,
+};
 pub use config::{McpConfig, McpServerConfig};
 pub use tool::McpToolAdapter;
 
@@ -33,6 +36,7 @@ pub async fn load_mcp_tools(
         sampling_provider,
         command_allowlist,
         sampling_auto_approve,
+        None,
     )
     .await
 }
@@ -45,6 +49,7 @@ pub async fn load_mcp_tools_with_progress(
     sampling_provider: Option<ArcProvider>,
     command_allowlist: Option<&[String]>,
     sampling_auto_approve: bool,
+    sampling_tx: Option<mpsc::UnboundedSender<SamplingApprovalRequest>>,
 ) -> Result<()> {
     let cfg = match config::load(config_path) {
         Ok(c) => c,
@@ -65,8 +70,9 @@ pub async fn load_mcp_tools_with_progress(
             &server_cfg,
             progress_tx.clone(),
             sampling_provider.clone(),
+            sampling_auto_approve,
+            sampling_tx.clone(),
         );
-        let _ = sampling_auto_approve; // auto-approve config no longer forwarded to client
         match tokio::time::timeout(Duration::from_secs(15), spawn_fut).await {
             Ok(Ok(client)) => {
                 match client.list_tools().await {
@@ -154,5 +160,29 @@ mod allowlist_tests {
         assert!(command_is_allowed("/usr/local/bin/npx", Some(&list)));
         assert!(command_is_allowed("/opt/bin/mcp", Some(&list)));
         assert!(!command_is_allowed("python3", Some(&list)));
+    }
+
+    #[test]
+    fn default_allowlist_includes_common_runners() {
+        for cmd in ["npx", "node", "python3", "uvx"] {
+            assert!(command_is_allowed(cmd, None), "{cmd}");
+            assert!(
+                command_is_allowed(&format!("/usr/local/bin/{cmd}"), None),
+                "path {cmd}"
+            );
+        }
+        assert!(!command_is_allowed("bash", None));
+        assert!(!command_is_allowed("/bin/sh", None));
+    }
+
+    #[test]
+    fn allowlist_rejects_similar_but_not_exact_basenames() {
+        let list = vec!["node".to_string()];
+        assert!(!command_is_allowed("nodejs", Some(&list)));
+        assert!(!command_is_allowed("node.exe", Some(&list)));
+        // Full path must match exactly when listed as full path only
+        let full = vec!["/opt/bin/mcp".to_string()];
+        assert!(!command_is_allowed("/other/mcp", Some(&full)));
+        assert!(command_is_allowed("/opt/bin/mcp", Some(&full)));
     }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "harness-provider-gemini"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Google Gemini provider (OpenAI-compatible Generative Language API)"
+
+[dependencies]
+harness-provider-core = { path = "../harness-provider-core" }
+harness-provider-openai = { path = "../harness-provider-openai" }
+anyhow = { workspace = true }

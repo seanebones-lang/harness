@@ -11,9 +11,10 @@ use harness_lsp::{
 use harness_mcp;
 use harness_provider_core::ArcProvider;
 use harness_tools::tools::{
-    ApplyPatchTool, ComputerUseTool, GhTool, GitTool, ListDirTool, PatchFileTool, ReadFileTool,
-    SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool, SpawnSwarmTool,
-    SwarmEnqueueRunner, TestRunnerTool, WriteFileTool,
+    ApplyPatchTool, ComputerUseTool, DatabaseTool, DatabaseToolConfig, DockerTool, DockerToolConfig,
+    GhTool, GitTool, ListDirTool, NotebookTool, PatchFileTool, ReadFileTool, SearchCodeTool,
+    ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool, SpawnSwarmTool, SwarmEnqueueRunner,
+    TestRunnerTool, WriteFileTool,
 };
 use harness_tools::{ConfirmGate, SandboxMode, ToolExecutor, ToolRegistry, WorkspaceRoot};
 use std::collections::HashSet;
@@ -48,6 +49,7 @@ pub async fn build_tools(
     memory_store: Option<harness_memory::MemoryStore>,
     embed_model: Option<String>,
     confirm_gate: Option<ConfirmGate>,
+    sampling_tx: Option<tokio::sync::mpsc::UnboundedSender<harness_mcp::SamplingApprovalRequest>>,
 ) -> Result<ToolExecutor> {
     let browser_url_owned = browser_url.to_string();
     let cfg_clone = cfg.clone();
@@ -75,8 +77,15 @@ pub async fn build_tools(
                     &browser_url_owned,
                     None,
                     None,
+                    None, // sub-agents: no interactive sampling UI
                 )
                 .await?;
+                let tools = if let Some(allow) = cfg_clone.swarm.effective_worker_allowlist() {
+                    tools.with_tool_allowlist(&allow)
+                } else {
+                    tools
+                };
+                let wall = cfg_clone.swarm.worker_wall_timeout();
                 let mut ids = Vec::new();
                 for i in 0..n {
                     let label = if n > 1 {
@@ -84,7 +93,7 @@ pub async fn build_tools(
                     } else {
                         prompt.clone()
                     };
-                    let id = swarm::register_task(&label)?;
+                    let id = swarm::register_task_with_model(&label, Some(model.as_str()))?;
                     ids.push(id.clone());
                     let p = provider.clone();
                     let t = tools.clone();
@@ -103,26 +112,39 @@ pub async fn build_tools(
                         async move {
                             use harness_memory::Session;
                             use harness_provider_core::Message;
-                            let mut session = Session::new(&m2);
-                            session.push(Message::user(&label));
-                            agent::drive_agent(
-                                &p,
-                                &t,
-                                mem.as_ref(),
-                                emb.as_deref(),
-                                &mut session,
-                                sys.as_deref().unwrap_or(agent::DEFAULT_SYSTEM),
-                                None,
-                            )
-                            .await?;
-                            let reply = session
-                                .messages
-                                .iter()
-                                .rev()
-                                .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
-                                .map(|m| m.content.as_str().to_string())
-                                .unwrap_or_else(|| "(no response)".into());
-                            Ok(reply)
+                            let work = async {
+                                let mut session = Session::new(&m2);
+                                session.push(Message::user(&label));
+                                agent::drive_agent(
+                                    &p,
+                                    &t,
+                                    mem.as_ref(),
+                                    emb.as_deref(),
+                                    &mut session,
+                                    sys.as_deref().unwrap_or(agent::DEFAULT_SYSTEM),
+                                    None,
+                                )
+                                .await?;
+                                let reply = session
+                                    .messages
+                                    .iter()
+                                    .rev()
+                                    .find(|m| {
+                                        matches!(m.role, harness_provider_core::Role::Assistant)
+                                    })
+                                    .map(|m| m.content.as_str().to_string())
+                                    .unwrap_or_else(|| "(no response)".into());
+                                Ok::<String, anyhow::Error>(reply)
+                            };
+                            match wall {
+                                Some(d) => match tokio::time::timeout(d, work).await {
+                                    Ok(r) => r,
+                                    Err(_) => Err(anyhow::anyhow!(
+                                        "swarm worker exceeded wall timeout ({d:?})"
+                                    )),
+                                },
+                                None => work.await,
+                            }
                         }
                     })
                     .await;
@@ -142,10 +164,12 @@ pub async fn build_tools(
         browser_url,
         Some(swarm_enqueue),
         confirm_gate,
+        sampling_tx,
     )
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn build_tools_inner(
     provider: ArcProvider,
     model: String,
@@ -154,6 +178,7 @@ pub async fn build_tools_inner(
     browser_url: &str,
     swarm_enqueue: Option<SwarmEnqueueRunner>,
     confirm_gate: Option<ConfirmGate>,
+    sampling_tx: Option<tokio::sync::mpsc::UnboundedSender<harness_mcp::SamplingApprovalRequest>>,
 ) -> Result<ToolExecutor> {
     let workspace = tool_workspace(cfg)?;
 
@@ -183,12 +208,14 @@ pub async fn build_tools_inner(
     } else {
         harness_tools::ConfirmPolicy::Off
     };
+    let sub_notifications = cfg.notifications.clone();
     let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |task: String| {
         let p: ArcProvider = sub_provider.clone();
         let m = sub_model.clone();
         let scfg = sub_shell_cfg.clone();
         let ws = sub_workspace.clone();
         let gate = sub_confirm.clone();
+        let notif = sub_notifications.clone();
         let sub_tools = {
             let mut r = ToolRegistry::new();
             r.register(ReadFileTool {
@@ -220,7 +247,7 @@ pub async fn build_tools_inner(
             use harness_provider_core::Message;
             let mut session = Session::new(&m);
             session.push(Message::user(&task));
-            agent::drive_agent(
+            let drive_result = agent::drive_agent(
                 &p,
                 &sub_tools,
                 None,
@@ -229,7 +256,7 @@ pub async fn build_tools_inner(
                 agent::DEFAULT_SYSTEM,
                 None,
             )
-            .await?;
+            .await;
             let reply = session
                 .messages
                 .iter()
@@ -237,6 +264,20 @@ pub async fn build_tools_inner(
                 .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
                 .map(|m| m.content.as_str().to_string())
                 .unwrap_or_else(|| "(no response)".into());
+            let preview: String = reply.chars().take(160).collect();
+            match &drive_result {
+                Ok(()) => {
+                    crate::notifications::subagent_done(&notif, "spawn_agent", &preview);
+                }
+                Err(e) => {
+                    crate::notifications::subagent_done(
+                        &notif,
+                        "spawn_agent",
+                        &format!("failed: {e}"),
+                    );
+                }
+            }
+            drive_result?;
             Ok(reply)
         })
     });
@@ -290,6 +331,39 @@ pub async fn build_tools_inner(
         }
     }
 
+    // Optional tools (off by default — see [tools.database|notebook|docker] in config).
+    if cfg.tools.database.is_enabled() {
+        registry.register(DatabaseTool::new(
+            workspace.clone(),
+            DatabaseToolConfig {
+                readonly: cfg.tools.database.is_readonly(),
+                max_rows: cfg.tools.database.effective_max_rows(),
+            },
+        ));
+        tracing::info!(
+            readonly = cfg.tools.database.is_readonly(),
+            max_rows = cfg.tools.database.effective_max_rows(),
+            "database tool enabled"
+        );
+    }
+    if cfg.tools.notebook.is_enabled() {
+        registry.register(NotebookTool {
+            workspace: workspace.clone(),
+        });
+        tracing::info!("notebook tool enabled");
+    }
+    if cfg.tools.docker.is_enabled() {
+        registry.register(DockerTool::new(DockerToolConfig {
+            allow_mutating: cfg.tools.docker.allow_mutating(),
+            timeout_secs: cfg.tools.docker.effective_timeout_secs(),
+            docker_bin: std::path::PathBuf::from("docker"),
+        }));
+        tracing::info!(
+            allow_mutating = cfg.tools.docker.allow_mutating(),
+            "docker tool enabled"
+        );
+    }
+
     // Lazy LSP: only spawn if a supported project type is detected in the cwd.
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let has_supported_project = cwd.join("Cargo.toml").exists()
@@ -318,12 +392,14 @@ pub async fn build_tools_inner(
     let mcp_sampling_auto = cfg.approval.effective_mode() == "auto";
     let builtin_before: HashSet<String> = registry.names().into_iter().collect();
     if let Some(mcp_path) = harness_mcp::find_config() {
-        if let Err(e) = harness_mcp::load_mcp_tools(
+        if let Err(e) = harness_mcp::load_mcp_tools_with_progress(
             &mcp_path,
             &mut registry,
+            None,
             Some(provider.clone()),
             mcp_allowlist,
             mcp_sampling_auto,
+            sampling_tx.clone(),
         )
         .await
         {
@@ -332,12 +408,14 @@ pub async fn build_tools_inner(
     }
     if let Some(mcp_path) = &cfg.mcp.config_path {
         if mcp_path.exists() {
-            if let Err(e) = harness_mcp::load_mcp_tools(
+            if let Err(e) = harness_mcp::load_mcp_tools_with_progress(
                 mcp_path,
                 &mut registry,
+                None,
                 Some(provider.clone()),
                 mcp_allowlist,
                 mcp_sampling_auto,
+                sampling_tx.clone(),
             )
             .await
             {

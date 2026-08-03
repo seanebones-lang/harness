@@ -9,7 +9,8 @@
 | `Enter` | Send message |
 | `Shift+Enter` / `Alt+Enter` | Insert newline in input |
 | `↑` / `↓` | Scroll chat history |
-| `PgUp` / `PgDn` | Scroll event log |
+| `PgUp` / `PgDn` | Scroll event log (or swarm panel when open) |
+| `F2` | Toggle right panel: Events ↔ Swarm registry |
 | `Ctrl+L` | Scroll chat to bottom (latest) |
 | `Esc` | Cancel pending confirm / close overlay |
 
@@ -51,7 +52,8 @@
 |-----|--------|
 | `Ctrl+]` | Widen right panel |
 | `Ctrl+[` | Narrow right panel |
-| `Ctrl+T` | (reserved) Swarm panel toggle |
+| `F2` | Toggle Events ↔ Swarm panel (also `/swarm`) |
+| `Enter` (empty, Swarm panel) | Peek selected swarm task result into Events |
 
 ## Plan Mode
 
@@ -84,6 +86,9 @@ Type `/` to trigger autocomplete. All commands:
 | `/obsidian save` | Save last response to Obsidian vault |
 | `/schema <name> <json>` | Set strict JSON output schema |
 | `/schema clear` | Clear output schema |
+| `/swarm` | Toggle swarm panel |
+| `/swarm refresh` | Reload swarm registry into panel |
+| `/swarm gc […]` | Reap orphan swarm tasks from TUI |
 | `/help` / `/?` | Show help |
 
 ## @file Mentions
@@ -96,3 +101,29 @@ The file contents are attached to the next message.
 `/focus 25` starts a 25-minute Pomodoro. The status bar shows `[FOCUS Nm]`.
 Notifications are silenced until the timer expires or `/focus off` is typed.
 Voice input auto-enables focus mode during recording.
+
+## CLI (related)
+
+| Command | Action |
+|---------|--------|
+| `harness swarm list\|status\|gc\|…` | Swarm registry ops |
+| `harness mcp roots` | Roots advertised to MCP servers |
+| `harness mcp resources [--server NAME]` | List MCP resources |
+| `harness mcp read <uri> [--server NAME]` | Read one MCP resource |
+| `harness bridge obsidian …` | Obsidian bridge write |
+| `harness trace [id]` | Dump last / named OTEL-ish trace |
+
+## MCP CLI (resources / roots)
+
+Outside the TUI, list or read MCP resources without starting a full agent session:
+
+```bash
+harness mcp roots                          # roots harness advertises (CWD + home)
+harness mcp resources                      # resources/list across mcp.json servers
+harness mcp resources --server filesystem  # one server only
+harness mcp read <uri>                     # resources/read (first server that succeeds)
+harness mcp read <uri> --server filesystem
+```
+
+Requires `.harness/mcp.json`, `.claude/mcp.json`, `~/.harness/mcp.json`, or `[mcp] config_path`.
+Respects `[mcp] command_allowlist` (same as tool loading).

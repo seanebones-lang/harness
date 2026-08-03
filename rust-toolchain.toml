@@ -1,3 +1,5 @@
 [toolchain]
-channel = "stable"
+# Pinned known-good (local 2026-07-30). MSRV remains rust-version 1.76 in Cargo.toml.
+channel = "1.95.0"
 components = ["rustfmt", "clippy"]
+profile = "minimal"

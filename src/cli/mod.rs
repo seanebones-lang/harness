@@ -6,7 +6,7 @@ pub mod lightweight;
 pub mod wiring;
 
 pub use args::{
-    CheckpointAction, Cli, Commands, CostAction, ProjectAction, SwarmAction, SyncAction,
+    CheckpointAction, Cli, Commands, CostAction, McpAction, ProjectAction, SwarmAction, SyncAction,
 };
 pub use commands::{
     build_prompt_with_image, command_needs_agent_runtime, delete_session, export_session,

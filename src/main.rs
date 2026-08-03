@@ -2,6 +2,7 @@ mod agent;
 mod ambient;
 mod auth_token;
 mod background;
+mod bench;
 mod bridges;
 mod checkpoint;
 mod collab;
@@ -20,6 +21,7 @@ mod provider_build;
 mod rate_limit;
 mod server;
 mod swarm;
+mod swarm_registry;
 mod sync;
 mod trust;
 mod tui;
@@ -173,6 +175,13 @@ async fn main() -> Result<()> {
     } else {
         (None, None)
     };
+    // MCP sampling: TUI can approve; auto mode auto-approves; otherwise default deny.
+    let (sampling_tx, sampling_rx) = if interactive_tui {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        (Some(tx), Some(rx))
+    } else {
+        (None, None)
+    };
     let confirm_bar_label = if confirm_active && interactive_tui {
         Some(if cli.plan || approval_mode == "plan" {
             "PLAN"
@@ -193,6 +202,7 @@ async fn main() -> Result<()> {
         memory_store.clone(),
         embed_model.clone(),
         confirm_gate,
+        sampling_tx,
     )
     .await?;
 
@@ -423,13 +433,19 @@ async fn main() -> Result<()> {
         }) => {
             let n = count.unwrap_or(1).clamp(1, 32);
             let worker_model = run_model.unwrap_or_else(|| model.clone());
+            let tools = if let Some(allow) = cfg.swarm.effective_worker_allowlist() {
+                tools.with_tool_allowlist(&allow)
+            } else {
+                tools.clone()
+            };
+            let wall = cfg.swarm.worker_wall_timeout();
             for i in 0..n {
                 let label = if n > 1 {
                     format!("{prompt} [swarm {}/{}]", i + 1, n)
                 } else {
                     prompt.clone()
                 };
-                let id = swarm::register_task(&label)?;
+                let id = swarm::register_task_with_model(&label, Some(worker_model.as_str()))?;
                 let p = provider.clone();
                 let t = tools.clone();
                 let mem = memory_store.clone();
@@ -447,26 +463,37 @@ async fn main() -> Result<()> {
                     async move {
                         use harness_memory::Session;
                         use harness_provider_core::Message;
-                        let mut session = Session::new(&m2);
-                        session.push(Message::user(&label));
-                        agent::drive_agent(
-                            &p,
-                            &t,
-                            mem.as_ref(),
-                            emb.as_deref(),
-                            &mut session,
-                            sys.as_deref().unwrap_or(agent::DEFAULT_SYSTEM),
-                            None,
-                        )
-                        .await?;
-                        let reply = session
-                            .messages
-                            .iter()
-                            .rev()
-                            .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
-                            .map(|m| m.content.as_str().to_string())
-                            .unwrap_or_else(|| "(no response)".into());
-                        Ok(reply)
+                        let work = async {
+                            let mut session = Session::new(&m2);
+                            session.push(Message::user(&label));
+                            agent::drive_agent(
+                                &p,
+                                &t,
+                                mem.as_ref(),
+                                emb.as_deref(),
+                                &mut session,
+                                sys.as_deref().unwrap_or(agent::DEFAULT_SYSTEM),
+                                None,
+                            )
+                            .await?;
+                            let reply = session
+                                .messages
+                                .iter()
+                                .rev()
+                                .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
+                                .map(|m| m.content.as_str().to_string())
+                                .unwrap_or_else(|| "(no response)".into());
+                            Ok::<String, anyhow::Error>(reply)
+                        };
+                        match wall {
+                            Some(d) => match tokio::time::timeout(d, work).await {
+                                Ok(r) => r,
+                                Err(_) => Err(anyhow::anyhow!(
+                                    "swarm worker exceeded wall timeout ({d:?})"
+                                )),
+                            },
+                            None => work.await,
+                        }
                     }
                 })
                 .await;
@@ -527,6 +554,7 @@ async fn main() -> Result<()> {
                     ambient_tx,
                     confirm_rx,
                     confirm_bar_label,
+                    sampling_rx,
                 )
                 .await;
                 graceful_ambient_shutdown(ambient_shutdown).await;

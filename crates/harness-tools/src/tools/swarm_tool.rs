@@ -63,3 +63,104 @@ impl Tool for SpawnSwarmTool {
         (self.runner)(prompt, count).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::Tool;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    fn tool_capturing() -> SpawnSwarmTool {
+        SpawnSwarmTool::new(Arc::new(|prompt, count| {
+            Box::pin(async move { Ok(format!("{count}:{prompt}")) })
+        }))
+    }
+
+    #[tokio::test]
+    async fn missing_prompt_errors() {
+        let t = tool_capturing();
+        let err = t.execute(json!({})).await.unwrap_err();
+        assert!(err.to_string().contains("missing prompt"));
+    }
+
+    #[tokio::test]
+    async fn non_string_prompt_errors() {
+        let t = tool_capturing();
+        let err = t.execute(json!({"prompt": 42})).await.unwrap_err();
+        assert!(err.to_string().contains("missing prompt"));
+    }
+
+    #[tokio::test]
+    async fn default_count_is_one() {
+        let t = tool_capturing();
+        let out = t.execute(json!({"prompt": "do work"})).await.expect("ok");
+        assert_eq!(out, "1:do work");
+    }
+
+    #[tokio::test]
+    async fn count_clamps_to_1_32() {
+        let t = tool_capturing();
+        let low = t
+            .execute(json!({"prompt": "p", "count": 0}))
+            .await
+            .expect("ok");
+        assert_eq!(low, "1:p");
+        let high = t
+            .execute(json!({"prompt": "p", "count": 99}))
+            .await
+            .expect("ok");
+        assert_eq!(high, "32:p");
+        let mid = t
+            .execute(json!({"prompt": "p", "count": 5}))
+            .await
+            .expect("ok");
+        assert_eq!(mid, "5:p");
+    }
+
+    #[test]
+    fn definition_names_spawn_swarm() {
+        let t = tool_capturing();
+        let d = t.definition();
+        assert_eq!(d.function.name, "spawn_swarm");
+        assert!(d.function.description.contains("swarm"));
+    }
+
+    #[tokio::test]
+    async fn empty_string_prompt_is_accepted() {
+        let t = tool_capturing();
+        let out = t
+            .execute(json!({"prompt": ""}))
+            .await
+            .expect("empty prompt ok");
+        assert_eq!(out, "1:");
+    }
+
+    #[tokio::test]
+    async fn count_as_non_integer_defaults_to_one() {
+        let t = tool_capturing();
+        // as_u64() fails on float/string → unwrap_or(1)
+        let out = t
+            .execute(json!({"prompt": "p", "count": "nope"}))
+            .await
+            .expect("ok");
+        assert_eq!(out, "1:p");
+        let out = t
+            .execute(json!({"prompt": "p", "count": 2.5}))
+            .await
+            .expect("ok");
+        assert_eq!(out, "1:p");
+    }
+
+    #[tokio::test]
+    async fn runner_error_propagates() {
+        let t = SpawnSwarmTool::new(Arc::new(|_p, _c| {
+            Box::pin(async move { Err(anyhow::anyhow!("enqueue failed")) })
+        }));
+        let err = t
+            .execute(json!({"prompt": "x"}))
+            .await
+            .expect_err("runner err");
+        assert!(err.to_string().contains("enqueue failed"));
+    }
+}

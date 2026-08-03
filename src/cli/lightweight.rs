@@ -10,7 +10,7 @@ use crate::cli::args::BridgeAction;
 use crate::cli::{
     delete_session, export_session, handle_doctor_command, handle_models_command,
     handle_project_command, list_sessions, run_init, run_status, run_update, CheckpointAction, Cli,
-    Commands, CostAction, SwarmAction, SyncAction,
+    Commands, CostAction, McpAction, SwarmAction, SyncAction,
 };
 use crate::config::Config;
 use crate::provider_build;
@@ -49,6 +49,8 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
         }
 
         Some(Commands::Doctor) => handle_doctor_command(cfg).await,
+
+        Some(Commands::Bench { pack, json }) => crate::bench::dispatch_bench(pack.clone(), *json)?,
 
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();
@@ -125,6 +127,8 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
 
         Some(Commands::Bridge { action }) => dispatch_bridge(action, cfg).await?,
 
+        Some(Commands::Mcp { action }) => dispatch_mcp(action, cfg).await?,
+
         Some(Commands::Trace { id }) => dispatch_trace(id.as_deref())?,
 
         Some(Commands::Sync { action }) => dispatch_sync(action).await?,
@@ -157,7 +161,9 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
         }
 
         Some(Commands::Pr { number, comment }) if comment.is_some() => {
-            let body = comment.as_ref().expect("comment branch");
+            let body = comment
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("internal: pr comment missing body"))?;
             let out = GhTool
                 .execute(serde_json::json!({
                     "action": "pr_comment",
@@ -267,31 +273,98 @@ async fn dispatch_swarm_readonly(action: &SwarmAction, cfg: &Config) -> Result<(
     crate::swarm::configure(&cfg.swarm);
     match action {
         SwarmAction::List => crate::swarm::print_status()?,
-        SwarmAction::Status { id } => match crate::swarm::get_task(id)? {
-            Some(t) => println!("{} [{}] {}", t.id, t.status.as_str(), t.prompt),
-            None => println!("Task {id} not found."),
+        SwarmAction::Status { id, json } => match crate::swarm::get_task(id)? {
+            Some(t) => {
+                if *json {
+                    crate::swarm::print_task_json(&t);
+                } else {
+                    crate::swarm::print_task_detail(&t);
+                }
+            }
+            None => {
+                if *json {
+                    println!("{}", serde_json::json!({"error": "not_found", "id": id}));
+                } else {
+                    println!("Task {id} not found.");
+                }
+            }
         },
-        SwarmAction::Result { id } => match crate::swarm::get_task(id)? {
-            Some(t) => println!("{}", t.result.as_deref().unwrap_or("(no result)")),
-            None => println!("Task {id} not found."),
+        SwarmAction::Result { id, json } => match crate::swarm::get_task(id)? {
+            Some(t) => {
+                if *json {
+                    crate::swarm::print_task_json(&t);
+                } else {
+                    match t.result.as_deref() {
+                        Some(r) if !r.is_empty() => println!("{r}"),
+                        _ => println!(
+                            "(no result yet — status: {})",
+                            crate::swarm::status_label(&t.status)
+                        ),
+                    }
+                }
+            }
+            None => {
+                if *json {
+                    println!("{}", serde_json::json!({"error": "not_found", "id": id}));
+                } else {
+                    println!("Task {id} not found.");
+                }
+            }
         },
-        SwarmAction::Cancel { id } => {
-            if crate::swarm::cancel_task(id)? {
-                println!("Cancelled task {id}.");
+        SwarmAction::Cancel { id, all } => {
+            if *all {
+                let n = crate::swarm::cancel_all_tasks()?;
+                println!("Cancelled {n} task(s).");
+            } else if let Some(id) = id {
+                if crate::swarm::cancel_task(id)? {
+                    println!("Cancelled task {id}.");
+                } else {
+                    println!("Task {id} not found or already finished.");
+                }
             } else {
-                println!("Task {id} not found or already finished.");
+                anyhow::bail!("specify a task id or pass --all");
             }
         }
         SwarmAction::Wait { id, timeout_secs } => {
             use std::time::Duration;
             match crate::swarm::wait_task(id, Some(Duration::from_secs(*timeout_secs))).await? {
                 Some(t) => {
-                    println!("{} [{}]", t.id, t.status.as_str());
-                    if t.status == crate::swarm::TaskStatus::Done {
+                    crate::swarm::print_task_detail(&t);
+                    if matches!(t.status, crate::swarm::TaskStatus::Done) {
                         crate::notifications::swarm_complete(&cfg.notifications, 1, 0);
+                    } else if matches!(t.status, crate::swarm::TaskStatus::Failed(_)) {
+                        crate::notifications::swarm_complete(&cfg.notifications, 1, 1);
                     }
                 }
                 None => println!("Task {id} not found."),
+            }
+        }
+        SwarmAction::Gc {
+            stale_secs,
+            keep,
+            older_than_secs,
+            dry_run,
+        } => {
+            let opts = crate::swarm::GcOptions {
+                stale_secs: *stale_secs,
+                keep_terminal: *keep,
+                older_than_secs: *older_than_secs,
+                dry_run: *dry_run,
+            };
+            let report = crate::swarm::gc(&opts)?;
+            if *dry_run {
+                println!("dry-run: {}", report.summary());
+            } else {
+                println!("{}", report.summary());
+            }
+            for (id, reason) in &report.reaped {
+                println!("  reaped {id}: {reason}");
+            }
+            if report.deleted > 0 {
+                println!("  deleted {} row(s)", report.deleted);
+            }
+            if report.reaped.is_empty() && report.deleted == 0 {
+                println!("Nothing to clean.");
             }
         }
         SwarmAction::Run { .. } => anyhow::bail!("internal: swarm run requires agent runtime"),
@@ -344,6 +417,208 @@ async fn dispatch_bridge(action: &BridgeAction, cfg: &Config) -> Result<()> {
         }
     }
     Ok(())
+}
+
+async fn dispatch_mcp(action: &McpAction, cfg: &Config) -> Result<()> {
+    match action {
+        McpAction::Roots => {
+            let roots = harness_mcp::collect_roots();
+            if roots.is_empty() {
+                println!("No workspace roots advertised (could not resolve CWD or home).");
+            } else {
+                println!(
+                    "MCP roots harness advertises (initialize / notifications/roots/list_changed):"
+                );
+                for r in &roots {
+                    let uri = r.get("uri").and_then(|v| v.as_str()).unwrap_or("?");
+                    let name = r.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                    println!("  {name:<24} {uri}");
+                }
+            }
+        }
+        McpAction::Resources { server } => {
+            let Some(path) = resolve_mcp_config_path(cfg) else {
+                print_mcp_config_missing();
+                return Ok(());
+            };
+            let servers = load_mcp_servers(&path, cfg, server.as_deref())?;
+            if servers.is_empty() {
+                println!(
+                    "No MCP servers to query (empty mcp.json, filtered by allowlist, or --server not found)."
+                );
+                println!("Config: {}", path.display());
+                return Ok(());
+            }
+
+            let mut any = false;
+            for (name, server_cfg) in &servers {
+                match spawn_mcp_client(name, server_cfg).await {
+                    Ok(client) => {
+                        let caps = client.capabilities.lock().await.clone();
+                        if !caps.has_resources {
+                            println!("{name}: (no resources capability)");
+                            continue;
+                        }
+                        match client.list_resources().await {
+                            Ok(resources) if resources.is_empty() => {
+                                println!("{name}: (no resources listed)");
+                            }
+                            Ok(resources) => {
+                                any = true;
+                                println!(
+                                    "{name}  (protocol={}) — {} resource(s):",
+                                    caps.protocol_version,
+                                    resources.len()
+                                );
+                                for r in resources {
+                                    let mime = r.mime_type.as_deref().unwrap_or("-");
+                                    let desc = r.description.as_deref().unwrap_or("");
+                                    if desc.is_empty() {
+                                        println!("  {:<40} {:<28} {}", r.uri, r.name, mime);
+                                    } else {
+                                        println!(
+                                            "  {:<40} {:<28} {}  {}",
+                                            r.uri, r.name, mime, desc
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => eprintln!("{name}: resources/list failed: {e}"),
+                        }
+                    }
+                    Err(e) => eprintln!("{name}: failed to spawn/connect: {e}"),
+                }
+            }
+            if !any {
+                println!("No resources found across configured MCP servers.");
+                println!("Tip: servers must advertise the resources capability.");
+            }
+        }
+        McpAction::Read { uri, server } => {
+            let Some(path) = resolve_mcp_config_path(cfg) else {
+                print_mcp_config_missing();
+                return Ok(());
+            };
+            let servers = load_mcp_servers(&path, cfg, server.as_deref())?;
+            if servers.is_empty() {
+                println!(
+                    "No MCP servers to query (empty mcp.json, filtered by allowlist, or --server not found)."
+                );
+                println!("Config: {}", path.display());
+                return Ok(());
+            }
+
+            let mut last_err: Option<String> = None;
+            for (name, server_cfg) in &servers {
+                match spawn_mcp_client(name, server_cfg).await {
+                    Ok(client) => {
+                        let caps = client.capabilities.lock().await.clone();
+                        if !caps.has_resources {
+                            continue;
+                        }
+                        match client.read_resource(uri).await {
+                            Ok(text) => {
+                                println!("# {name} — {uri}");
+                                println!("{text}");
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                last_err = Some(format!("{name}: {e}"));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        last_err = Some(format!("{name}: spawn failed: {e}"));
+                    }
+                }
+            }
+            println!("Could not read resource: {uri}");
+            if let Some(e) = last_err {
+                println!("Last error: {e}");
+            } else {
+                println!("No configured server advertises the resources capability.");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_mcp_config_missing() {
+    println!("No MCP config found.");
+    println!("Create `.harness/mcp.json`, `.claude/mcp.json`, or `~/.harness/mcp.json`");
+    println!("(Claude Code–compatible `mcpServers` map), or set `[mcp] config_path` in config.");
+    println!("Example:");
+    println!(
+        r#"  {{"mcpServers":{{"filesystem":{{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}}}}}}"#
+    );
+}
+
+fn resolve_mcp_config_path(cfg: &Config) -> Option<std::path::PathBuf> {
+    if let Some(p) = &cfg.mcp.config_path {
+        if p.exists() {
+            return Some(p.clone());
+        }
+    }
+    harness_mcp::find_config()
+}
+
+/// Load servers from mcp.json, applying command allowlist and optional name filter.
+fn load_mcp_servers(
+    path: &std::path::Path,
+    cfg: &Config,
+    server_filter: Option<&str>,
+) -> Result<Vec<(String, harness_mcp::McpServerConfig)>> {
+    let mcp_cfg = harness_mcp::config::load(path)
+        .with_context(|| format!("loading MCP config {}", path.display()))?;
+    let allowlist = cfg.mcp.command_allowlist.as_deref();
+    let mut out = Vec::new();
+    for (name, server_cfg) in mcp_cfg.mcp_servers {
+        if let Some(want) = server_filter {
+            if name != want {
+                continue;
+            }
+        }
+        if !mcp_command_allowed(&server_cfg.command, allowlist) {
+            eprintln!(
+                "skipping `{name}`: command `{}` not in MCP allowlist (see [mcp] command_allowlist)",
+                server_cfg.command
+            );
+            continue;
+        }
+        out.push((name, server_cfg));
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(out)
+}
+
+/// Mirror harness-mcp default allowlist when config leave it unset.
+fn mcp_command_allowed(command: &str, allowlist: Option<&[String]>) -> bool {
+    const DEFAULT: &[&str] = &["npx", "node", "python3", "uvx"];
+    let effective: Vec<&str> = match allowlist {
+        None => DEFAULT.to_vec(),
+        Some([]) => return true,
+        Some(list) => list.iter().map(String::as_str).collect(),
+    };
+    let cmd = std::path::Path::new(command)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(command);
+    effective
+        .iter()
+        .any(|allowed| *allowed == command || *allowed == cmd)
+}
+
+async fn spawn_mcp_client(
+    name: &str,
+    server_cfg: &harness_mcp::McpServerConfig,
+) -> Result<harness_mcp::McpClient> {
+    use std::time::Duration;
+    let fut = harness_mcp::McpClient::spawn(name, server_cfg);
+    match tokio::time::timeout(Duration::from_secs(15), fut).await {
+        Ok(Ok(client)) => Ok(client),
+        Ok(Err(e)) => Err(e),
+        Err(_) => anyhow::bail!("MCP server `{name}` spawn timed out after 15s"),
+    }
 }
 
 fn dispatch_trace(id: Option<&str>) -> Result<()> {

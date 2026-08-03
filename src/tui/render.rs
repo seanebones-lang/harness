@@ -16,8 +16,9 @@ use ratatui::{
 
 use crate::highlight::Highlighter;
 
+use super::state::RightPanelMode;
 use super::theme::Theme;
-use super::{AppState, PendingConfirm};
+use super::{AppState, PendingConfirm, PendingSampling};
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
     if width == 0 {
@@ -85,7 +86,10 @@ pub(crate) fn draw_all(
     state.event_items_len = event_item_count;
 
     draw_chat(f, state, main[0], hl, theme);
-    draw_event_log(f, state, main[1], theme);
+    match state.right_panel_mode {
+        RightPanelMode::Events => draw_event_log(f, state, main[1], theme),
+        RightPanelMode::Swarm => draw_swarm_panel(f, state, main[1], theme),
+    }
     draw_input(f, state, root[1], theme);
     draw_status(f, state, root[2], theme);
 
@@ -107,6 +111,9 @@ pub(crate) fn draw_all(
 
     if let Some(pc) = &state.pending_confirm {
         draw_confirm_overlay(f, pc, theme);
+    }
+    if let Some(ps) = &state.pending_sampling {
+        draw_sampling_overlay(f, ps, theme);
     }
 }
 
@@ -318,6 +325,86 @@ fn draw_event_log(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, them
         .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
     f.render_stateful_widget(list, area, &mut state.event_scroll);
+
+    let total = state.event_log.len();
+    if total > area.height.saturating_sub(2) as usize {
+        let position = state.event_scroll.selected().unwrap_or(0);
+        let mut scroll_state = ScrollbarState::new(total).position(position);
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight),
+            area,
+            &mut scroll_state,
+        );
+    }
+}
+
+fn draw_swarm_panel(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, theme: &Theme) {
+    let items: Vec<ListItem> = state
+        .swarm_lines
+        .iter()
+        .map(|line| {
+            let color = if line.starts_with("swarm ") {
+                Color::Cyan
+            } else if line.starts_with("active ") {
+                Color::LightCyan
+            } else if line.starts_with('*') {
+                Color::Green
+            } else if line.starts_with('!') {
+                Color::Yellow
+            } else if line.contains("failed") {
+                theme.error_color
+            } else if line.contains("done") {
+                theme.dim_color
+            } else {
+                theme.border_color
+            };
+            ListItem::new(Line::from(Span::styled(
+                line.as_str(),
+                Style::default().fg(color),
+            )))
+        })
+        .collect();
+
+    let total_items = items.len();
+    let title = format!(
+        " Swarm {} ",
+        if state.swarm_active > 0 {
+            format!("· {} active", state.swarm_active)
+        } else {
+            "· idle".into()
+        }
+    );
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
+        .style(Style::default().fg(Color::White))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+
+    // Keep selection at bottom when following new swarm snapshots.
+    if total_items > 0 {
+        let sel = state.swarm_scroll.selected().unwrap_or(0);
+        if sel == 0 || sel + 1 >= total_items.saturating_sub(1) {
+            state
+                .swarm_scroll
+                .select(Some(total_items.saturating_sub(1)));
+        }
+    }
+
+    f.render_stateful_widget(list, area, &mut state.swarm_scroll);
+
+    if total_items > area.height.saturating_sub(2) as usize {
+        let position = state.swarm_scroll.selected().unwrap_or(0);
+        let mut scroll_state = ScrollbarState::new(total_items).position(position);
+        f.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight),
+            area,
+            &mut scroll_state,
+        );
+    }
 }
 
 fn draw_input(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &Theme) {
@@ -402,6 +489,11 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
     }
     if state.search_mode {
         indicators.push_str("[SEARCH] ");
+    }
+    if state.right_panel_mode == RightPanelMode::Swarm {
+        indicators.push_str("[SWARM] ");
+    } else if state.swarm_active > 0 {
+        indicators.push_str(&format!("[SWARM {}] ", state.swarm_active));
     }
 
     // Left side: indicators + status message
@@ -735,6 +827,75 @@ fn draw_confirm_overlay(f: &mut ratatui::Frame, pc: &PendingConfirm, _theme: &Th
         .block(block)
         .wrap(Wrap { trim: false });
     f.render_widget(para, popup_area);
+}
+
+fn draw_sampling_overlay(f: &mut ratatui::Frame, ps: &PendingSampling, _theme: &Theme) {
+    let area = f.area();
+    let width = (area.width as f32 * 0.70) as u16;
+    let height = (area.height as f32 * 0.50) as u16;
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let popup_area = Rect::new(x, y, width, height);
+
+    f.render_widget(Clear, popup_area);
+
+    let mut content: Vec<Line> = vec![
+        Line::from(Span::styled(
+            format!(" MCP sampling from `{}` ", ps.server),
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::raw("")),
+        Line::from(Span::styled(
+            " Server wants the agent LLM to complete a message:",
+            Style::default().fg(Color::Gray),
+        )),
+        Line::from(Span::raw("")),
+    ];
+    for l in ps.preview.lines().take(14) {
+        content.push(Line::from(Span::styled(
+            format!(" {l}"),
+            Style::default().fg(Color::White),
+        )));
+    }
+    if ps.preview.lines().count() > 14 {
+        content.push(Line::from(Span::styled(
+            " …",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    content.push(Line::from(Span::raw("")));
+    content.push(Line::from(vec![
+        Span::styled(
+            " y",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" allow   "),
+        Span::styled(
+            "n/Esc",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" deny"),
+    ]));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Magenta))
+        .title(Span::styled(
+            " MCP sampling approval ",
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ));
+    f.render_widget(
+        Paragraph::new(content)
+            .block(block)
+            .wrap(Wrap { trim: false }),
+        popup_area,
+    );
 }
 
 #[cfg(test)]

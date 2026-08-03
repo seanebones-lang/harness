@@ -44,7 +44,7 @@ Pick a pathway below. Each maps to a **`good first issue`** label on GitHub when
 |---------|----------|-------------|--------------|
 | **Tools** | Rust + CLI ergonomics | [`crates/harness-tools/`](crates/harness-tools/) | Unit test or smoke in `cargo test --all` |
 | **Providers** | HTTP/SSE, API integration | [`crates/harness-provider-*/`](crates/) | Mock-server unit test |
-| **Tests & coverage** | No API keys needed | [`tests/`](tests/), crate `#[cfg(test)]` | PR coverage ≥ 60% |
+| **Tests & coverage** | No API keys needed | [`tests/`](tests/), crate `#[cfg(test)]` | Uplift toward CI target 60% ([`COVERAGE.md`](COVERAGE.md) ~23%) |
 | **Docs** | Writing, screenshots | [`docs/`](docs/), [`README.md`](README.md) | Spell-check + link check |
 | **Platform** | Windows, VS Code, Tauri | [`extensions/vscode/`](extensions/vscode/), [`apps/desktop/`](apps/desktop/) | CI matrix green |
 | **MCP / LSP** | Protocol work | [`crates/harness-mcp/`](crates/harness-mcp/), [`crates/harness-lsp/`](crates/harness-lsp/) | Framing + handshake tests |
@@ -101,7 +101,7 @@ See `CLAUDE.md` → *Adding a new tool*. The pattern is: implement `Tool` in `cr
 
 ### Coverage and property tests
 
-The **≥ 60% line coverage gate** runs on **pull requests only** via [`.github/workflows/coverage.yml`](.github/workflows/coverage.yml) — it is not part of the default `main` CI matrix. Local baseline: `cargo llvm-cov --workspace --summary-only`.
+The **≥ 60% line coverage gate** is configured on **pull requests only** via [`.github/workflows/coverage.yml`](.github/workflows/coverage.yml) — it is a **target**, not current measured coverage. Last measured baseline is in [`COVERAGE.md`](COVERAGE.md) (~23% lines). Local: `cargo llvm-cov --workspace --all-features --summary-only`.
 
 Proptest/fuzzing targets:
 - MCP message framing (`crates/harness-mcp/`)

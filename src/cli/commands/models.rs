@@ -47,6 +47,27 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
                 ("nomic-embed-text", "local · embed"),
             ],
         ),
+        (
+            "gemini",
+            &[
+                ("gemini-2.0-flash", "Google · fast default ★"),
+                ("gemini-1.5-pro", "Google · 1M ctx"),
+                ("gemini-1.5-flash", "Google · fast / cheap"),
+            ],
+        ),
+        (
+            "bedrock",
+            &[
+                (
+                    "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "AWS Bedrock · Claude 3.5 Sonnet",
+                ),
+                (
+                    "amazon.nova-pro-v1:0",
+                    "AWS Bedrock · Nova Pro",
+                ),
+            ],
+        ),
     ];
 
     if let Some(ref model_spec) = set {
@@ -78,6 +99,8 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             "anthropic" => "ANTHROPIC_API_KEY",
             "openai" => "OPENAI_API_KEY",
             "xai" => "XAI_API_KEY",
+            "gemini" => "GEMINI_API_KEY",
+            "bedrock" => "AWS_ACCESS_KEY_ID",
             _ => "",
         };
         let available = if env_key.is_empty() {
@@ -156,7 +179,9 @@ fn apply_model_set(path: &std::path::Path, provider_part: &str, model_part: &str
     if !doc.contains_key("providers") {
         doc["providers"] = toml_edit::Item::Table(toml_edit::Table::new());
     }
-    let providers = doc["providers"].as_table_mut().expect("providers table");
+    let providers = doc["providers"].as_table_mut().ok_or_else(|| {
+        anyhow::anyhow!("config root `providers` is not a table — fix config TOML")
+    })?;
     if !providers.contains_key(&router_default) {
         providers[&router_default] = toml_edit::Item::Table(toml_edit::Table::new());
     }

@@ -2,6 +2,7 @@
 name = "harness-provider-router"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 harness-provider-core = { path = "../harness-provider-core" }
@@ -10,6 +11,8 @@ harness-provider-anthropic = { path = "../harness-provider-anthropic" }
 harness-provider-openai = { path = "../harness-provider-openai" }
 harness-provider-ollama = { path = "../harness-provider-ollama" }
 harness-provider-mlx = { path = "../harness-provider-mlx" }
+harness-provider-gemini = { path = "../harness-provider-gemini" }
+harness-provider-bedrock = { path = "../harness-provider-bedrock" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }

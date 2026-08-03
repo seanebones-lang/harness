@@ -25,7 +25,7 @@ use super::input::{
 };
 use super::render;
 use super::slash::{at_file_completions, expand_at_files};
-use super::{mark_welcomed, AppState, ChatMessage, PendingConfirm};
+use super::{mark_welcomed, AppState, ChatMessage, PendingConfirm, PendingSampling};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_terminal_loop(
@@ -44,6 +44,7 @@ pub(super) async fn run_terminal_loop(
     native_x_search: bool,
     ambient_shutdown: Option<watch::Sender<()>>,
     mut confirm_rx: Option<mpsc::Receiver<ConfirmRequest>>,
+    mut sampling_rx: Option<mpsc::UnboundedReceiver<harness_mcp::SamplingApprovalRequest>>,
 ) -> Result<()> {
     let highlighter = Highlighter::new();
     let (agent_tx, mut agent_rx) = crate::events::channel();
@@ -56,6 +57,7 @@ pub(super) async fn run_terminal_loop(
             if st.busy {
                 st.tick_spinner();
             }
+            st.maybe_refresh_swarm(false);
         }
 
         // Draw
@@ -108,6 +110,23 @@ pub(super) async fn run_terminal_loop(
                         let label = st.confirm_bar_label.as_deref().unwrap_or("PLAN");
                         format!("{label} MODE — y approve · n skip · a always allow")
                     };
+                }
+            }
+        }
+
+        // Poll MCP sampling approval requests
+        if state.lock().pending_sampling.is_none() {
+            if let Some(rx) = &mut sampling_rx {
+                if let Ok(req) = rx.try_recv() {
+                    let mut st = state.lock();
+                    st.push_event(format!("[mcp sampling] request from `{}`", req.server));
+                    st.pending_sampling = Some(PendingSampling {
+                        server: req.server,
+                        preview: req.preview,
+                        reply: req.reply,
+                    });
+                    st.status =
+                        "MCP SAMPLING — y allow LLM call · n deny (default deny if ignored)".into();
                 }
             }
         }
@@ -277,6 +296,13 @@ pub(super) async fn run_terminal_loop(
                             st.status = "Fork cancelled.".to_string();
                         }
                         drop(st);
+                        if let Some(ps) = state.lock().pending_sampling.take() {
+                            let _ = ps.reply.send(false);
+                            let mut st = state.lock();
+                            st.push_event(format!("[mcp sampling] denied `{}`", ps.server));
+                            st.status = "MCP sampling denied.".into();
+                            continue;
+                        }
                         let confirm = state.lock().pending_confirm.take();
                         if let Some(pc) = confirm {
                             let tool = pc.tool_name.clone();
@@ -290,6 +316,13 @@ pub(super) async fn run_terminal_loop(
 
                     // ── Y — approve confirm ────────────────────────────────────
                     (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                        if let Some(ps) = state.lock().pending_sampling.take() {
+                            let _ = ps.reply.send(true);
+                            let mut st = state.lock();
+                            st.push_event(format!("[mcp sampling] approved `{}`", ps.server));
+                            st.status = "MCP sampling approved.".into();
+                            continue;
+                        }
                         let pc = state.lock().pending_confirm.take();
                         if let Some(mut pc) = pc {
                             if pc.file_diff.is_some() {
@@ -307,6 +340,13 @@ pub(super) async fn run_terminal_loop(
                     }
 
                     (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                        if let Some(ps) = state.lock().pending_sampling.take() {
+                            let _ = ps.reply.send(false);
+                            let mut st = state.lock();
+                            st.push_event(format!("[mcp sampling] denied `{}`", ps.server));
+                            st.status = "MCP sampling denied.".into();
+                            continue;
+                        }
                         if let Some(mut pc) = state.lock().pending_confirm.take() {
                             if pc.file_diff.is_some() {
                                 if let Some(result) = decide_hunk(&mut pc, false) {
@@ -432,6 +472,64 @@ pub(super) async fn run_terminal_loop(
                         let busy = state.lock().busy;
                         if busy {
                             continue;
+                        }
+
+                        // Swarm panel: empty Enter peeks selected task result into the event log.
+                        {
+                            let mut st = state.lock();
+                            let empty = st.input.trim().is_empty();
+                            if empty && st.right_panel_mode == super::state::RightPanelMode::Swarm {
+                                if let Some(sel) = st.swarm_scroll.selected() {
+                                    if let Some(line) = st.swarm_lines.get(sel).cloned() {
+                                        if let Some(id) = extract_swarm_task_id(&line) {
+                                            match crate::swarm::get_task(&id) {
+                                                Ok(Some(t)) => {
+                                                    st.push_event(format!(
+                                                        "[swarm] {} [{}] {}",
+                                                        t.id,
+                                                        crate::swarm::status_label(&t.status),
+                                                        t.prompt
+                                                            .chars()
+                                                            .take(80)
+                                                            .collect::<String>()
+                                                    ));
+                                                    match t.result.as_deref() {
+                                                        Some(r) if !r.is_empty() => {
+                                                            let preview: String =
+                                                                r.chars().take(800).collect();
+                                                            st.push_event(format!(
+                                                                "[swarm result] {preview}"
+                                                            ));
+                                                            if r.chars().count() > 800 {
+                                                                st.push_event(
+                                                                    "[swarm result] …truncated — use `harness swarm result <id>`"
+                                                                        .to_string(),
+                                                                );
+                                                            }
+                                                        }
+                                                        _ => st.push_event(format!(
+                                                            "[swarm] no result yet (status={})",
+                                                            crate::swarm::status_label(&t.status)
+                                                        )),
+                                                    }
+                                                    st.status = format!(
+                                                        "Swarm {id} detail in event log (F2 for panel)"
+                                                    );
+                                                }
+                                                Ok(None) => {
+                                                    st.push_event(format!(
+                                                        "[swarm] task {id} not found"
+                                                    ));
+                                                }
+                                                Err(e) => {
+                                                    st.push_event(format!("[swarm] {e}"));
+                                                }
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         let prompt = {
@@ -660,17 +758,37 @@ pub(super) async fn run_terminal_loop(
                         }
                     }
 
-                    // ── PageUp/Down — scroll event log ────────────────────────
+                    // ── PageUp/Down — scroll event log / swarm panel ──────────
                     (KeyCode::PageUp, _) => {
-                        state.lock().scroll_event_up(5);
+                        let mut st = state.lock();
+                        if st.right_panel_mode == super::state::RightPanelMode::Swarm {
+                            let cur = st
+                                .swarm_scroll
+                                .selected()
+                                .unwrap_or(st.swarm_lines.len().saturating_sub(1));
+                            st.swarm_scroll.select(Some(cur.saturating_sub(5)));
+                        } else {
+                            st.scroll_event_up(5);
+                        }
                     }
                     (KeyCode::PageDown, _) => {
-                        state.lock().scroll_event_down(5);
+                        let mut st = state.lock();
+                        if st.right_panel_mode == super::state::RightPanelMode::Swarm {
+                            let cur = st.swarm_scroll.selected().unwrap_or(0);
+                            let max = st.swarm_lines.len().saturating_sub(1);
+                            st.swarm_scroll.select(Some((cur + 5).min(max)));
+                        } else {
+                            st.scroll_event_down(5);
+                        }
                     }
 
                     // ── F1 — help ─────────────────────────────────────────────
                     (KeyCode::F(1), _) => {
                         show_help(&state);
+                    }
+                    // ── F2 — swarm panel ──────────────────────────────────────
+                    (KeyCode::F(2), _) => {
+                        state.lock().toggle_swarm_panel();
                     }
 
                     // ── Regular char input ────────────────────────────────────
@@ -688,6 +806,17 @@ pub(super) async fn run_terminal_loop(
     }
 
     Ok(())
+}
+
+/// Parse a task id from a swarm panel line (`*swabcdef01 status prompt…`).
+fn extract_swarm_task_id(line: &str) -> Option<String> {
+    let s = line.trim_start_matches(['*', '!', ' ']);
+    let id = s.split_whitespace().next()?;
+    if id.starts_with("sw") && id.len() >= 4 {
+        Some(id.to_string())
+    } else {
+        None
+    }
 }
 
 fn count_user_turns(messages: &[harness_provider_core::Message]) -> usize {

@@ -28,6 +28,44 @@ pub type TaskId = String;
 pub struct SwarmConfig {
     pub max_concurrency: Option<usize>,
     pub db_path: Option<PathBuf>,
+    /// When set, `configure` reaps orphan pending/running older than this many seconds.
+    pub auto_gc_stale_secs: Option<u64>,
+    /// When set, swarm workers only receive these tool names (read-only default recommended).
+    pub worker_tool_allowlist: Option<Vec<String>>,
+    /// Soft cap on tool-call rounds per worker (agent loop also has a hard 50).
+    pub worker_max_tool_calls: Option<usize>,
+    /// Wall-clock timeout per worker task in seconds (None = no extra timeout).
+    pub worker_max_wall_secs: Option<u64>,
+    /// Optional remote swarm registry base URL (W7.1). Empty/unset = local SQLite.
+    pub registry_url: Option<String>,
+}
+
+impl SwarmConfig {
+    /// Default allowlist for safe parallel workers (no shell/write/git/push).
+    pub fn default_worker_allowlist() -> Vec<String> {
+        vec![
+            "read_file".into(),
+            "list_dir".into(),
+            "search_code".into(),
+            "test_runner".into(),
+        ]
+    }
+
+    /// Effective worker tool allowlist: explicit list, empty → safe defaults, or `None` if unrestricted.
+    pub fn effective_worker_allowlist(&self) -> Option<Vec<String>> {
+        match &self.worker_tool_allowlist {
+            None => None,
+            Some(v) if v.is_empty() => Some(Self::default_worker_allowlist()),
+            Some(v) => Some(v.clone()),
+        }
+    }
+
+    /// Wall timeout duration if configured.
+    pub fn worker_wall_timeout(&self) -> Option<Duration> {
+        self.worker_max_wall_secs
+            .filter(|&s| s > 0)
+            .map(Duration::from_secs)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -50,8 +88,81 @@ impl TaskStatus {
         }
     }
 
-    fn is_terminal(&self) -> bool {
+    pub fn is_terminal(&self) -> bool {
         !matches!(self, Self::Pending | Self::Running)
+    }
+}
+
+/// Aggregate task counts across the registry (not limited to recent N).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SwarmCounts {
+    pub pending: usize,
+    pub running: usize,
+    pub done: usize,
+    pub failed: usize,
+    pub cancelled: usize,
+}
+
+impl SwarmCounts {
+    pub fn total(&self) -> usize {
+        self.pending + self.running + self.done + self.failed + self.cancelled
+    }
+
+    pub fn active(&self) -> usize {
+        self.pending + self.running
+    }
+
+    pub fn label(&self) -> String {
+        format!(
+            "p={} r={} d={} f={} c={} (n={})",
+            self.pending,
+            self.running,
+            self.done,
+            self.failed,
+            self.cancelled,
+            self.total()
+        )
+    }
+}
+
+/// Options for `gc` (stale reap + optional terminal purge).
+#[derive(Debug, Clone)]
+pub struct GcOptions {
+    /// Mark non-live pending/running older than this as failed (default 3600).
+    pub stale_secs: u64,
+    /// Keep at most this many terminal tasks (newest first); delete the rest.
+    pub keep_terminal: Option<usize>,
+    /// Delete terminal tasks whose completed_ts is older than this many seconds.
+    pub older_than_secs: Option<u64>,
+    /// Report only; do not write.
+    pub dry_run: bool,
+}
+
+impl Default for GcOptions {
+    fn default() -> Self {
+        Self {
+            stale_secs: 3600,
+            keep_terminal: None,
+            older_than_secs: None,
+            dry_run: false,
+        }
+    }
+}
+
+/// Result of a GC pass.
+#[derive(Debug, Clone, Default)]
+pub struct GcReport {
+    pub reaped: Vec<(TaskId, String)>,
+    pub deleted: usize,
+}
+
+impl GcReport {
+    pub fn summary(&self) -> String {
+        format!(
+            "reaped {} orphan(s), deleted {} terminal task(s)",
+            self.reaped.len(),
+            self.deleted
+        )
     }
 }
 
@@ -61,6 +172,8 @@ pub struct TaskEntry {
     pub prompt: String,
     pub status: TaskStatus,
     pub result: Option<String>,
+    /// Model id used for this worker (if known).
+    pub model: Option<String>,
     #[allow(dead_code)]
     pub created_ts: i64,
     #[allow(dead_code)]
@@ -95,6 +208,18 @@ fn lock_active() -> std::sync::MutexGuard<'static, SwarmState> {
 
 /// Apply `[swarm]` settings from config (safe to call multiple times; first call wins).
 pub fn configure(cfg: &SwarmConfig) {
+    let backend = crate::swarm_registry::select_registry(cfg.registry_url.as_deref());
+    match crate::swarm_registry::probe_registry(backend.as_ref()) {
+        Ok(name) if name != "sqlite-local" => {
+            tracing::warn!(
+                backend = name,
+                url = ?cfg.registry_url,
+                "non-local swarm registry selected — remote ops return stub errors until W7.1 HTTP client ships"
+            );
+        }
+        Ok(name) => tracing::debug!(backend = name, "swarm registry ready"),
+        Err(e) => tracing::warn!(error = %e, "swarm registry probe failed"),
+    }
     let _ = RUNTIME.set(SwarmRuntime {
         semaphore: std::sync::Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(4).max(1))),
         active: Mutex::new(SwarmState {
@@ -102,6 +227,16 @@ pub fn configure(cfg: &SwarmConfig) {
         }),
         db_path: cfg.db_path.clone(),
     });
+    if let Some(stale) = cfg.auto_gc_stale_secs {
+        if stale > 0 {
+            let _ = gc(&GcOptions {
+                stale_secs: stale,
+                keep_terminal: None,
+                older_than_secs: None,
+                dry_run: false,
+            });
+        }
+    }
 }
 
 fn swarm_db_path() -> PathBuf {
@@ -132,6 +267,16 @@ fn clear_test_swarm_db() {
     SWARM_DB_OVERRIDE.with(|slot| *slot.borrow_mut() = None);
 }
 
+/// Run `f` with a temporary swarm DB path override (thread-local; safe for benches/tests).
+pub fn with_db_path_override<R>(path: PathBuf, f: impl FnOnce() -> R) -> R {
+    SWARM_DB_OVERRIDE.with(|slot| {
+        let prev = slot.replace(Some(path));
+        let out = f();
+        *slot.borrow_mut() = prev;
+        out
+    })
+}
+
 fn open_db() -> Result<Connection> {
     let path = swarm_db_path();
     let _ = std::fs::create_dir_all(path.parent().unwrap_or(std::path::Path::new(".")));
@@ -146,6 +291,8 @@ fn open_db() -> Result<Connection> {
             completed_ts INTEGER
         );",
     )?;
+    // Best-effort migrations for older swarm.db files.
+    let _ = conn.execute("ALTER TABLE tasks ADD COLUMN model TEXT", []);
     Ok(conn)
 }
 
@@ -162,11 +309,16 @@ fn new_task_id() -> TaskId {
 
 /// Register a new task in the DB and return its ID.
 pub fn register_task(prompt: &str) -> Result<TaskId> {
+    register_task_with_model(prompt, None)
+}
+
+/// Register a task and record the worker model (for `status|result --json`).
+pub fn register_task_with_model(prompt: &str, model: Option<&str>) -> Result<TaskId> {
     let conn = open_db()?;
     let id = new_task_id();
     conn.execute(
-        "INSERT INTO tasks (id, prompt, status, created_ts) VALUES (?1, ?2, 'pending', ?3)",
-        params![id, prompt, now_ts()],
+        "INSERT INTO tasks (id, prompt, status, created_ts, model) VALUES (?1, ?2, 'pending', ?3, ?4)",
+        params![id, prompt, now_ts(), model],
     )?;
     Ok(id)
 }
@@ -197,7 +349,7 @@ pub fn update_status(id: &str, status: &TaskStatus, result: Option<&str>) -> Res
 pub fn list_tasks(limit: usize) -> Result<Vec<TaskEntry>> {
     let conn = open_db()?;
     let mut stmt = conn.prepare(
-        "SELECT id, prompt, status, result, created_ts, completed_ts
+        "SELECT id, prompt, status, result, created_ts, completed_ts, model
          FROM tasks ORDER BY created_ts DESC LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit as i64], |row| {
@@ -210,6 +362,7 @@ pub fn list_tasks(limit: usize) -> Result<Vec<TaskEntry>> {
             result: row.get(3)?,
             created_ts: row.get(4)?,
             completed_ts: row.get(5)?,
+            model: row.get(6)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -230,7 +383,7 @@ fn parse_status_str(status_str: &str, result_col: Option<String>) -> TaskStatus 
 pub fn get_task(id: &str) -> Result<Option<TaskEntry>> {
     let conn = open_db()?;
     let mut stmt = conn.prepare(
-        "SELECT id, prompt, status, result, created_ts, completed_ts
+        "SELECT id, prompt, status, result, created_ts, completed_ts, model
          FROM tasks WHERE id = ?1 OR id LIKE ?2 LIMIT 1",
     )?;
     let prefix = format!("{id}%");
@@ -245,6 +398,7 @@ pub fn get_task(id: &str) -> Result<Option<TaskEntry>> {
             result: row.get(3)?,
             created_ts: row.get(4)?,
             completed_ts: row.get(5)?,
+            model: row.get(6)?,
         }));
     }
     Ok(None)
@@ -304,6 +458,21 @@ pub fn cancel_task(id: &str) -> Result<bool> {
     Ok(true)
 }
 
+/// Cancel every non-terminal task. Returns how many cancellations were initiated.
+pub fn cancel_all_tasks() -> Result<usize> {
+    let tasks = list_tasks(10_000)?;
+    let mut n = 0usize;
+    for t in tasks {
+        if t.status.is_terminal() {
+            continue;
+        }
+        if cancel_task(&t.id)? {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
 /// Poll until a task reaches a terminal state or timeout elapses.
 pub async fn wait_task(id: &str, timeout: Option<Duration>) -> Result<Option<TaskEntry>> {
     let deadline = timeout.map(|t| Instant::now() + t);
@@ -324,22 +493,266 @@ pub async fn wait_task(id: &str, timeout: Option<Duration>) -> Result<Option<Tas
     }
 }
 
-/// Print a summary of recent swarm tasks.
+/// Format a unix timestamp as local-ish `YYYY-MM-DD HH:MM:SS` (UTC).
+fn fmt_ts(ts: i64) -> String {
+    // Keep dep-free: manual UTC formatting from epoch seconds.
+    let secs = ts.max(0) as u64;
+    let days = secs / 86_400;
+    let tod = secs % 86_400;
+    let h = tod / 3600;
+    let m = (tod % 3600) / 60;
+    let s = tod % 60;
+    // Civil date from days since 1970-01-01 (Howard Hinnant algorithm).
+    let z = days as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if mo <= 2 { y + 1 } else { y };
+    format!("{y:04}-{mo:02}-{d:02} {h:02}:{m:02}:{s:02} UTC")
+}
+
+/// Truncate on a char boundary (never panic on multi-byte UTF-8).
+fn trunc_chars(s: &str, max_chars: usize) -> String {
+    let count = s.chars().count();
+    if count <= max_chars {
+        s.to_string()
+    } else {
+        format!("{}…", s.chars().take(max_chars).collect::<String>())
+    }
+}
+
+/// One-line status label, including failure detail when present.
+pub fn status_label(status: &TaskStatus) -> String {
+    match status {
+        TaskStatus::Failed(msg) if !msg.is_empty() => {
+            format!("failed({})", trunc_chars(msg, 40))
+        }
+        other => other.as_str().to_string(),
+    }
+}
+
+/// Print a single task in a multi-line, human-readable form.
+pub fn print_task_detail(task: &TaskEntry) {
+    println!("id:          {}", task.id);
+    println!("status:      {}", status_label(&task.status));
+    println!("prompt:      {}", task.prompt);
+    println!("created:     {}", fmt_ts(task.created_ts));
+    match task.completed_ts {
+        Some(ts) => println!("completed:   {}", fmt_ts(ts)),
+        None => println!("completed:   —"),
+    }
+    if let Some(ref result) = task.result {
+        if result.chars().count() > 500 {
+            println!(
+                "result:\n{} ({} bytes total)",
+                trunc_chars(result, 500),
+                result.len()
+            );
+        } else {
+            println!("result:\n{result}");
+        }
+    } else {
+        println!("result:      (none)");
+    }
+}
+
+/// Serialize a task to JSON (for CLI `--json`).
+pub fn task_to_json(task: &TaskEntry) -> serde_json::Value {
+    let (status, error) = match &task.status {
+        TaskStatus::Failed(msg) => ("failed".to_string(), Some(msg.clone())),
+        other => (other.as_str().to_string(), None),
+    };
+    serde_json::json!({
+        "id": task.id,
+        "status": status,
+        "error": error,
+        "prompt": task.prompt,
+        "result": task.result,
+        "model": task.model,
+        "created_ts": task.created_ts,
+        "completed_ts": task.completed_ts,
+        "created": fmt_ts(task.created_ts),
+        "completed": task.completed_ts.map(fmt_ts),
+        "terminal": task.status.is_terminal(),
+    })
+}
+
+/// Print task as a single JSON object.
+pub fn print_task_json(task: &TaskEntry) {
+    println!("{}", task_to_json(task));
+}
+
+/// Count every task in the registry.
+pub fn count_tasks() -> Result<SwarmCounts> {
+    let conn = open_db()?;
+    let mut stmt = conn.prepare("SELECT status FROM tasks")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    let mut counts = SwarmCounts::default();
+    for status_str in rows.flatten() {
+        match parse_status_str(&status_str, None) {
+            TaskStatus::Pending => counts.pending += 1,
+            TaskStatus::Running => counts.running += 1,
+            TaskStatus::Done => counts.done += 1,
+            TaskStatus::Failed(_) => counts.failed += 1,
+            TaskStatus::Cancelled => counts.cancelled += 1,
+        }
+    }
+    Ok(counts)
+}
+
+/// True if this process still holds a cancel handle for `id` (live worker).
+pub fn is_live(id: &str) -> bool {
+    lock_active().cancel_txs.contains_key(id)
+}
+
+/// Reap orphan pending/running tasks and optionally purge old terminal rows.
+pub fn gc(opts: &GcOptions) -> Result<GcReport> {
+    let mut report = GcReport::default();
+    let now = now_ts();
+    let tasks = list_tasks(10_000)?;
+
+    for t in &tasks {
+        if t.status.is_terminal() {
+            continue;
+        }
+        if is_live(&t.id) {
+            continue;
+        }
+        let age = now.saturating_sub(t.created_ts) as u64;
+        if age < opts.stale_secs {
+            continue;
+        }
+        let reason = format!("stale: orphaned after {age}s with no live worker");
+        if !opts.dry_run {
+            update_status(&t.id, &TaskStatus::Failed(reason.clone()), Some(&reason))?;
+        }
+        report.reaped.push((t.id.clone(), reason));
+    }
+
+    // Purge terminal rows when keep / older_than requested.
+    // Re-list after reap so newly failed orphans participate in keep/age rules.
+    if opts.keep_terminal.is_some() || opts.older_than_secs.is_some() {
+        let snapshot = if opts.dry_run {
+            // Simulate reap in-memory for dry-run purge accounting.
+            let reaped: std::collections::HashSet<&str> =
+                report.reaped.iter().map(|(id, _)| id.as_str()).collect();
+            tasks
+                .iter()
+                .filter(|t| t.status.is_terminal() || reaped.contains(t.id.as_str()))
+                .cloned()
+                .collect::<Vec<_>>()
+        } else {
+            list_tasks(10_000)?
+                .into_iter()
+                .filter(|t| t.status.is_terminal())
+                .collect()
+        };
+
+        let mut delete_ids: Vec<String> = Vec::new();
+        if let Some(keep) = opts.keep_terminal {
+            for t in snapshot.iter().skip(keep) {
+                delete_ids.push(t.id.clone());
+            }
+        }
+        if let Some(max_age) = opts.older_than_secs {
+            for t in &snapshot {
+                let completed = t.completed_ts.unwrap_or(t.created_ts);
+                let age = now.saturating_sub(completed) as u64;
+                if age >= max_age {
+                    delete_ids.push(t.id.clone());
+                }
+            }
+        }
+        delete_ids.sort();
+        delete_ids.dedup();
+        if !opts.dry_run {
+            let conn = open_db()?;
+            for id in &delete_ids {
+                let n = conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])?;
+                report.deleted += n;
+            }
+        } else {
+            report.deleted = delete_ids.len();
+        }
+    }
+
+    Ok(report)
+}
+
+/// Compact lines for the TUI swarm panel (newest first).
+pub fn tui_lines(limit: usize) -> Result<(SwarmCounts, Vec<String>)> {
+    let counts = count_tasks()?;
+    let tasks = list_tasks(limit)?;
+    let mut lines = Vec::with_capacity(tasks.len() + 2);
+    lines.push(format!("swarm {}", counts.label()));
+    if counts.active() > 0 {
+        lines.push(format!(
+            "active {}  (F2/toggle · /swarm gc)",
+            counts.active()
+        ));
+    } else {
+        lines.push("no active workers  (/swarm gc cleans orphans)".into());
+    }
+    for t in tasks {
+        let live = if !t.status.is_terminal() && is_live(&t.id) {
+            "*"
+        } else if !t.status.is_terminal() {
+            "!"
+        } else {
+            " "
+        };
+        lines.push(format!(
+            "{live}{:<10} {:<10} {}",
+            t.id,
+            status_label(&t.status),
+            trunc_chars(&t.prompt, 36)
+        ));
+    }
+    Ok((counts, lines))
+}
+
+/// Print a summary of recent swarm tasks (counts + table).
 pub fn print_status() -> Result<()> {
     let tasks = list_tasks(20)?;
     if tasks.is_empty() {
         println!("No swarm tasks yet.");
+        println!("Queue work with: harness swarm run \"…\" [--count N]");
         return Ok(());
     }
-    println!("{:<12} {:<10} Prompt", "ID", "Status");
-    println!("{}", "-".repeat(70));
+
+    let mut pending = 0usize;
+    let mut running = 0usize;
+    let mut done = 0usize;
+    let mut failed = 0usize;
+    let mut cancelled = 0usize;
     for t in &tasks {
-        let p = if t.prompt.len() > 50 {
-            format!("{}…", &t.prompt[..50])
-        } else {
-            t.prompt.clone()
-        };
-        println!("{:<12} {:<10} {}", t.id, t.status.as_str(), p);
+        match &t.status {
+            TaskStatus::Pending => pending += 1,
+            TaskStatus::Running => running += 1,
+            TaskStatus::Done => done += 1,
+            TaskStatus::Failed(_) => failed += 1,
+            TaskStatus::Cancelled => cancelled += 1,
+        }
+    }
+    println!(
+        "Swarm (last {}): pending={pending} running={running} done={done} failed={failed} cancelled={cancelled}",
+        tasks.len()
+    );
+    println!("{:<12} {:<18} {:<20} Prompt", "ID", "Status", "Created");
+    println!("{}", "-".repeat(78));
+    for t in &tasks {
+        println!(
+            "{:<12} {:<18} {:<20} {}",
+            t.id,
+            status_label(&t.status),
+            fmt_ts(t.created_ts),
+            trunc_chars(&t.prompt, 40)
+        );
     }
     Ok(())
 }
@@ -448,5 +861,370 @@ mod tests {
             .expect("wait")
             .expect("found");
         assert_eq!(task.status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn status_label_includes_failure_detail() {
+        assert_eq!(status_label(&TaskStatus::Done), "done");
+        assert_eq!(
+            status_label(&TaskStatus::Failed("boom".into())),
+            "failed(boom)"
+        );
+        // multi-byte safe truncation
+        let long = "x".repeat(50) + "✨";
+        let label = status_label(&TaskStatus::Failed(long));
+        assert!(label.starts_with("failed("));
+        assert!(label.ends_with(')'));
+    }
+
+    #[test]
+    fn fmt_ts_epoch_day() {
+        // 1970-01-01 00:00:00 UTC
+        assert_eq!(fmt_ts(0), "1970-01-01 00:00:00 UTC");
+        // 2024-01-01 00:00:00 UTC
+        assert_eq!(fmt_ts(1_704_067_200), "2024-01-01 00:00:00 UTC");
+        // Negative timestamps clamp to epoch
+        assert_eq!(fmt_ts(-1), "1970-01-01 00:00:00 UTC");
+        // Time-of-day component
+        assert_eq!(fmt_ts(3661), "1970-01-01 01:01:01 UTC");
+    }
+
+    #[test]
+    fn trunc_chars_is_utf8_safe() {
+        assert_eq!(trunc_chars("hi", 10), "hi");
+        assert_eq!(trunc_chars("hello", 5), "hello");
+        assert_eq!(trunc_chars("hello", 3), "hel…");
+        // Multi-byte: take by chars, not bytes
+        let s = "✨✨✨";
+        assert_eq!(trunc_chars(s, 2), "✨✨…");
+        assert_eq!(trunc_chars(s, 3), s);
+    }
+
+    #[test]
+    fn task_status_labels_and_terminal() {
+        assert_eq!(TaskStatus::Pending.as_str(), "pending");
+        assert_eq!(TaskStatus::Running.as_str(), "running");
+        assert_eq!(TaskStatus::Done.as_str(), "done");
+        assert_eq!(TaskStatus::Cancelled.as_str(), "cancelled");
+        assert_eq!(TaskStatus::Failed("x".into()).as_str(), "failed");
+        assert!(!TaskStatus::Pending.is_terminal());
+        assert!(!TaskStatus::Running.is_terminal());
+        assert!(TaskStatus::Done.is_terminal());
+        assert!(TaskStatus::Cancelled.is_terminal());
+        assert!(TaskStatus::Failed("e".into()).is_terminal());
+        assert_eq!(status_label(&TaskStatus::Pending), "pending");
+        assert_eq!(status_label(&TaskStatus::Running), "running");
+        assert_eq!(status_label(&TaskStatus::Cancelled), "cancelled");
+        // Empty failure message falls back to plain "failed"
+        assert_eq!(status_label(&TaskStatus::Failed(String::new())), "failed");
+    }
+
+    #[test]
+    fn swarm_counts_aggregates() {
+        let c = SwarmCounts {
+            pending: 1,
+            running: 2,
+            done: 3,
+            failed: 4,
+            cancelled: 5,
+        };
+        assert_eq!(c.total(), 15);
+        assert_eq!(c.active(), 3);
+        assert_eq!(c.label(), "p=1 r=2 d=3 f=4 c=5 (n=15)");
+        assert_eq!(SwarmCounts::default().total(), 0);
+        assert_eq!(SwarmCounts::default().active(), 0);
+    }
+
+    #[test]
+    fn gc_report_summary_and_default_opts() {
+        let r = GcReport {
+            reaped: vec![("a".into(), "orphan".into())],
+            deleted: 2,
+        };
+        assert_eq!(
+            r.summary(),
+            "reaped 1 orphan(s), deleted 2 terminal task(s)"
+        );
+        let d = GcOptions::default();
+        assert_eq!(d.stale_secs, 3600);
+        assert!(d.keep_terminal.is_none());
+        assert!(d.older_than_secs.is_none());
+        assert!(!d.dry_run);
+    }
+
+    #[test]
+    fn task_to_json_failed_includes_error() {
+        let task = TaskEntry {
+            id: "abc".into(),
+            prompt: "p".into(),
+            status: TaskStatus::Failed("nope".into()),
+            result: Some("trace".into()),
+            model: Some("test-model".into()),
+            created_ts: 0,
+            completed_ts: Some(1),
+        };
+        let v = task_to_json(&task);
+        assert_eq!(v["status"], "failed");
+        assert_eq!(v["error"], "nope");
+        assert_eq!(v["model"], "test-model");
+        assert_eq!(v["terminal"], true);
+        assert_eq!(v["created"], "1970-01-01 00:00:00 UTC");
+        assert_eq!(v["completed"], "1970-01-01 00:00:01 UTC");
+    }
+
+    #[test]
+    fn gc_reaps_orphan_running_and_purges_old_terminal() {
+        let _db = TestDb::new();
+        let orphan = register_task("orphan run").expect("register");
+        update_status(&orphan, &TaskStatus::Running, None).expect("running");
+        // Backdate created_ts so it is stale.
+        {
+            let conn = open_db().expect("db");
+            conn.execute(
+                "UPDATE tasks SET created_ts = ?1 WHERE id = ?2",
+                params![now_ts() - 10_000, orphan],
+            )
+            .expect("backdate");
+        }
+        let keep_me = register_task("keep terminal").expect("register keep");
+        update_status(&keep_me, &TaskStatus::Done, Some("ok")).expect("done");
+        let drop_me = register_task("drop terminal").expect("register drop");
+        update_status(&drop_me, &TaskStatus::Done, Some("old")).expect("done");
+        {
+            let conn = open_db().expect("db");
+            conn.execute(
+                "UPDATE tasks SET completed_ts = ?1 WHERE id = ?2",
+                params![now_ts() - 86_400 * 40, drop_me],
+            )
+            .expect("backdate completed");
+        }
+
+        // Reap only first — orphan must remain as failed.
+        let report = gc(&GcOptions {
+            stale_secs: 60,
+            keep_terminal: None,
+            older_than_secs: None,
+            dry_run: false,
+        })
+        .expect("gc reap");
+        assert_eq!(report.reaped.len(), 1);
+        assert_eq!(report.reaped[0].0, orphan);
+        let orphan_task = get_task(&orphan).expect("get").expect("found");
+        assert!(matches!(orphan_task.status, TaskStatus::Failed(_)));
+
+        // Age-based purge removes only the old completed row.
+        let report2 = gc(&GcOptions {
+            stale_secs: 60,
+            keep_terminal: None,
+            older_than_secs: Some(86_400 * 30),
+            dry_run: false,
+        })
+        .expect("gc purge");
+        assert!(report2.deleted >= 1);
+        assert!(get_task(&drop_me).expect("get").is_none());
+        assert!(get_task(&keep_me).expect("get").is_some());
+        assert!(get_task(&orphan).expect("get").is_some());
+    }
+
+    #[test]
+    fn count_and_tui_lines() {
+        let _db = TestDb::new();
+        register_task("a").expect("a");
+        let id = register_task("b").expect("b");
+        update_status(&id, &TaskStatus::Done, Some("x")).expect("done");
+        let counts = count_tasks().expect("count");
+        assert_eq!(counts.pending, 1);
+        assert_eq!(counts.done, 1);
+        let (c2, lines) = tui_lines(10).expect("tui");
+        assert_eq!(c2, counts);
+        assert!(lines[0].starts_with("swarm "));
+        assert!(lines.len() >= 3);
+    }
+
+    #[test]
+    fn cancel_all_tasks_cancels_non_terminal() {
+        let _db = TestDb::new();
+        let a = register_task("a").expect("a");
+        let b = register_task("b").expect("b");
+        update_status(&a, &TaskStatus::Running, None).expect("run");
+        update_status(&b, &TaskStatus::Pending, None).expect("pend");
+        let done = register_task("done").expect("d");
+        update_status(&done, &TaskStatus::Done, Some("ok")).expect("done");
+        let n = cancel_all_tasks().expect("cancel all");
+        assert_eq!(n, 2);
+        assert_eq!(
+            get_task(&a).expect("g").expect("f").status,
+            TaskStatus::Cancelled
+        );
+        assert_eq!(
+            get_task(&b).expect("g").expect("f").status,
+            TaskStatus::Cancelled
+        );
+        assert_eq!(
+            get_task(&done).expect("g").expect("f").status,
+            TaskStatus::Done
+        );
+    }
+
+    #[test]
+    fn task_to_json_includes_status_and_result() {
+        let _db = TestDb::new();
+        let id = register_task_with_model("json me", Some("claude-sonnet-4-6")).expect("reg");
+        update_status(&id, &TaskStatus::Done, Some("hello")).expect("done");
+        let task = get_task(&id).expect("g").expect("f");
+        let v = task_to_json(&task);
+        assert_eq!(v["id"], id);
+        assert_eq!(v["status"], "done");
+        assert_eq!(v["result"], "hello");
+        assert_eq!(v["model"], "claude-sonnet-4-6");
+        assert_eq!(v["terminal"], true);
+    }
+
+    #[test]
+    fn gc_dry_run_does_not_mutate() {
+        let _db = TestDb::new();
+        let id = register_task("orphan").expect("reg");
+        update_status(&id, &TaskStatus::Running, None).expect("run");
+        {
+            let conn = open_db().expect("db");
+            conn.execute(
+                "UPDATE tasks SET created_ts = ?1 WHERE id = ?2",
+                params![now_ts() - 10_000, id],
+            )
+            .expect("backdate");
+        }
+        let report = gc(&GcOptions {
+            stale_secs: 60,
+            keep_terminal: None,
+            older_than_secs: None,
+            dry_run: true,
+        })
+        .expect("dry");
+        assert_eq!(report.reaped.len(), 1);
+        assert_eq!(
+            get_task(&id).expect("g").expect("f").status,
+            TaskStatus::Running
+        );
+    }
+
+    #[test]
+    fn task_to_json_pending_has_null_error_and_not_terminal() {
+        let task = TaskEntry {
+            id: "sw1".into(),
+            prompt: "p".into(),
+            status: TaskStatus::Pending,
+            result: None,
+            model: None,
+            created_ts: 0,
+            completed_ts: None,
+        };
+        let v = task_to_json(&task);
+        assert_eq!(v["status"], "pending");
+        assert!(v["error"].is_null());
+        assert_eq!(v["terminal"], false);
+        assert!(v["completed"].is_null());
+        assert_eq!(v["result"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn task_to_json_cancelled_and_running() {
+        for (status, label) in [
+            (TaskStatus::Cancelled, "cancelled"),
+            (TaskStatus::Running, "running"),
+        ] {
+            let task = TaskEntry {
+                id: "x".into(),
+                prompt: "p".into(),
+                status: status.clone(),
+                result: None,
+                model: None,
+                created_ts: 86_400,
+                completed_ts: None,
+            };
+            let v = task_to_json(&task);
+            assert_eq!(v["status"], label);
+            assert!(v["error"].is_null());
+            assert_eq!(v["terminal"], status.is_terminal());
+            assert_eq!(v["created"], "1970-01-02 00:00:00 UTC");
+        }
+    }
+
+    #[test]
+    fn status_label_empty_fail_and_truncation_boundary() {
+        assert_eq!(status_label(&TaskStatus::Failed(String::new())), "failed");
+        // Exactly 40 chars — no ellipsis inside failed(...)
+        let exact = "a".repeat(40);
+        let label = status_label(&TaskStatus::Failed(exact.clone()));
+        assert_eq!(label, format!("failed({exact})"));
+        let over = "b".repeat(41);
+        let label = status_label(&TaskStatus::Failed(over));
+        assert!(label.contains('…'));
+        assert!(label.starts_with("failed("));
+    }
+
+    #[test]
+    fn trunc_chars_zero_and_empty() {
+        assert_eq!(trunc_chars("", 0), "");
+        assert_eq!(trunc_chars("abc", 0), "…");
+        assert_eq!(trunc_chars("", 5), "");
+    }
+
+    #[test]
+    fn gc_keep_terminal_retains_newest_n() {
+        let _db = TestDb::new();
+        let mut ids = Vec::new();
+        for i in 0..4 {
+            let id = register_task(&format!("t{i}")).expect("reg");
+            update_status(&id, &TaskStatus::Done, Some("ok")).expect("done");
+            // Distinct completed_ts so newest ordering is stable
+            {
+                let conn = open_db().expect("db");
+                conn.execute(
+                    "UPDATE tasks SET completed_ts = ?1 WHERE id = ?2",
+                    params![now_ts() - (3 - i) as i64, id],
+                )
+                .expect("ts");
+            }
+            ids.push(id);
+        }
+        let report = gc(&GcOptions {
+            stale_secs: 60,
+            keep_terminal: Some(2),
+            older_than_secs: None,
+            dry_run: false,
+        })
+        .expect("gc");
+        assert!(report.deleted >= 2, "deleted={}", report.deleted);
+        let remaining = list_tasks(20).expect("list");
+        assert_eq!(remaining.len(), 2);
+    }
+
+    #[test]
+    fn get_task_missing_returns_none() {
+        let _db = TestDb::new();
+        assert!(get_task("sw_does_not_exist").expect("get").is_none());
+    }
+
+    #[test]
+    fn fmt_ts_month_boundaries() {
+        // 1970-02-01 00:00:00 UTC = 31 days
+        assert_eq!(fmt_ts(31 * 86_400), "1970-02-01 00:00:00 UTC");
+        // 1970-12-31 roughly
+        assert_eq!(fmt_ts(364 * 86_400), "1970-12-31 00:00:00 UTC");
+    }
+
+    #[test]
+    fn swarm_config_worker_allowlist_and_timeout() {
+        let mut cfg = SwarmConfig::default();
+        assert!(cfg.effective_worker_allowlist().is_none());
+        assert!(cfg.worker_wall_timeout().is_none());
+        cfg.worker_tool_allowlist = Some(SwarmConfig::default_worker_allowlist());
+        cfg.worker_max_wall_secs = Some(120);
+        let allow = cfg.effective_worker_allowlist().unwrap();
+        assert!(allow.contains(&"read_file".into()));
+        assert!(!allow.iter().any(|t| t == "shell"));
+        assert_eq!(cfg.worker_wall_timeout(), Some(Duration::from_secs(120)));
+        cfg.worker_max_wall_secs = Some(0);
+        assert!(cfg.worker_wall_timeout().is_none());
     }
 }

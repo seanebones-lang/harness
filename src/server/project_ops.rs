@@ -1,0 +1,192 @@
+//! Project git/shell helpers for HTTP project actions.
+
+use std::path::Path as FsPath;
+use std::process::Command;
+use tokio::time::{timeout, Duration};
+
+pub(crate) const PROJECT_GIT_TIMEOUT: Duration = Duration::from_secs(60);
+pub(crate) const PROJECT_TEST_TIMEOUT: Duration = Duration::from_secs(300);
+
+#[derive(Debug, Default)]
+pub(crate) struct ChangeCounts {
+    pub(crate) staged: usize,
+    pub(crate) unstaged: usize,
+    pub(crate) untracked: usize,
+}
+
+pub(crate) async fn run_git_in_project(path: &FsPath, args: &[&str]) -> anyhow::Result<String> {
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.current_dir(path).args(args).kill_on_drop(true);
+    let cmd_display = format!("git {}", args.join(" "));
+    let output = timeout(PROJECT_GIT_TIMEOUT, cmd.output())
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "{cmd_display} timed out after {}s",
+                PROJECT_GIT_TIMEOUT.as_secs()
+            )
+        })??;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git {} failed: {}", args.join(" "), stderr.trim());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+pub(crate) async fn run_shell_in_project(path: &FsPath, command: &str) -> anyhow::Result<String> {
+    let mut cmd = tokio::process::Command::new("sh");
+    cmd.arg("-c")
+        .arg(command)
+        .current_dir(path)
+        .kill_on_drop(true);
+    let output = timeout(PROJECT_TEST_TIMEOUT, cmd.output())
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "command timed out after {}s: {command}",
+                PROJECT_TEST_TIMEOUT.as_secs()
+            )
+        })??;
+    let mut text = String::new();
+    text.push_str(&String::from_utf8_lossy(&output.stdout));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.trim().is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&stderr);
+    }
+    if !output.status.success() {
+        anyhow::bail!("command failed: {command}\n{text}");
+    }
+    Ok(text)
+}
+
+pub(crate) fn current_git_branch(path: &FsPath) -> Option<String> {
+    let output = Command::new("git")
+        .current_dir(path)
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch)
+    }
+}
+
+pub(crate) fn git_output(path: &FsPath, args: &[&str]) -> anyhow::Result<String> {
+    let output = Command::new("git").current_dir(path).args(args).output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git {} failed: {}", args.join(" "), stderr.trim());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+pub(crate) fn git_ahead_behind(path: &FsPath) -> anyhow::Result<(u64, u64)> {
+    let out = git_output(
+        path,
+        &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+    )?;
+    let mut parts = out.split_whitespace();
+    let ahead = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
+    let behind = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
+    Ok((ahead, behind))
+}
+
+pub(crate) fn collect_change_counts(path: &FsPath) -> anyhow::Result<ChangeCounts> {
+    let out = git_output(path, &["status", "--porcelain"])?;
+    let mut counts = ChangeCounts::default();
+    for line in out.lines() {
+        if line.starts_with("?? ") {
+            counts.untracked += 1;
+            continue;
+        }
+        let bytes = line.as_bytes();
+        if bytes.len() < 2 {
+            continue;
+        }
+        let x = bytes[0] as char;
+        let y = bytes[1] as char;
+        if x != ' ' && x != '?' {
+            counts.staged += 1;
+        }
+        if y != ' ' && y != '?' {
+            counts.unstaged += 1;
+        }
+    }
+    Ok(counts)
+}
+
+pub(crate) fn default_test_command(path: &FsPath) -> String {
+    if path.join("Cargo.toml").exists() {
+        "cargo test".to_string()
+    } else if path.join("package.json").exists() {
+        "npm test".to_string()
+    } else if path.join("pyproject.toml").exists() || path.join("pytest.ini").exists() {
+        "pytest".to_string()
+    } else if path.join("go.mod").exists() {
+        "go test ./...".to_string()
+    } else {
+        "echo 'No known test command. Pass command in request.'".to_string()
+    }
+}
+
+pub(crate) fn is_allowed_test_command(cmd: &str) -> bool {
+    const ALLOWED: &[&str] = &[
+        "cargo test",
+        "npm test",
+        "yarn test",
+        "pnpm test",
+        "go test",
+        "pytest",
+        "make test",
+        "echo ",
+    ];
+    let cmd = cmd.trim();
+    ALLOWED.iter().any(|prefix| cmd.starts_with(prefix))
+}
+
+pub(crate) fn collect_files(
+    root: &FsPath,
+    dir: &FsPath,
+    query: &str,
+    limit: usize,
+    out: &mut Vec<String>,
+) -> anyhow::Result<()> {
+    if out.len() >= limit {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == ".git" || name == "node_modules" || name == "target" {
+            continue;
+        }
+        if path.is_dir() {
+            collect_files(root, &path, query, limit, out)?;
+            if out.len() >= limit {
+                return Ok(());
+            }
+            continue;
+        }
+        if let Ok(rel) = path.strip_prefix(root) {
+            let rel_s = rel.display().to_string();
+            if query.is_empty() || rel_s.to_lowercase().contains(query) {
+                out.push(rel_s);
+                if out.len() >= limit {
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+

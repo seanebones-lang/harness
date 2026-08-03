@@ -31,21 +31,21 @@ cargo test -p harness-mcp
 
 ## Coverage
 
-The CI coverage gate requires at least **60% line coverage**. To measure coverage locally:
+CI configures a **target** of ≥ **60%** line coverage on PRs (`.github/workflows/coverage.yml`). That is not current measured coverage — see root [`COVERAGE.md`](../COVERAGE.md) (**~40%** as of last measure). To measure locally:
 
 ```bash
 # Install the coverage tool (once)
 cargo install cargo-llvm-cov
 
 # Generate coverage report
-cargo llvm-cov --all
+cargo llvm-cov --workspace --all-features --summary-only
 
 # Generate an HTML report (opens in browser)
-cargo llvm-cov --all --html
+cargo llvm-cov --workspace --all-features --html
 open target/llvm-cov/html/index.html
 ```
 
-Coverage is also reported on pull requests via the `.github/workflows/coverage.yml` workflow.
+Update `COVERAGE.md` after a fresh full run so the README badge stays honest.
 
 ---
 

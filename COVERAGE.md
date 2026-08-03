@@ -1,9 +1,35 @@
 # Coverage Report
 
-**Tool:** cargo-tarpaulin
-**Date:** 2026-05-25
-**Result:** 23.33% (2407 / 10317 lines)
+**Source of truth** for last measured workspace line coverage. README badge and contributor docs should match this file — do not claim the CI target as achieved coverage.
 
-Note: Below the 60% CI gate mentioned in CLAUDE.md. This is acceptable for beta; full coverage will be addressed post-submission.
+| Field | Value |
+|-------|--------|
+| **Tool** | cargo-llvm-cov |
+| **Measured lines** | **44.67%** (9723 covered / 21766 lines) |
+| **Regions** | 45.71% · **Functions** 50.44% |
+| **Date** | 2026-08-03 |
+| **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **not yet met** |
+| **Near-term target** | ≥ 40% workspace lines — **met** (this measure) |
 
-HTML report available in `coverage/` directory.
+Prior measures:
+- llvm-cov 2026-07-30: **40.22%** lines (7814 / 19430)
+- tarpaulin 2026-05-25: **23.33%** lines (2407 / 10317)
+
+Tooling differs across tools; treat llvm-cov as current SoT going forward.
+
+Note: Measured % is still below the 60% PR gate. The gate is a **target**, not current status. Critical pure modules climbed in W2 (examples from 2026-08-03 package/workspace run): `filesystem` ~99% lines, `swarm_tool` 100%, `apply_patch` ~95%, `shell` ~96%, `src/swarm.rs` ~86%, `harness-memory` session/store/memory high 90%+, `notifications` ~76%. TUI driver/input and some CLI wiring still near 0%. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
+
+## How to re-run
+
+```bash
+# Preferred (matches CI)
+cargo install cargo-llvm-cov   # once
+cargo llvm-cov --workspace --all-features --summary-only
+
+# Alternate (historical)
+cargo tarpaulin --workspace --out Stdout --timeout 300
+```
+
+After a fresh run, update **Measured**, **Date**, and tool above. Keep the badge in `README.md` aligned with the measured figure (or label it explicitly as “target 60%”).
+
+Do **not** invent higher numbers or imply the fail-under gate is green until a real measurement supports it.
