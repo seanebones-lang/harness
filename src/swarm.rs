@@ -36,6 +36,8 @@ pub struct SwarmConfig {
     pub worker_max_tool_calls: Option<usize>,
     /// Wall-clock timeout per worker task in seconds (None = no extra timeout).
     pub worker_max_wall_secs: Option<u64>,
+    /// Optional remote swarm registry base URL (W7.1). Empty/unset = local SQLite.
+    pub registry_url: Option<String>,
 }
 
 impl SwarmConfig {
@@ -170,6 +172,8 @@ pub struct TaskEntry {
     pub prompt: String,
     pub status: TaskStatus,
     pub result: Option<String>,
+    /// Model id used for this worker (if known).
+    pub model: Option<String>,
     #[allow(dead_code)]
     pub created_ts: i64,
     #[allow(dead_code)]
@@ -204,6 +208,18 @@ fn lock_active() -> std::sync::MutexGuard<'static, SwarmState> {
 
 /// Apply `[swarm]` settings from config (safe to call multiple times; first call wins).
 pub fn configure(cfg: &SwarmConfig) {
+    let backend = crate::swarm_registry::select_registry(cfg.registry_url.as_deref());
+    match crate::swarm_registry::probe_registry(backend.as_ref()) {
+        Ok(name) if name != "sqlite-local" => {
+            tracing::warn!(
+                backend = name,
+                url = ?cfg.registry_url,
+                "non-local swarm registry selected — remote ops return stub errors until W7.1 HTTP client ships"
+            );
+        }
+        Ok(name) => tracing::debug!(backend = name, "swarm registry ready"),
+        Err(e) => tracing::warn!(error = %e, "swarm registry probe failed"),
+    }
     let _ = RUNTIME.set(SwarmRuntime {
         semaphore: std::sync::Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(4).max(1))),
         active: Mutex::new(SwarmState {
@@ -251,6 +267,16 @@ fn clear_test_swarm_db() {
     SWARM_DB_OVERRIDE.with(|slot| *slot.borrow_mut() = None);
 }
 
+/// Run `f` with a temporary swarm DB path override (thread-local; safe for benches/tests).
+pub fn with_db_path_override<R>(path: PathBuf, f: impl FnOnce() -> R) -> R {
+    SWARM_DB_OVERRIDE.with(|slot| {
+        let prev = slot.replace(Some(path));
+        let out = f();
+        *slot.borrow_mut() = prev;
+        out
+    })
+}
+
 fn open_db() -> Result<Connection> {
     let path = swarm_db_path();
     let _ = std::fs::create_dir_all(path.parent().unwrap_or(std::path::Path::new(".")));
@@ -265,6 +291,8 @@ fn open_db() -> Result<Connection> {
             completed_ts INTEGER
         );",
     )?;
+    // Best-effort migrations for older swarm.db files.
+    let _ = conn.execute("ALTER TABLE tasks ADD COLUMN model TEXT", []);
     Ok(conn)
 }
 
@@ -281,11 +309,16 @@ fn new_task_id() -> TaskId {
 
 /// Register a new task in the DB and return its ID.
 pub fn register_task(prompt: &str) -> Result<TaskId> {
+    register_task_with_model(prompt, None)
+}
+
+/// Register a task and record the worker model (for `status|result --json`).
+pub fn register_task_with_model(prompt: &str, model: Option<&str>) -> Result<TaskId> {
     let conn = open_db()?;
     let id = new_task_id();
     conn.execute(
-        "INSERT INTO tasks (id, prompt, status, created_ts) VALUES (?1, ?2, 'pending', ?3)",
-        params![id, prompt, now_ts()],
+        "INSERT INTO tasks (id, prompt, status, created_ts, model) VALUES (?1, ?2, 'pending', ?3, ?4)",
+        params![id, prompt, now_ts(), model],
     )?;
     Ok(id)
 }
@@ -316,7 +349,7 @@ pub fn update_status(id: &str, status: &TaskStatus, result: Option<&str>) -> Res
 pub fn list_tasks(limit: usize) -> Result<Vec<TaskEntry>> {
     let conn = open_db()?;
     let mut stmt = conn.prepare(
-        "SELECT id, prompt, status, result, created_ts, completed_ts
+        "SELECT id, prompt, status, result, created_ts, completed_ts, model
          FROM tasks ORDER BY created_ts DESC LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit as i64], |row| {
@@ -329,6 +362,7 @@ pub fn list_tasks(limit: usize) -> Result<Vec<TaskEntry>> {
             result: row.get(3)?,
             created_ts: row.get(4)?,
             completed_ts: row.get(5)?,
+            model: row.get(6)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -349,7 +383,7 @@ fn parse_status_str(status_str: &str, result_col: Option<String>) -> TaskStatus 
 pub fn get_task(id: &str) -> Result<Option<TaskEntry>> {
     let conn = open_db()?;
     let mut stmt = conn.prepare(
-        "SELECT id, prompt, status, result, created_ts, completed_ts
+        "SELECT id, prompt, status, result, created_ts, completed_ts, model
          FROM tasks WHERE id = ?1 OR id LIKE ?2 LIMIT 1",
     )?;
     let prefix = format!("{id}%");
@@ -364,6 +398,7 @@ pub fn get_task(id: &str) -> Result<Option<TaskEntry>> {
             result: row.get(3)?,
             created_ts: row.get(4)?,
             completed_ts: row.get(5)?,
+            model: row.get(6)?,
         }));
     }
     Ok(None)
@@ -538,6 +573,7 @@ pub fn task_to_json(task: &TaskEntry) -> serde_json::Value {
         "error": error,
         "prompt": task.prompt,
         "result": task.result,
+        "model": task.model,
         "created_ts": task.created_ts,
         "completed_ts": task.completed_ts,
         "created": fmt_ts(task.created_ts),
@@ -923,12 +959,14 @@ mod tests {
             prompt: "p".into(),
             status: TaskStatus::Failed("nope".into()),
             result: Some("trace".into()),
+            model: Some("test-model".into()),
             created_ts: 0,
             completed_ts: Some(1),
         };
         let v = task_to_json(&task);
         assert_eq!(v["status"], "failed");
         assert_eq!(v["error"], "nope");
+        assert_eq!(v["model"], "test-model");
         assert_eq!(v["terminal"], true);
         assert_eq!(v["created"], "1970-01-01 00:00:00 UTC");
         assert_eq!(v["completed"], "1970-01-01 00:00:01 UTC");
@@ -1031,13 +1069,14 @@ mod tests {
     #[test]
     fn task_to_json_includes_status_and_result() {
         let _db = TestDb::new();
-        let id = register_task("json me").expect("reg");
+        let id = register_task_with_model("json me", Some("claude-sonnet-4-6")).expect("reg");
         update_status(&id, &TaskStatus::Done, Some("hello")).expect("done");
         let task = get_task(&id).expect("g").expect("f");
         let v = task_to_json(&task);
         assert_eq!(v["id"], id);
         assert_eq!(v["status"], "done");
         assert_eq!(v["result"], "hello");
+        assert_eq!(v["model"], "claude-sonnet-4-6");
         assert_eq!(v["terminal"], true);
     }
 
@@ -1075,6 +1114,7 @@ mod tests {
             prompt: "p".into(),
             status: TaskStatus::Pending,
             result: None,
+            model: None,
             created_ts: 0,
             completed_ts: None,
         };
@@ -1097,6 +1137,7 @@ mod tests {
                 prompt: "p".into(),
                 status: status.clone(),
                 result: None,
+                model: None,
                 created_ts: 86_400,
                 completed_ts: None,
             };

@@ -2,6 +2,7 @@ mod agent;
 mod ambient;
 mod auth_token;
 mod background;
+mod bench;
 mod bridges;
 mod checkpoint;
 mod collab;
@@ -20,6 +21,7 @@ mod provider_build;
 mod rate_limit;
 mod server;
 mod swarm;
+mod swarm_registry;
 mod sync;
 mod trust;
 mod tui;
@@ -443,7 +445,7 @@ async fn main() -> Result<()> {
                 } else {
                     prompt.clone()
                 };
-                let id = swarm::register_task(&label)?;
+                let id = swarm::register_task_with_model(&label, Some(worker_model.as_str()))?;
                 let p = provider.clone();
                 let t = tools.clone();
                 let mem = memory_store.clone();
