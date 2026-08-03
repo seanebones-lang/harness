@@ -283,4 +283,75 @@ mod tests {
         let name = store.display_name_for(&session.id, None);
         assert_eq!(name, "refactor the agent loop");
     }
+
+    #[test]
+    fn list_and_save_upsert_and_delete_missing() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::open(dir.path().join("sessions.db")).unwrap();
+        let mut a = Session::new("m1").with_name("A");
+        a.push(Message::user("first"));
+        store.save(&a).unwrap();
+        let b = Session::new("m2").with_name("B");
+        store.save(&b).unwrap();
+
+        let listed = store.list(10).unwrap();
+        assert_eq!(listed.len(), 2);
+        // ids present
+        let ids: Vec<&str> = listed.iter().map(|(id, _, _)| id.as_str()).collect();
+        assert!(ids.contains(&a.id.as_str()));
+        assert!(ids.contains(&b.id.as_str()));
+
+        // Upsert updates name/data
+        a.name = Some("A2".into());
+        a.push(Message::user("second"));
+        store.save(&a).unwrap();
+        let loaded = store.load(&a.id).unwrap().unwrap();
+        assert_eq!(loaded.name.as_deref(), Some("A2"));
+        assert_eq!(loaded.messages.len(), 2);
+
+        assert!(!store.delete("does-not-exist-zzzz").unwrap());
+        assert!(store.delete(&a.id).unwrap()); // full id path (>= 36)
+        assert!(store.load(&a.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn display_name_prefers_col_truncates_and_falls_back() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::open(dir.path().join("sessions.db")).unwrap();
+
+        // Prefer non-empty name column without loading
+        assert_eq!(
+            store.display_name_for("any-id", Some("FromCol".into())),
+            "FromCol"
+        );
+        // Empty name col → load path
+        let mut long = Session::new("m");
+        let long_msg = "x".repeat(60);
+        long.push(Message::user(&long_msg));
+        store.save(&long).unwrap();
+        let name = store.display_name_for(&long.id, Some(String::new()));
+        assert!(name.ends_with('…'), "got: {name}");
+        assert_eq!(name.chars().count(), 49); // 48 + ellipsis
+
+        // No messages → Session {short}
+        let empty = Session::new("m");
+        store.save(&empty).unwrap();
+        let fallback = store.display_name_for(&empty.id, None);
+        assert!(fallback.starts_with("Session "), "got: {fallback}");
+    }
+
+    #[test]
+    fn default_path_ends_with_sessions_db() {
+        let p = SessionStore::default_path();
+        assert!(p.ends_with("sessions.db") || p.file_name().unwrap() == "sessions.db");
+    }
+
+    #[test]
+    fn find_returns_none_when_missing() {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::open(dir.path().join("sessions.db")).unwrap();
+        assert!(store.find("nope").unwrap().is_none());
+        assert!(store.load(&"missing-id".to_string()).unwrap().is_none());
+        assert!(!store.set_name_if_missing("missing-id", "x").unwrap());
+    }
 }

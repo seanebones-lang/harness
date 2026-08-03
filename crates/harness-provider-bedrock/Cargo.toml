@@ -1,0 +1,20 @@
+[package]
+name = "harness-provider-bedrock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "AWS Bedrock Runtime provider (Converse)"
+
+[dependencies]
+harness-provider-core = { path = "../harness-provider-core" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+aws-sigv4 = "1.2"
+aws-credential-types = "1.2"
+http = "1"

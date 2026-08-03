@@ -67,8 +67,8 @@ pub struct ProviderEntry {
 /// Build an `ArcProvider` from a `ProviderEntry`.
 ///
 /// `kind` is usually the `[providers.<kind>]` table key.
-/// Supported kinds: `anthropic`, `xai`, `openai`, `mistral`, `openai-compatible` /
-/// `compatible`, `ollama`, `mlx`. Any other name **with** `base_url` is treated as
+/// Supported kinds: `anthropic`, `xai`, `openai`, `mistral`, `gemini`, `bedrock`,
+/// `openai-compatible` / `compatible`, `ollama`, `mlx`. Any other name **with** `base_url` is treated as
 /// OpenAI-compatible under that name; without `base_url` falls back to xAI (legacy).
 pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcProvider> {
     match kind {
@@ -107,6 +107,51 @@ pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcPr
                 cfg = cfg.with_base_url(u);
             }
             Ok(Arc::new(harness_provider_openai::OpenAIProvider::new(cfg)?))
+        }
+        "gemini" => {
+            let key = entry
+                .api_key
+                .clone()
+                .or_else(harness_provider_gemini::api_key_from_env)
+                .unwrap_or_default();
+            let mut cfg = harness_provider_openai::OpenAIConfig::gemini(key);
+            if let Some(m) = &entry.model {
+                cfg = cfg.with_model(m);
+            }
+            if let Some(u) = &entry.base_url {
+                cfg = cfg.with_base_url(u);
+            }
+            Ok(Arc::new(harness_provider_openai::OpenAIProvider::new(cfg)?))
+        }
+        "bedrock" => {
+            let model = entry.model.clone();
+            let region = entry.base_url.clone(); // optional region override via base_url field
+            // Prefer explicit api_key as access key only if full env not used — env is source of truth.
+            if entry.api_key.is_some()
+                && std::env::var("AWS_ACCESS_KEY_ID").is_err()
+                && std::env::var("AWS_SECRET_ACCESS_KEY").is_err()
+            {
+                // Allow test injection: api_key = "ak:sk" or just require env.
+                if let Some(pair) = entry.api_key.as_deref() {
+                    if let Some((ak, sk)) = pair.split_once(':') {
+                        let cfg = harness_provider_bedrock::BedrockConfig {
+                            model: model
+                                .clone()
+                                .unwrap_or_else(|| harness_provider_bedrock::DEFAULT_MODEL.into()),
+                            region: region
+                                .clone()
+                                .unwrap_or_else(|| harness_provider_bedrock::DEFAULT_REGION.into()),
+                            access_key_id: ak.into(),
+                            secret_access_key: sk.into(),
+                            session_token: None,
+                        };
+                        return Ok(Arc::new(harness_provider_bedrock::BedrockProvider::new(
+                            cfg,
+                        )?));
+                    }
+                }
+            }
+            harness_provider_bedrock::build_arc(model, region)
         }
         "openai-compatible" | "compatible" => {
             let key = entry.api_key.as_deref().unwrap_or("");
@@ -328,6 +373,15 @@ impl ProviderRouter {
             || std::env::var("MISTRAL_API_KEY")
                 .map(|k| !k.is_empty())
                 .unwrap_or(false);
+        let has_gemini = entries.contains_key("gemini")
+            || harness_provider_gemini::api_key_from_env().is_some();
+        let has_bedrock = entries.contains_key("bedrock")
+            || (std::env::var("AWS_ACCESS_KEY_ID")
+                .map(|k| !k.is_empty())
+                .unwrap_or(false)
+                && std::env::var("AWS_SECRET_ACCESS_KEY")
+                    .map(|k| !k.is_empty())
+                    .unwrap_or(false));
         let has_ollama = entries.contains_key("ollama");
         let has_mlx = entries.contains_key("mlx") || harness_provider_mlx::mlx_runtime_available();
 
@@ -377,6 +431,32 @@ impl ProviderRouter {
                 },
             );
         }
+        if has_gemini && !augmented.contains_key("gemini") {
+            augmented.insert(
+                "gemini".into(),
+                ProviderEntry {
+                    name: Some("gemini".into()),
+                    api_key: harness_provider_gemini::api_key_from_env(),
+                    model: Some(harness_provider_gemini::DEFAULT_MODEL.into()),
+                    base_url: Some(harness_provider_gemini::DEFAULT_BASE_URL.into()),
+                },
+            );
+        }
+        if has_bedrock && !augmented.contains_key("bedrock") {
+            augmented.insert(
+                "bedrock".into(),
+                ProviderEntry {
+                    name: Some("bedrock".into()),
+                    api_key: None,
+                    model: std::env::var("BEDROCK_MODEL_ID").ok().or_else(|| {
+                        Some(harness_provider_bedrock::DEFAULT_MODEL.into())
+                    }),
+                    base_url: std::env::var("AWS_REGION")
+                        .or_else(|_| std::env::var("AWS_DEFAULT_REGION"))
+                        .ok(),
+                },
+            );
+        }
         if has_mlx && !augmented.contains_key("mlx") {
             augmented.insert(
                 "mlx".into(),
@@ -389,7 +469,7 @@ impl ProviderRouter {
             );
         }
 
-        // Default provider: anthropic > xai > openai > mistral > ollama > mlx
+        // Default provider: anthropic > xai > openai > mistral > gemini > bedrock > ollama > mlx
         let smart_default = if has_anthropic {
             "anthropic"
         } else if has_xai {
@@ -398,6 +478,10 @@ impl ProviderRouter {
             "openai"
         } else if has_mistral {
             "mistral"
+        } else if has_gemini {
+            "gemini"
+        } else if has_bedrock {
+            "bedrock"
         } else if has_ollama {
             "ollama"
         } else if has_mlx {
@@ -810,6 +894,38 @@ mod tests {
         .expect("mistral");
         assert_eq!(p.name(), "mistral");
         assert_eq!(p.model(), "mistral-large-latest");
+    }
+
+    #[test]
+    fn build_provider_gemini_defaults() {
+        let p = build_provider(
+            "gemini",
+            &ProviderEntry {
+                name: Some("gemini".into()),
+                api_key: Some("gemini-test".into()),
+                model: None,
+                base_url: None,
+            },
+        )
+        .expect("gemini");
+        assert_eq!(p.name(), "gemini");
+        assert_eq!(p.model(), "gemini-2.0-flash");
+    }
+
+    #[test]
+    fn build_provider_bedrock_from_api_key_pair() {
+        let p = build_provider(
+            "bedrock",
+            &ProviderEntry {
+                name: Some("bedrock".into()),
+                api_key: Some("AKIAtest:secret".into()),
+                model: Some("my.bedrock-model".into()),
+                base_url: Some("us-west-2".into()),
+            },
+        )
+        .expect("bedrock");
+        assert_eq!(p.name(), "bedrock");
+        assert_eq!(p.model(), "my.bedrock-model");
     }
 
     #[test]

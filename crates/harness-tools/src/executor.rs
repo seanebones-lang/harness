@@ -347,6 +347,14 @@ impl ToolExecutor {
         &self.registry
     }
 
+    /// Clone executor with tools restricted to `allow` (by tool name).
+    /// Empty allowlist leaves the registry unchanged.
+    pub fn with_tool_allowlist(&self, allow: &[String]) -> Self {
+        let mut out = self.clone();
+        out.registry.retain_allowlist(allow);
+        out
+    }
+
     /// Whether plan/approve confirmation is enabled.
     pub fn has_confirm_gate(&self) -> bool {
         self.confirm_gate.is_some()

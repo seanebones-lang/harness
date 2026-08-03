@@ -205,6 +205,24 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ---
 
+**2026-08-03 — Max-opt swarm (W5.2–W5.7 + quality)**
+
+| Item | Result |
+|------|--------|
+| Branch | `dev` |
+| `cargo build --bin harness` | **Pass** |
+| `cargo clippy -p harness --bin harness -- -D warnings` | **Pass** |
+| `cargo test -p harness-tools` | **95 pass** |
+| Providers | Gemini OpenAI-compat + Bedrock Converse; router tests green |
+| Tools | `database` / `notebook` / `docker` config-gated (default off) |
+| Docs | PROVIDERS_GEMINI_BEDROCK.md, COMPUTER_USE.md, WAVE7_SCALE.md |
+| Offline smoke | smoke_rel01 + scripts/smoke_linux_docker.sh |
+| CTO | W5.2–W5.7 [x]; W1.4–W1.5 still 📌 |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on REL-01 full matrix + billing prebuilts.
+
+---
+
 ## Current recommendation (public beta)
 
 | Item | Status |

@@ -31,6 +31,13 @@ info "harness doctor"
 info "harness update"
 "$HARNESS" update
 
+info "harness swarm list / gc --dry-run (offline)"
+"$HARNESS" swarm list || warn "swarm list failed"
+"$HARNESS" swarm gc --dry-run || warn "swarm gc dry-run failed"
+
+info "harness mcp roots (offline; empty config ok)"
+"$HARNESS" mcp roots || warn "mcp roots failed (no config ok)"
+
 info "harness sessions (empty ok)"
 "$HARNESS" sessions
 

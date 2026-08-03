@@ -358,4 +358,35 @@ mod tests {
         cfg.enabled = false;
         background_done(&cfg, "x", true);
     }
+
+    #[test]
+    fn kind_equality_and_clone() {
+        assert_eq!(NotificationKind::Custom, NotificationKind::Custom);
+        assert_ne!(NotificationKind::CiFailed, NotificationKind::PrOpened);
+        let k = NotificationKind::SwarmComplete.clone();
+        assert_eq!(k.group_id(), "harness.agent");
+        assert_eq!(k.subtitle(), "Swarm");
+    }
+
+    #[test]
+    fn disabled_gates_even_when_feature_flags_on() {
+        // enabled=false wins over on_* flags for entry points that check enabled first,
+        // and feature-flagged helpers still return before notify_rich when their flag is on
+        // only if enabled path is taken — exercise both flag-on + enabled-off.
+        let cfg = NotificationsConfig {
+            enabled: false,
+            on_background_done: true,
+            on_autotest_fail: true,
+            on_budget: true,
+        };
+        background_done(&cfg, "job", true);
+        background_done(&cfg, "job", false);
+        autotest_failed(&cfg, "details");
+        budget_alert(&cfg, "msg");
+        // helpers that only check enabled
+        pr_opened(&cfg, "t", "u");
+        swarm_complete(&cfg, 0, 0);
+        swarm_complete(&cfg, 5, 5);
+        test_notification(&cfg);
+    }
 }

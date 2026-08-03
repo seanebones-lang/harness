@@ -221,4 +221,43 @@ mod tests {
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].id, id1);
     }
+
+    #[test]
+    fn cosine_similarity_edges() {
+        assert!((cosine(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < 1e-6);
+        assert!((cosine(&[1.0, 0.0], &[0.0, 1.0])).abs() < 1e-6);
+        assert_eq!(cosine(&[0.0, 0.0], &[1.0, 2.0]), 0.0);
+        assert_eq!(cosine(&[1.0], &[0.0]), 0.0);
+        // opposite direction
+        assert!((cosine(&[1.0, 0.0], &[-1.0, 0.0]) + 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn search_excludes_session_and_ranks_by_similarity() {
+        let dir = tempdir().unwrap();
+        let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
+        store
+            .insert("current", "should exclude", &[1.0, 0.0])
+            .unwrap();
+        store.insert("other", "near", &[0.9, 0.1]).unwrap();
+        store.insert("other", "far", &[0.0, 1.0]).unwrap();
+        store.insert("other2", "mid", &[0.5, 0.5]).unwrap();
+
+        let hits = store.search(&[1.0, 0.0], "current", 2).unwrap();
+        assert_eq!(hits.len(), 2);
+        // Current session excluded
+        assert!(hits.iter().all(|(m, _)| m.session_id != "current"));
+        // Best match first
+        assert_eq!(hits[0].0.text, "near");
+        assert!(hits[0].1 >= hits[1].1);
+    }
+
+    #[test]
+    fn delete_memories_empty_is_noop() {
+        let dir = tempdir().unwrap();
+        let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
+        store.insert("s", "a", &[1.0]).unwrap();
+        store.delete_memories(&[]).unwrap();
+        assert_eq!(store.count_all().unwrap(), 1);
+    }
 }

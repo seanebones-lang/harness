@@ -404,4 +404,216 @@ mod tests {
         assert!(out.contains("a.txt"));
         assert!(out.contains("sub/"));
     }
+
+    #[tokio::test]
+    async fn read_file_missing_path_errors() {
+        let (_dir, ws) = workspace();
+        let tool = ReadFileTool { workspace: ws };
+        let err = tool.execute(json!({})).await.expect_err("missing path");
+        assert!(err.to_string().contains("missing path"));
+    }
+
+    #[tokio::test]
+    async fn read_file_line_range_clamps() {
+        let (dir, ws) = workspace();
+        std::fs::write(dir.path().join("n.txt"), "a\nb\nc\nd\n").unwrap();
+        let tool = ReadFileTool {
+            workspace: ws.clone(),
+        };
+
+        // Mid-range inclusive end_line
+        let mid = tool
+            .execute(json!({"path": "n.txt", "start_line": 2, "end_line": 3}))
+            .await
+            .expect("mid");
+        assert!(mid.contains("b"));
+        assert!(mid.contains("c"));
+        assert!(!mid.contains("a\n") && !mid.contains("| a"));
+        assert!(mid.contains("   2 |"));
+        assert!(!mid.contains("   4 |"));
+
+        // start beyond EOF → empty selection
+        let past = tool
+            .execute(json!({"path": "n.txt", "start_line": 100}))
+            .await
+            .expect("past");
+        assert!(past.is_empty(), "got: {past:?}");
+
+        // end_line past EOF clamps to total
+        let clamp = tool
+            .execute(json!({"path": "n.txt", "start_line": 3, "end_line": 999}))
+            .await
+            .expect("clamp");
+        assert!(clamp.contains("c"));
+        assert!(clamp.contains("d"));
+        assert!(!clamp.contains("   1 |"));
+
+        // start_line 0 saturates to from=0
+        let from_zero = tool
+            .execute(json!({"path": "n.txt", "start_line": 0, "end_line": 1}))
+            .await
+            .expect("zero");
+        assert!(from_zero.contains("a"));
+    }
+
+    #[tokio::test]
+    async fn write_file_missing_args_error() {
+        let (_dir, ws) = workspace();
+        let tool = WriteFileTool {
+            workspace: ws.clone(),
+        };
+        let err = tool
+            .execute(json!({"content": "x"}))
+            .await
+            .expect_err("path");
+        assert!(err.to_string().contains("missing path"));
+        let err = tool
+            .execute(json!({"path": "x.txt"}))
+            .await
+            .expect_err("content");
+        assert!(err.to_string().contains("missing content"));
+    }
+
+    #[tokio::test]
+    async fn patch_file_missing_args_and_uniqueness() {
+        let (dir, ws) = workspace();
+        std::fs::write(dir.path().join("dup.txt"), "aa\nbb\naa\n").unwrap();
+        let tool = PatchFileTool {
+            workspace: ws.clone(),
+        };
+
+        let err = tool.execute(json!({})).await.expect_err("path");
+        assert!(err.to_string().contains("missing path"));
+        let err = tool
+            .execute(json!({"path": "dup.txt"}))
+            .await
+            .expect_err("old");
+        assert!(err.to_string().contains("missing old_content"));
+        let err = tool
+            .execute(json!({"path": "dup.txt", "old_content": "aa"}))
+            .await
+            .expect_err("new");
+        assert!(err.to_string().contains("missing new_content"));
+
+        // Ambiguous match (appears twice) — soft error message, no write
+        let out = tool
+            .execute(json!({
+                "path": "dup.txt",
+                "old_content": "aa",
+                "new_content": "zz"
+            }))
+            .await
+            .expect("ambig");
+        assert!(out.contains("appears 2 times") || out.contains("unique"), "got: {out}");
+        let content = std::fs::read_to_string(dir.path().join("dup.txt")).unwrap();
+        assert_eq!(content, "aa\nbb\naa\n");
+
+        // Not found
+        let miss = tool
+            .execute(json!({
+                "path": "dup.txt",
+                "old_content": "nope-missing",
+                "new_content": "x"
+            }))
+            .await
+            .expect("miss");
+        assert!(miss.contains("not found"), "got: {miss}");
+
+        // dry_run does not mutate
+        let dry = tool
+            .execute(json!({
+                "path": "dup.txt",
+                "old_content": "bb",
+                "new_content": "BB",
+                "dry_run": true
+            }))
+            .await
+            .expect("dry");
+        assert!(dry.contains("dry run"), "got: {dry}");
+        let content = std::fs::read_to_string(dir.path().join("dup.txt")).unwrap();
+        assert!(content.contains("bb"));
+        assert!(!content.contains("BB"));
+    }
+
+    #[tokio::test]
+    async fn list_dir_missing_path_and_empty() {
+        let (dir, ws) = workspace();
+        let tool = ListDirTool {
+            workspace: ws.clone(),
+        };
+        let err = tool.execute(json!({})).await.expect_err("missing");
+        assert!(err.to_string().contains("missing path"));
+
+        std::fs::create_dir(dir.path().join("empty")).unwrap();
+        let out = tool
+            .execute(json!({"path": "empty"}))
+            .await
+            .expect("empty");
+        assert_eq!(out, "(empty directory)");
+    }
+
+    #[test]
+    fn trim_context_keeps_neighbors_and_elides() {
+        // No changes → placeholder
+        let none = trim_context(
+            &[" a\n".into(), " b\n".into(), " c\n".into()],
+            1,
+        );
+        assert_eq!(none, vec!["(no changes)".to_string()]);
+
+        let lines = vec![
+            " 0\n".into(),
+            " 1\n".into(),
+            "-2\n".into(),
+            "+2b\n".into(),
+            " 3\n".into(),
+            " 4\n".into(),
+            " 5\n".into(),
+            "+6\n".into(),
+            " 7\n".into(),
+        ];
+        let trimmed = trim_context(&lines, 1);
+        assert!(trimmed.iter().any(|l| l.starts_with('-') || l.starts_with('+')));
+        // Middle equal stretch should produce an elision marker
+        assert!(
+            trimmed.iter().any(|l| l.contains('…') || l.starts_with("@@")),
+            "expected elision in {trimmed:?}"
+        );
+    }
+
+    #[test]
+    fn filesystem_tool_definition_names() {
+        let (_dir, ws) = workspace();
+        assert_eq!(
+            ReadFileTool {
+                workspace: ws.clone()
+            }
+            .definition()
+            .function
+            .name,
+            "read_file"
+        );
+        assert_eq!(
+            WriteFileTool {
+                workspace: ws.clone()
+            }
+            .definition()
+            .function
+            .name,
+            "write_file"
+        );
+        assert_eq!(
+            PatchFileTool {
+                workspace: ws.clone()
+            }
+            .definition()
+            .function
+            .name,
+            "patch_file"
+        );
+        assert_eq!(
+            ListDirTool { workspace: ws }.definition().function.name,
+            "list_dir"
+        );
+    }
 }
