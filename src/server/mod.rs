@@ -1,35 +1,18 @@
 //! HTTP server mode: `harness serve`.
 //!
-//! Endpoints:
-//!   GET  /api/health          → {"status":"ok","model","provider_model","key_env","config_path"}
-//!   GET  /api/sessions        → [{id, name, updated_at}]
-//!   GET  /api/projects        → [{name, path, remote, default_branch, updated}]
-//!   POST /api/projects/:id/action → project action result JSON
-//!   GET  /api/projects/:id/files  → file paths for context picker
-//!   POST /api/chat            → SSE stream of AgentEvents (JSON)
-//!   GET  /api/sessions/:id    → full session JSON
-//!   GET  /api/setup/state      → sanitized setup form defaults (no keys)
-//!   POST /api/setup/persist    → write config.toml + hot-reload (TCP loopback peers only)
-//!   GET  /ws/session/:id       → collaborative WebSocket (when `[collab].enabled`)
-//!
-//! Body for POST /api/chat:
-//!   { "prompt": "...", "session_id": "..." (optional) }
-//!
-//! SSE event format:
-//!   data: {"type":"text_chunk","content":"..."}
-//!   data: {"type":"tool_start","name":"..."}
-//!   data: {"type":"tool_result","name":"...","result":"..."}
-//!   data: {"type":"memory_recall","count":3}
-//!   data: {"type":"done"}
-//!   data: {"type":"error","message":"..."}
+//! Endpoints documented in module docs and PUBLIC_RELEASE / COOKBOOK.
+
+mod auth;
+mod collab_ws;
+mod project_ops;
+mod state;
+
+pub use state::{ServeRuntimeState, ServerState};
 
 use anyhow::Result;
-use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::ConnectInfo;
-use axum::extract::Query;
-use axum::http::{header::AUTHORIZATION, Request, StatusCode};
-use axum::middleware::{self, Next};
-use axum::response::{IntoResponse, Response};
+use axum::http::StatusCode;
+use axum::middleware;
 use axum::{
     extract::{Path, State},
     response::{
@@ -40,49 +23,26 @@ use axum::{
     Router,
 };
 use futures::stream::{self, StreamExt};
-use harness_memory::{MemoryStore, Session, SessionStore};
-use harness_provider_core::{ArcProvider, Message};
-use harness_tools::ToolExecutor;
+use harness_memory::Session;
+use harness_provider_core::Message;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::path::{Path as FsPath, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use tokio::time::{timeout, Duration};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::info;
 
 use crate::agent;
-use crate::collab::{self, CollabEvent, CollabRegistry};
+use crate::collab;
 use crate::events::{channel as agent_event_channel, try_emit, AgentEvent};
 use crate::projects;
 
-// ── Shared server state ───────────────────────────────────────────────────────
+use auth::{extract_bearer, require_auth};
+use collab_ws::{agent_event_to_collab, collab_ws};
+use project_ops::{
+    collect_change_counts, collect_files, current_git_branch, default_test_command, git_output,
+    git_ahead_behind, is_allowed_test_command, run_git_in_project, run_shell_in_project,
+};
 
-/// Hot-reloaded fields (persist from dashboard writes `config.toml`, then swaps these).
-pub struct ServeRuntimeState {
-    pub provider: ArcProvider,
-    pub tools: ToolExecutor,
-    pub model: String,
-    pub system_prompt: String,
-    pub config: crate::config::Config,
-}
-
-#[derive(Clone)]
-pub struct ServerState {
-    pub inner: Arc<RwLock<ServeRuntimeState>>,
-    pub session_store: Arc<SessionStore>,
-    pub memory_store: Option<Arc<MemoryStore>>,
-    pub embed_model: Option<String>,
-    pub browser_enabled: bool,
-    pub browser_url: String,
-    pub config_active_path: Arc<PathBuf>,
-    /// Bearer token required for mutating / sensitive API routes.
-    pub auth_token: String,
-    /// Live session broadcast registry when `[collab].enabled`.
-    pub collab: Option<CollabRegistry>,
-}
 
 // ── Request / response types ──────────────────────────────────────────────────
 
@@ -177,9 +137,9 @@ struct ProjectSummary {
     updated: String,
 }
 
-const UI_HTML: &str = include_str!("../static/index.html");
-const PROJECT_GIT_TIMEOUT: Duration = Duration::from_secs(60);
-const PROJECT_TEST_TIMEOUT: Duration = Duration::from_secs(300);
+
+const UI_HTML: &str = include_str!("../../static/index.html");
+
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
@@ -204,148 +164,6 @@ pub fn router(state: ServerState) -> Router {
         .with_state(shared)
 }
 
-async fn require_auth(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<Arc<ServerState>>,
-    req: Request<axum::body::Body>,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    if !crate::rate_limit::allow(addr.ip()) {
-        return Err(StatusCode::TOO_MANY_REQUESTS);
-    }
-    let token = req
-        .headers()
-        .get(AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer ").map(str::trim));
-    if !crate::auth_token::verify(token, &state.auth_token) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    Ok(next.run(req).await)
-}
-
-#[derive(Deserialize)]
-struct CollabWsQuery {
-    token: Option<String>,
-    user_id: Option<String>,
-}
-
-async fn collab_ws(
-    ws: WebSocketUpgrade,
-    Path(session_id): Path<String>,
-    Query(query): Query<CollabWsQuery>,
-    State(state): State<Arc<ServerState>>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let Some(registry) = state.collab.clone() else {
-        return Err(StatusCode::NOT_FOUND);
-    };
-    if !crate::auth_token::verify(query.token.as_deref(), &state.auth_token) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    let max_users = {
-        let g = state.inner.read().await;
-        g.config.collab.max_users
-    };
-    let user_id = query
-        .user_id
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("u{:08x}", uuid::Uuid::new_v4().as_u128() as u32));
-    Ok(ws.on_upgrade(move |socket| {
-        handle_collab_ws(socket, session_id, user_id, registry, max_users)
-    }))
-}
-
-async fn handle_collab_ws(
-    mut socket: WebSocket,
-    session_id: String,
-    user_id: String,
-    registry: CollabRegistry,
-    max_users: usize,
-) {
-    let mut rx = match collab::join_session(&registry, &session_id, &user_id, max_users) {
-        Ok(rx) => rx,
-        Err(e) => {
-            let _ = socket.send(WsMessage::Text(format!("error: {e}"))).await;
-            return;
-        }
-    };
-    loop {
-        tokio::select! {
-            msg = socket.recv() => {
-                match msg {
-                    Some(Ok(WsMessage::Text(text))) => {
-                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if v.get("type").and_then(|t| t.as_str()) == Some("typing") {
-                                let partial = v
-                                    .get("partial")
-                                    .and_then(|p| p.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                collab::broadcast_to_session(
-                                    &registry,
-                                    &session_id,
-                                    CollabEvent::UserTyping {
-                                        user_id: user_id.clone(),
-                                        partial,
-                                    },
-                                );
-                            }
-                        }
-                    }
-                    Some(Ok(WsMessage::Close(_))) | None => break,
-                    _ => {}
-                }
-            }
-            ev = rx.recv() => {
-                match ev {
-                    Ok(event) => {
-                        if let Ok(json) = serde_json::to_string(&event) {
-                            if socket.send(WsMessage::Text(json)).await.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-        }
-    }
-    collab::leave_session(&registry, &session_id, &user_id);
-}
-
-fn agent_event_to_collab(event: &AgentEvent) -> Option<CollabEvent> {
-    match event {
-        AgentEvent::TextChunk(content) => Some(CollabEvent::AgentTextChunk {
-            content: content.clone(),
-        }),
-        AgentEvent::ToolStart { name, .. } => {
-            Some(CollabEvent::AgentToolStart { name: name.clone() })
-        }
-        AgentEvent::ToolResult { name, result, .. } => {
-            let preview = if result.len() > 120 {
-                format!("{}…", &result[..120])
-            } else {
-                result.clone()
-            };
-            Some(CollabEvent::AgentToolResult {
-                name: name.clone(),
-                preview,
-            })
-        }
-        AgentEvent::Done => Some(CollabEvent::AgentDone),
-        _ => None,
-    }
-}
-
-fn extract_bearer(headers: &axum::http::HeaderMap, body_token: Option<&str>) -> Option<String> {
-    headers
-        .get(AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer ").map(str::trim))
-        .map(|s| s.to_string())
-        .or_else(|| body_token.map(|s| s.trim().to_string()))
-        .filter(|s| !s.is_empty())
-}
 
 pub async fn serve(state: ServerState, addr: SocketAddr) -> Result<()> {
     if !addr.ip().is_loopback() {
@@ -865,194 +683,14 @@ async fn chat(
     Sse::new(boxed).keep_alive(KeepAlive::default())
 }
 
-#[derive(Debug, Default)]
-struct ChangeCounts {
-    staged: usize,
-    unstaged: usize,
-    untracked: usize,
-}
-
-async fn run_git_in_project(path: &FsPath, args: &[&str]) -> anyhow::Result<String> {
-    let mut cmd = tokio::process::Command::new("git");
-    cmd.current_dir(path).args(args).kill_on_drop(true);
-    let cmd_display = format!("git {}", args.join(" "));
-    let output = timeout(PROJECT_GIT_TIMEOUT, cmd.output())
-        .await
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "{cmd_display} timed out after {}s",
-                PROJECT_GIT_TIMEOUT.as_secs()
-            )
-        })??;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git {} failed: {}", args.join(" "), stderr.trim());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-async fn run_shell_in_project(path: &FsPath, command: &str) -> anyhow::Result<String> {
-    let mut cmd = tokio::process::Command::new("sh");
-    cmd.arg("-c")
-        .arg(command)
-        .current_dir(path)
-        .kill_on_drop(true);
-    let output = timeout(PROJECT_TEST_TIMEOUT, cmd.output())
-        .await
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "command timed out after {}s: {command}",
-                PROJECT_TEST_TIMEOUT.as_secs()
-            )
-        })??;
-    let mut text = String::new();
-    text.push_str(&String::from_utf8_lossy(&output.stdout));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !stderr.trim().is_empty() {
-        if !text.is_empty() {
-            text.push('\n');
-        }
-        text.push_str(&stderr);
-    }
-    if !output.status.success() {
-        anyhow::bail!("command failed: {command}\n{text}");
-    }
-    Ok(text)
-}
-
-fn current_git_branch(path: &FsPath) -> Option<String> {
-    let output = Command::new("git")
-        .current_dir(path)
-        .args(["symbolic-ref", "--short", "HEAD"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if branch.is_empty() {
-        None
-    } else {
-        Some(branch)
-    }
-}
-
-fn git_output(path: &FsPath, args: &[&str]) -> anyhow::Result<String> {
-    let output = Command::new("git").current_dir(path).args(args).output()?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git {} failed: {}", args.join(" "), stderr.trim());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn git_ahead_behind(path: &FsPath) -> anyhow::Result<(u64, u64)> {
-    let out = git_output(
-        path,
-        &["rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
-    )?;
-    let mut parts = out.split_whitespace();
-    let ahead = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
-    let behind = parts.next().unwrap_or("0").parse::<u64>().unwrap_or(0);
-    Ok((ahead, behind))
-}
-
-fn collect_change_counts(path: &FsPath) -> anyhow::Result<ChangeCounts> {
-    let out = git_output(path, &["status", "--porcelain"])?;
-    let mut counts = ChangeCounts::default();
-    for line in out.lines() {
-        if line.starts_with("?? ") {
-            counts.untracked += 1;
-            continue;
-        }
-        let bytes = line.as_bytes();
-        if bytes.len() < 2 {
-            continue;
-        }
-        let x = bytes[0] as char;
-        let y = bytes[1] as char;
-        if x != ' ' && x != '?' {
-            counts.staged += 1;
-        }
-        if y != ' ' && y != '?' {
-            counts.unstaged += 1;
-        }
-    }
-    Ok(counts)
-}
-
-fn default_test_command(path: &FsPath) -> String {
-    if path.join("Cargo.toml").exists() {
-        "cargo test".to_string()
-    } else if path.join("package.json").exists() {
-        "npm test".to_string()
-    } else if path.join("pyproject.toml").exists() || path.join("pytest.ini").exists() {
-        "pytest".to_string()
-    } else if path.join("go.mod").exists() {
-        "go test ./...".to_string()
-    } else {
-        "echo 'No known test command. Pass command in request.'".to_string()
-    }
-}
-
-fn is_allowed_test_command(cmd: &str) -> bool {
-    const ALLOWED: &[&str] = &[
-        "cargo test",
-        "npm test",
-        "yarn test",
-        "pnpm test",
-        "go test",
-        "pytest",
-        "make test",
-        "echo ",
-    ];
-    let cmd = cmd.trim();
-    ALLOWED.iter().any(|prefix| cmd.starts_with(prefix))
-}
-
-fn collect_files(
-    root: &FsPath,
-    dir: &FsPath,
-    query: &str,
-    limit: usize,
-    out: &mut Vec<String>,
-) -> anyhow::Result<()> {
-    if out.len() >= limit {
-        return Ok(());
-    }
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name == ".git" || name == "node_modules" || name == "target" {
-            continue;
-        }
-        if path.is_dir() {
-            collect_files(root, &path, query, limit, out)?;
-            if out.len() >= limit {
-                return Ok(());
-            }
-            continue;
-        }
-        if let Ok(rel) = path.strip_prefix(root) {
-            let rel_s = rel.display().to_string();
-            if query.is_empty() || rel_s.to_lowercase().contains(query) {
-                out.push(rel_s);
-                if out.len() >= limit {
-                    return Ok(());
-                }
-            }
-        }
-    }
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use harness_memory::SessionStore;
     use harness_provider_ollama::{OllamaConfig, OllamaProvider};
-    use harness_tools::ToolRegistry;
+    use harness_tools::{ToolExecutor, ToolRegistry};
+    use std::path::PathBuf;
     use tempfile::{tempdir, TempDir};
 
     async fn spawn_test_server() -> (

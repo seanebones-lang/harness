@@ -126,7 +126,7 @@ Goal: max multi-agent + measurable excellence.
 - [~] **W7.1** Optional remote/shared swarm registry. *(`SwarmRegistry` trait + LocalSqlite + Http stub; HTTP client still open; 2026-08-03)*
 - [x] **W7.2** Per-worker tool allowlist + quota. *(`worker_tool_allowlist` + `worker_max_wall_secs` on swarm run/enqueue; 2026-08-03)*
 - [x] **W7.3** Benchmark harness (fixed tasks, cost/latency dashboard). *(`harness bench` offline pack demo/bench_tasks; live cost still open; 2026-08-03)*
-- [~] **W7.4** Split `agent.rs` / `server.rs` / heavy TUI modules behind stable APIs. *(`src/agent/{drive,memory,compact,naming,run_once,system}.rs` done 2026-08-03; server.rs still monolithic)*
+- [x] **W7.4** Split `agent.rs` / `server.rs` / heavy TUI modules behind stable APIs. *(`src/agent/*` + `src/server/{state,auth,collab_ws,project_ops,mod}.rs` 2026-08-03)*
 - [x] **W7.5** Threat model v2 after feature freeze; external audit checklist. *(`docs/THREAT_MODEL.md` v2 + checklist; 2026-08-03)*
 - [ ] **W7.6** Stable **0.2.0** cut only after Waves 0–2 + W1 smoke matrix.
 
@@ -212,3 +212,9 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 - Public API unchanged (`agent::drive_agent`, `run_once`, `DEFAULT_SYSTEM`, …)
 - Agent unit tests: 9 passed; clippy -D warnings clean
 - `server.rs` deferred (still ~1.2k LOC); next cont
+
+### 2026-08-03 cont (W7.4 server split)
+- `src/server.rs` → `src/server/{mod,state,auth,collab_ws,project_ops}.rs`
+- Public API: `server::{router, serve, ServerState, ServeRuntimeState}`
+- HTTP smoke tests 2/2; agent 9/9; clippy -D warnings clean
+- W7.4 marked [x]
