@@ -88,7 +88,7 @@ Goal: TUI feels finished; swarm ops complete.
 - [x] **W3.2** Session display names — already via `display_name_for` in `/sessions`. *(verified 2026-07-30)*
 - [x] **W3.3** Browser tool: structured connect/CDP errors + COOKBOOK §12 + session reset on disconnect. *(2026-07-30)*
 - [x] **W3.4** Swarm: `cancel --all` / `auto_gc_stale_secs` in `[swarm]` config. *(2026-07-30)*
-- [x] **W3.5** Swarm: `status|result --json` (`task_to_json`). Model/token on task still open. *(partial 2026-07-30)*
+- [x] **W3.5** Swarm: `status|result --json` (`task_to_json`) + **model on task**. *(model column + JSON field 2026-08-03)*
 - [x] **W3.6** Swarm TUI: Enter on selected row peeks result into Events. *(2026-07-30)*
 - [x] **W3.7** Notification audit (voice done, swarm complete, CI) across OSes. *(docs/NOTIFICATIONS_AUDIT.md + spawn_agent notify 2026-07-30)*
 
@@ -123,11 +123,11 @@ Goal: installable shells, not prototypes.
 ### WAVE 7 — Scale & differentiation (quarter)
 Goal: max multi-agent + measurable excellence.
 
-- [~] **W7.1** Optional remote/shared swarm registry. *(design: docs/WAVE7_SCALE.md 2026-08-03)*
+- [~] **W7.1** Optional remote/shared swarm registry. *(`SwarmRegistry` trait + LocalSqlite + Http stub; HTTP client still open; 2026-08-03)*
 - [x] **W7.2** Per-worker tool allowlist + quota. *(`worker_tool_allowlist` + `worker_max_wall_secs` on swarm run/enqueue; 2026-08-03)*
-- [~] **W7.3** Benchmark harness (fixed tasks, cost/latency dashboard). *(design: docs/WAVE7_SCALE.md)*
+- [x] **W7.3** Benchmark harness (fixed tasks, cost/latency dashboard). *(`harness bench` offline pack demo/bench_tasks; live cost still open; 2026-08-03)*
 - [ ] **W7.4** Split `agent.rs` / `server.rs` / heavy TUI modules behind stable APIs.
-- [ ] **W7.5** Threat model v2 after feature freeze; external audit checklist.
+- [x] **W7.5** Threat model v2 after feature freeze; external audit checklist. *(`docs/THREAT_MODEL.md` v2 + checklist; 2026-08-03)*
 - [ ] **W7.6** Stable **0.2.0** cut only after Waves 0–2 + W1 smoke matrix.
 
 ### WAVE 8 — Competition / external eval (parallel track)
@@ -199,3 +199,10 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 - Design: `docs/WAVE7_SCALE.md` for W7.1–W7.4.
 - Skip still: W1.4–W1.5 📌 billing; full REL-01 live keys.
 - Verify: `cargo build --bin harness`; clippy -D warnings clean; provider/tools package tests green.
+
+### 2026-08-03 cont (W7.1/W7.3/W7.5 + W3.5 model)
+- W3.5: swarm task `model` column + `task_to_json.model`; register_task_with_model wired on swarm run/enqueue.
+- W7.1: `src/swarm_registry.rs` trait + LocalSqlite + Http stub; configure probes backend.
+- W7.3: `harness bench` offline pack (`demo/bench_tasks`); unit tests + CLI smoke.
+- W7.5: THREAT_MODEL.md v2 + external audit checklist.
+- Still open: W7.4 god-file split; W7.1 HTTP client; W1.4–W1.5 📌; REL-01 live keys.

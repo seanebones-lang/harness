@@ -50,6 +50,8 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
 
         Some(Commands::Doctor) => handle_doctor_command(cfg).await,
 
+        Some(Commands::Bench { pack, json }) => crate::bench::dispatch_bench(pack.clone(), *json)?,
+
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();
             let bin_name = cmd.get_name().to_string();

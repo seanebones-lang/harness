@@ -213,6 +213,7 @@ timeout_secs = 60
 # worker_tool_allowlist = ["read_file", "list_dir", "search_code", "test_runner"]
 # worker_max_tool_calls = 50   # reserved (agent loop hard-cap is 50)
 # worker_max_wall_secs = 600   # fail worker if wall clock exceeded
+# registry_url = ""            # optional remote swarm (stub until W7.1 HTTP client)
 
 # [collab]
 # enabled = false

@@ -93,7 +93,7 @@ pub async fn build_tools(
                     } else {
                         prompt.clone()
                     };
-                    let id = swarm::register_task(&label)?;
+                    let id = swarm::register_task_with_model(&label, Some(model.as_str()))?;
                     ids.push(id.clone());
                     let p = provider.clone();
                     let t = tools.clone();

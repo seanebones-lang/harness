@@ -240,6 +240,15 @@ pub enum Commands {
     },
     /// Run health checks: API keys, tools, config, daemon, MCP, LSP, and more.
     Doctor,
+    /// Run offline micro-benchmark pack (no API keys). See `demo/bench_tasks/`.
+    Bench {
+        /// Pack directory containing pack.json (default: demo/bench_tasks if present).
+        #[arg(long)]
+        pack: Option<PathBuf>,
+        /// Emit JSON report.
+        #[arg(long)]
+        json: bool,
+    },
     /// Generate shell completions (bash, zsh, fish, powershell, elvish).
     Completions {
         /// Shell type.
