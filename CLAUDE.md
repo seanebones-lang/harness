@@ -1,26 +1,36 @@
-# harness — Codebase Guide (May 2026)
+# harness — Codebase Guide (August 2026)
 
-Rust coding agent. Multi-provider (Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, Ollama Qwen3-Coder). Fast, low-memory, multi-agent.
+Rust multi-provider coding agent. Anthropic / xAI / OpenAI / Mistral / Gemini / Bedrock / Ollama / MLX. Swarm, MCP, serve, TUI.
 
-**Release:** Public **beta** GO — **218 tests**, P0 security closed. **Stable** blocked on manual smoke §3 ([`TODO.md`](TODO.md) **REL-01**).
+**Release:** Public **beta** GO — **`cargo test --bin harness` → 116 tests** (no API keys), P0 security closed. **Stable** blocked on REL-01 smoke matrix ([`TODO.md`](TODO.md)).  
+**Ship branch:** **`main`** only.  
+**License:** proprietary NextEleven LLC ([`LICENSE`](LICENSE)).
 
 ## Build & Test
 
 ```bash
-cargo build                        # dev build
-cargo build --profile selfdev      # fast self-modification build
-cargo build --profile release-lto  # distribution build (thin LTO, stripped)
-cargo test --all                   # workspace integration + crates (root + tests/* ; no API keys)
-cargo clippy --all-targets --all-features -- -D warnings
+cargo build
+cargo build --profile selfdev
+cargo build --profile release-lto
+cargo test --bin harness              # binary unit/integration (prefer this)
+cargo test -p harness-tools
+cargo test -p harness-provider-router
+cargo test --all                      # full workspace
+cargo clippy -p harness --bin harness -- -D warnings
 cargo fmt --all
 
-# PR coverage gate TARGET (see .github/workflows/coverage.yml): ≥ 60% line coverage
-# Last measured: ~23% lines — source of truth: COVERAGE.md (not the gate value)
+# Coverage SoT: COVERAGE.md — last measured **44.67%** lines (llvm-cov 2026-08-03)
+# CI target still ≥ 60% (not yet met)
+cargo llvm-cov --workspace --all-features --summary-only
 
-# Optional: [.githooks/commit-msg](.githooks/commit-msg) drops `Co-authored-by`, `Co-developed-by`,
-# and `Made-with:` trailer lines locally (avoid polluting attribution when IDE aids compose messages).
+# Smoke CLI with tree binary (PATH installs go stale)
+./target/debug/harness --help
+./target/debug/harness bench
+
 git config core.hooksPath .githooks
 ```
+
+Root package is a **binary** — `cargo test --lib` fails. One TESTNAME filter per `cargo test --bin harness` invocation.
 
 ## Running
 
@@ -90,13 +100,25 @@ harness completions zsh > ~/.zsh/completions/_harness
 harness completions fish > ~/.config/fish/completions/harness.fish
 
 # Parallel swarm (SQLite registry)
+harness swarm run "task" -n 3 --model grok-4.3
 harness swarm list
-harness swarm status <task-id>
+harness swarm status <task-id> --json
 harness swarm result <task-id>
 harness swarm cancel <task-id>
+harness swarm cancel --all
 harness swarm wait <task-id>
 harness swarm gc                 # reap orphans; --keep / --older-than-secs / --dry-run
-# TUI: F2 or /swarm toggles the swarm panel
+# TUI: F2 or /swarm toggles the swarm panel; Enter peeks result
+# [swarm] worker_tool_allowlist / worker_max_wall_secs / registry_url
+
+# MCP resources (no agent runtime)
+harness mcp roots
+harness mcp resources
+harness mcp read <uri>
+
+# Offline microbench pack (no API keys)
+harness bench
+harness bench --json --pack demo/bench_tasks
 
 # External bridges (Obsidian, Notes, Calendar, GitHub Projects)
 harness bridge obsidian "Title" "content"
@@ -114,57 +136,28 @@ harness trace <trace-id>
 harness/
 ├── src/                            root binary
 │   ├── main.rs                     entry (`tokio::main`), command dispatch
-│   ├── cli/                        clap args (`args.rs`), tool wiring (`wiring.rs`)
-│   ├── agent.rs                    core agentic loop + memory injection
-│   ├── tui/                        two-panel ratatui TUI (`mod.rs`, `theme.rs`)
-│   ├── highlight.rs                syntect → ratatui syntax highlighting
-│   ├── server.rs                   axum HTTP/SSE server (harness serve)
-│   ├── events.rs                   AgentEvent enum + channel helpers
-│   ├── config.rs                   TOML config structs
-│   ├── cost_db.rs                  SQLite cost tracking (~/.harness/cost.db)
-│   ├── memory_project.rs           .harness/memory/ project facts
-│   ├── sync.rs                     age-encrypted cross-machine git sync
-│   ├── notifications.rs            desktop notification helpers (notify-rust), E16 rich kinds
-│   ├── diff_review.rs              inline diff review + staging buffer (E4)
-│   ├── observability.rs            OpenTelemetry tracing + OTLP export (E7)
-│   ├── swarm.rs                    parallel sub-agent swarm + SQLite registry (E9)
-│   ├── ambient.rs                  background memory consolidation (`AmbientProviders`, `[ambient]` config)
-│   ├── daemon.rs                   editor IPC: Unix socket (macOS/Linux) or loopback TCP (Windows)
-│   ├── bridges.rs                  Obsidian / Apple Notes / Calendar / GitHub Projects (E12)
-│   └── collab.rs                   collaborative WebSocket sessions (E13)
+│   ├── cli/                        clap args, lightweight dispatch, tool wiring
+│   ├── agent/                      drive, memory inject, compact, naming, run_once, system
+│   ├── tui/                        two-panel ratatui TUI
+│   ├── server/                     axum HTTP/SSE (state, auth, collab_ws, project_ops)
+│   ├── swarm.rs + swarm_registry.rs
+│   ├── bench.rs                    offline microbench pack
+│   ├── events / config / cost_db / memory_project / sync / notifications
+│   ├── observability / ambient / daemon / bridges / collab / checkpoint …
 ├── crates/
-│   ├── harness-provider-core/      Provider trait, Message/Delta/Tool types, ResponseSchema
-│   ├── harness-provider-anthropic/ Claude Sonnet/Opus/Haiku + prompt caching + thinking
-│   ├── harness-provider-openai/    GPT-5.x streaming SSE client + strict JSON schema
-│   ├── harness-provider-xai/       Grok 4.x streaming + native tools + strict JSON schema
-│   ├── harness-provider-ollama/    Local Ollama (Qwen3-Coder 30B default)
-│   ├── harness-provider-mlx/       MLX via `mlx_lm.server` (macOS/aarch64; added in remediation)
-│   ├── harness-provider-router/    Smart multi-provider router (env-key detection)
-│   ├── harness-lsp/                LSP client integration
-│   ├── harness-tools/              Tool trait + built-ins (shell/gh/computer/file/search)
-│   ├── harness-memory/             SQLite session store + vector memory store
-│   ├── harness-mcp/                MCP 2025-03-26 client: tools, resources, sampling, roots, progress (E8)
-│   ├── harness-browser/            Chrome CDP browser tool
-│   ├── harness-voice/              Whisper transcription + OpenAI Realtime API duplex (E5)
-│   └── harness-term-graphics/      Inline image rendering (Kitty/iTerm2/Sixel, E6)
-├── extensions/vscode/              VS Code extension (TypeScript, E14)
-├── apps/desktop/                   Tauri 2 desktop shell (macOS .app, E15)
-├── config/default.toml             Annotated default configuration
-├── docs/BROWSER_CDP.md             Chrome CDP / browser tool setup
-├── docs/COOKBOOK.md                Example prompts and tool patterns
-├── docs/INSTALL.md                 Per-OS install guide
-├── docs/PUBLIC_RELEASE.md          Release checklist
-├── docs/RELEASE_STATUS.md          Latest go/no-go log
-├── docs/SHORTCUTS.md               TUI keyboard shortcuts cheat sheet
-├── docs/MIGRATION.md               Phase D→E breaking changes
-├── docs/i18n/USER_MANUAL.es.md     Spanish manual (partial)
-├── TODO.md                         Open backlog + recently completed items
-├── CONTRIBUTING.md                 Contributor guide
-├── tests/smoke_test.rs             Integration tests (no API key required)
-└── scripts/install.sh              Install from source to ~/.local/bin
+│   ├── harness-provider-core|anthropic|openai|xai|ollama|mlx|gemini|bedrock|router
+│   ├── harness-tools               builtins + database/notebook/docker
+│   ├── harness-memory|mcp|browser|lsp|voice|term-graphics
+├── config/default.toml
+├── demo/                           scenarios, DEMO_SCRIPT, bench_tasks/
+├── docs/                           user + eng docs (CTO_BACKLOG, COOKBOOK, THREAT_MODEL, …)
+├── apps/desktop/                   Tauri 2
+├── extensions/vscode/
+├── TODO.md · CONTRIBUTING.md · COVERAGE.md · LICENSE (proprietary)
+└── scripts/                        install, smoke_rel01, smoke_linux_docker, vendor
 ```
 
-## May 2026 Model Defaults
+## Model defaults (2026)
 
 | Provider  | Default model                    | Notes                         |
 |-----------|----------------------------------|-------------------------------|
@@ -312,7 +305,7 @@ Background memory consolidation after turns. Uses **`AmbientProviders`** (router
 
 Editor IPC for the VS Code extension. **macOS/Linux:** Unix domain socket at `~/.harness/daemon.sock` (default). **Windows:** loopback **TCP** with port written to `~/.harness/daemon.port`. `[daemon].transport` in config selects `auto` (platform default), `unix`, or `tcp`; Unix can force TCP via `transport = "tcp"`.
 
-## Agent loop (`src/agent.rs`)
+## Agent loop (`src/agent/`)
 
 ```
 drive_agent(provider, tools, memory?, embed_model?, session, system_prompt, events?) -> Result<()>
@@ -361,7 +354,7 @@ Status bar shows: session ID · model · turns · cost · cache hit rate · `[FO
 
 See `docs/SHORTCUTS.md` for full keyboard reference.
 
-## HTTP API (`src/server.rs`)
+## HTTP API (`src/server/`)
 
 ```
 POST /api/chat          body: {prompt, session_id?}   → SSE AgentEvent stream (Bearer auth)

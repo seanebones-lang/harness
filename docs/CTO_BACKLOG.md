@@ -1,13 +1,13 @@
 # CTO Engineering Backlog — harness
 
-**Date:** 2026-07-30  
-**Perspective:** CTO review of codebase + Obsidian vault  
-**Branch base:** `dev` @ `54da34e` (was f06ee9b at backlog create)  
-**Verdict:** Strong multi-provider agent core; **operability caught up substantially on 2026-07-30** (coverage honesty, swarm/MCP/collab/doctor, deny/clippy). Remaining blockers are **release smoke + billing matrix**, then capability/competition depth.
+**Updated:** 2026-08-03  
+**Perspective:** CTO review + max-opt swarm execution  
+**Ship branch:** **`main`** @ merge `46ab97f`+ (dev folded; single branch)  
+**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed. Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)**, coverage 60% climb, and optional remote swarm HTTP client depth.
 
-**EOD pointer:** vault `Vault/Status/Session-Close-2026-07-30.md` · PR https://github.com/seanebones-lang/harness/pull/5
+**Pointers:** [`README.md`](../README.md) · [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) · [`docs/TEAM_UPDATE_2026-08-03.md`](TEAM_UPDATE_2026-08-03.md) · historical PR https://github.com/seanebones-lang/harness/pull/5
 
-**How to use:** Work top-to-bottom within each wave. Do not start Wave N+1 items that block Wave N release gates unless explicitly re-prioritized. Check boxes in this file as we execute.
+**How to use:** Work top-to-bottom within each wave. Skip 📌 PINNED unless unpinned. Check boxes only after real execution.
 
 ---
 
@@ -32,7 +32,7 @@
 ### C. Architecture & quality
 | Gap | Evidence | Risk |
 |-----|----------|------|
-| God files | `agent.rs` / `server.rs` / heavy TUI still large | Change risk (W7.4) |
+| God files | **Closed W7.4** — `src/agent/*`, `src/server/*` modular | Residual TUI size OK |
 | Unwrap surface | `src/` production mostly clean; crates residual | Panic paths under poison/IO |
 | MCP sampling UX | **Closed** — TUI y/n + auto | — |
 | Version drift | **Closed** — desktop 0.1.2-beta aligned | — |
@@ -211,7 +211,7 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 - `src/agent.rs` → `src/agent/{mod,drive,memory,compact,naming,run_once,system,tests}.rs`
 - Public API unchanged (`agent::drive_agent`, `run_once`, `DEFAULT_SYSTEM`, …)
 - Agent unit tests: 9 passed; clippy -D warnings clean
-- `server.rs` deferred (still ~1.2k LOC); next cont
+- Server split completed same day (see below)
 
 ### 2026-08-03 cont (W7.4 server split)
 - `src/server.rs` → `src/server/{mod,state,auth,collab_ws,project_ops}.rs`

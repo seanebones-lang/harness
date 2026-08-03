@@ -6,83 +6,72 @@
 
 Canonical user docs: [`README.md`](README.md). Developer detail: [`CLAUDE.md`](CLAUDE.md), [`config/default.toml`](config/default.toml).
 
-Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · team brief: [`docs/TEAM_UPDATE_2026-07-30.md`](docs/TEAM_UPDATE_2026-07-30.md)
+Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · team: [`docs/TEAM_UPDATE_2026-08-03.md`](docs/TEAM_UPDATE_2026-08-03.md)
+
+**Ship branch:** `main` only.
 
 ---
 
-## Public beta promotion (May 2026)
+## Public beta (current)
 
-**Verdict:** **GO** for public beta now. **Stable** blocked on REL-01 + P2-10 (see Tier 1).
+**Verdict:** **GO** for public beta. **Stable** blocked on REL-01 full OS matrix + prebuilt billing (W1.4–W1.5 📌).
 
-### Tier 0 — Ship beta now
+| Gate | Status |
+|------|--------|
+| `cargo test --bin harness` | **116** pass (2026-08-03) |
+| Clippy `-D warnings` (bin) | green on ship commits |
+| Coverage measured | **44.67%** lines — [`COVERAGE.md`](COVERAGE.md); CI target 60% open |
+| License | Proprietary NextEleven LLC ([`LICENSE`](LICENSE)) |
+
+### Tier 0 — Beta shipped
 
 | Task | Status |
 |------|--------|
-| Public repo, MIT, threat model, install docs | [x] |
-| CI (Ubuntu, macOS, Windows) + automated smoke subset | [x] |
-| README screenshots + comparison link | [x] |
-| Promotion report + draft release notes | [x] |
-| Public announcement (HN, X, Discussions) | [ ] maintainer |
+| Public repo, threat model, install docs | [x] |
+| CI (Ubuntu, macOS, Windows) | [x] |
+| README + CTO backlog | [x] 2026-08-03 docs refresh |
+| Public announcement | [ ] maintainer |
 
 ### Tier 1 — Before “stable”
 
 | ID | Task | Status |
 |----|------|--------|
-| REL-01 | Manual smoke §3 (macOS, Linux, Windows) | [~] macOS partial — CTO W1.1–W1.3 |
-| P2-10 | Homebrew tap SHA after tag | [~] macOS arm64 only — W1.5 |
-| REL-02 | Tag v0.1.2-beta + verify prebuilts | [~] macOS arm64 only |
-| REL-03 | Log REL-01 per OS | [x] partial |
+| REL-01 | Manual smoke §3 (macOS, Linux, Windows) | [~] offline helpers exist; live keys / full matrix open — W1.1–W1.3 |
+| W1.4 | GitHub Actions billing / full Release prebuilts | [ ] 📌 PINNED |
+| W1.5 | Homebrew SHA all platforms | [ ] 📌 PINNED (needs W1.4) |
+| REL-02 | Tag + verify prebuilts | [~] macOS arm64 history only |
+| W7.6 | Stable **0.2.0** | [ ] after Waves 0–2 smoke matrix |
 
-### Tier 2 — High-impact polish
-
-| Task | Status |
-|------|--------|
-| COMPARISON / CONTRIBUTING / labels | [x] |
-| Demo GIF/video | [ ] optional |
-| Swarm CLI + TUI + GC (2026-07-30) | [x] |
-| TUI scrollbar + follow-scroll | [x] CTO W3.1 |
-| Session list display names | [x] CTO W3.2 |
-| Slash stubs (`/obsidian`, `/trace`) | [x] CTO W0.3 |
-| COOKBOOK swarm + MCP examples | [x] W0.5 / W4.2 |
-| Coverage honesty (badge vs measured) | [x] W0.2 + W2.1 llvm-cov ~40% |
-| MCP resources/roots CLI | [x] W4.2 `harness mcp` |
-| Notification audit | [x] W3.7 |
-| Bridge doctor checks | [x] W4.3 |
-| OTLP / trace smoke doc | [x] W4.5 |
-
-### Tier 3 — Growth
+### Tier 2 — Shipped polish (recent)
 
 | Task | Status |
 |------|--------|
-| MCP sampling interactive TUI approval | [x] CTO W4.1 |
-| DatabaseTool / NotebookTool / DockerTool | [x] CTO W5.4–W5.6 (2026-08-03) |
-| New providers (Mistral, Gemini, Bedrock) | [x] CTO W5.1–W5.2 (2026-08-03) |
-| VS Code + Tauri packaging | [x] CTO W6.* (2026-07-31) |
-| Community channel | [ ] optional |
-| Full CTO waves 0–8 | [~] [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md) |
+| Swarm CLI + TUI + GC + worker gates | [x] |
+| MCP sampling TUI + resources CLI | [x] |
+| Coverage honesty + climb ~45% | [x] measured |
+| Gemini + Bedrock providers | [x] W5.2 |
+| Database / Notebook / Docker tools | [x] W5.4–W5.6 config-gated |
+| Computer-use docs | [x] W5.7 |
+| Offline `harness bench` pack | [x] W7.3 |
+| Threat model v2 | [x] W7.5 |
+| agent/ + server/ module splits | [x] W7.4 |
+| VS Code + Tauri packaging waves | [x] W6 |
 
----
+### Tier 3 — Still open eng
 
-## Historical P0–P2 (May 2026)
-
-Most P0/P1 closed. P2 reconciled 2026-07-30:
-
-| ID | Item | Status |
-|----|------|--------|
-| P2-1 | Scrollbar + follow-scroll | [x] W3.1 |
-| P2-2 | Session names | [x] W3.2 |
-| P2-3 | Notification kinds | [x] W3.7 |
-| P2-4 | Swarm status | [x] + panel |
-| P2-5–P2-6 | Collab max_users; browser Err | [x] |
-| P2-7 | Coverage | [~] ~40% llvm-cov — W2.1; 60% CI target open |
-| P2-8–P2-9 | VS Code / desktop CI | [x] W6 |
-| P2-10 | Homebrew | [ ] maintainer |
+| Task | Status |
+|------|--------|
+| Remote swarm HTTP client (beyond stub) | [~] W7.1 trait+stub |
+| Coverage → 60% CI gate | [ ] |
+| Live provider cost/latency bench | [ ] optional |
+| Community channel / announce | [ ] maintainer |
 
 ---
 
 ## Release checklist
 
-- [x] test / clippy / fmt / release-lto (re-run before tag)
+- [x] test / clippy on ship commits (re-run before tag)
 - [ ] REL-01 full matrix — CTO W1.1–W1.3
+- [ ] Un-pin billing for multi-arch prebuilts
 
 See [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) §3 · [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md).

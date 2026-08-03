@@ -223,17 +223,31 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ---
 
+**2026-08-03 — Single-branch main + full docs refresh**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main` only** (`dev` merged + deleted) |
+| `cargo test --bin harness` | **116 pass** |
+| Docs | Full README rewrite; CLAUDE/TODO/SHORTCUTS/CTO/TEAM_UPDATE aligned |
+| License | Proprietary NextEleven LLC (LICENSE on main) |
+| Coverage badge | ~45% measured (COVERAGE.md 44.67%) |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on REL-01 + prebuilts.
+
+---
+
 ## Current recommendation (public beta)
 
 | Item | Status |
 |------|--------|
-| **License** | MIT (`LICENSE` + workspace `Cargo.toml`) |
-| **Automated gates** | **218 tests**, clippy clean; CI multi-OS + `smoke-rel01` job; coverage ≥ 60% on PRs |
+| **License** | Proprietary NextEleven LLC (`LICENSE`) |
+| **Automated gates** | **116** bin tests; clippy clean on ship; CI multi-OS; coverage **target** 60% (measured ~45%) |
 | **P0 security** | **Closed** — see [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
-| **Threat model** | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) |
-| **Open backlog** | [`TODO.md`](../TODO.md) — severity-ranked + roadmap |
+| **Threat model** | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) v2 |
+| **Open backlog** | [`TODO.md`](../TODO.md) · [`CTO_BACKLOG.md`](CTO_BACKLOG.md) |
 | **Manual smoke §3** | **Pending** — blocks **stable** |
-| **Experimental modules** | `collab`, `bridges`, `diff_review` wired when enabled; polish ongoing |
+| **Ship branch** | **`main`** |
 
 **Verdict:** **GO** for **public beta**. Promote to **stable** only after **REL-01** manual smoke §3 on target OSes (record above).
 

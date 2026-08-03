@@ -264,14 +264,13 @@ timeout_secs = 60
 
 ## See also
 
-- [`README.md`](../README.md) — platform matrix and troubleshooting
+- [`README.md`](../README.md) — full product surface, install, providers, gated tools
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — how to add tools
-- [`TODO.md`](../TODO.md) — severity-ranked backlog + roadmap (stable blocked on REL-01 manual smoke)
+- [`TODO.md`](../TODO.md) · [`CTO_BACKLOG.md`](CTO_BACKLOG.md) — backlog
 - [`BROWSER_CDP.md`](BROWSER_CDP.md) — browser tool setup
 - [`COMPUTER_USE.md`](COMPUTER_USE.md) — computer-use per-OS defaults and risks
-- [`SHORTCUTS.md`](SHORTCUTS.md) — TUI keys including F2 / `/swarm`; MCP CLI
-- [`NOTIFICATIONS_AUDIT.md`](NOTIFICATIONS_AUDIT.md) — desktop notification kinds + call sites
-- [`OTLP_SMOKE.md`](OTLP_SMOKE.md) — local traces + experimental OTLP
-- [`COLLAB.md`](COLLAB.md) — multi-user WebSocket sessions + max_users
-- [`PROVIDERS_OPENAI_COMPAT.md`](PROVIDERS_OPENAI_COMPAT.md) — Mistral + OpenAI-compatible endpoints
-- [`CTO_BACKLOG.md`](CTO_BACKLOG.md) — ordered engineering waves
+- [`PROVIDERS_GEMINI_BEDROCK.md`](PROVIDERS_GEMINI_BEDROCK.md) — Gemini + Bedrock
+- [`PROVIDERS_OPENAI_COMPAT.md`](PROVIDERS_OPENAI_COMPAT.md) — Mistral + OpenAI-compatible
+- [`SHORTCUTS.md`](SHORTCUTS.md) — TUI keys; MCP + bench CLI
+- [`NOTIFICATIONS_AUDIT.md`](NOTIFICATIONS_AUDIT.md) · [`OTLP_SMOKE.md`](OTLP_SMOKE.md) · [`COLLAB.md`](COLLAB.md)
+- Offline pack: `harness bench` / `demo/bench_tasks/`

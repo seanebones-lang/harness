@@ -1,8 +1,8 @@
 # harness — Roadmap to Maximum Capability & Compatibility
 
-**Last updated:** 2026-07-30  
-**Status base:** public beta GO · stable blocked (REL-01 + prebuilt matrix)  
-**Companion:** [`TEAM_UPDATE_2026-07-30.md`](TEAM_UPDATE_2026-07-30.md)
+**Last updated:** 2026-08-03  
+**Status base:** public beta GO · stable blocked (REL-01 + prebuilt matrix) · ship on **`main`**  
+**Companion:** [`TEAM_UPDATE_2026-08-03.md`](TEAM_UPDATE_2026-08-03.md) · ordered work [`CTO_BACKLOG.md`](CTO_BACKLOG.md)
 
 This roadmap is the forward plan for making harness the strongest multi-provider, multi-agent coding system we can ship: **capable**, **compatible**, **safe**, and **operable**.
 
@@ -24,14 +24,14 @@ A single binary (plus optional desktop/editor shells) that:
 
 | Surface | Today | Target |
 |---------|--------|--------|
-| OS install | macOS arm64 strongest; others partial | Full prebuilts + Homebrew + install scripts all OS |
-| Providers | Anthropic, xAI, OpenAI, Ollama, MLX | + Mistral, Gemini, Bedrock (and OpenAI-compatible catch-all) |
-| Editors | VS Code extension (early) | Ship-quality VS Code + optional JetBrains later |
-| Desktop | Tauri app (early) | Signed macOS/Windows/Linux packages |
-| Protocols | MCP client, LSP client, CDP browser | Full MCP sampling UX; robust reconnect; resource browser |
-| Multi-agent | Local SQLite swarm + TUI panel + GC | Optional remote workers / shared registry; quotas |
-| Headless | CLI, `serve`, swarm, doctor | Stable OpenAPI; auth modes; health for k8s |
-| Local models | Ollama + MLX | Documented GPU/CPU paths; embedding defaults |
+| OS install | Scripts + CI all OS; prebuilts partial | Full prebuilts + Homebrew all arch (billing 📌) |
+| Providers | Anthropic, xAI, OpenAI, Mistral, Gemini, Bedrock, Ollama, MLX, openai-compat | Keep depth + eval |
+| Editors | VS Code + Tauri waves landed | Signed packages polish |
+| Protocols | MCP sampling UX + resources CLI; CDP browser | Robust reconnect polish |
+| Multi-agent | Local SQLite swarm + allowlist/wall + TUI | Remote HTTP registry client beyond stub |
+| Headless | CLI, serve, swarm, doctor, bench | Stable OpenAPI; k8s health |
+| Local models | Ollama + MLX | Documented GPU/CPU paths |
+| Coverage | ~45% measured | ≥60% CI gate green |
 
 ---
 

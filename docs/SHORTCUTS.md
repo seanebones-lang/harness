@@ -107,11 +107,14 @@ Voice input auto-enables focus mode during recording.
 | Command | Action |
 |---------|--------|
 | `harness swarm list\|status\|gc\|…` | Swarm registry ops |
+| `harness bench [--json] [--pack DIR]` | Offline microbench pack |
 | `harness mcp roots` | Roots advertised to MCP servers |
 | `harness mcp resources [--server NAME]` | List MCP resources |
 | `harness mcp read <uri> [--server NAME]` | Read one MCP resource |
 | `harness bridge obsidian …` | Obsidian bridge write |
 | `harness trace [id]` | Dump last / named OTEL-ish trace |
+| `harness doctor` | Health: keys, bridges, MCP, observability |
+| `harness models [--set …]` | Provider/model catalogue |
 
 ## MCP CLI (resources / roots)
 

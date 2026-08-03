@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Gemini + Bedrock providers; Database/Notebook/Docker tools (config-gated)
+- `harness bench` offline pack; swarm worker allowlist + wall timeout; model on swarm JSON
+- `src/agent/*` and `src/server/*` module splits
+- Threat model v2; full README / docs refresh (2026-08-03)
+
+### Changed
+- Ship branch **main** only (`dev` folded and removed)
+- LICENSE: proprietary NextEleven LLC notice
+- Honest coverage messaging (~45% measured; 60% CI target)
+
 ## [0.1.2-beta] - 2026-05-25
 
 ### Added
