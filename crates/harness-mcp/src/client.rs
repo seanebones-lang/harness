@@ -1327,6 +1327,47 @@ mod pure_helper_tests {
     }
 
     #[test]
+    fn extract_mcp_text_content_edge_shapes() {
+        // Empty array
+        assert_eq!(extract_mcp_text_content(Some(&json!([]))), "");
+        // Missing type → [part]
+        assert_eq!(
+            extract_mcp_text_content(Some(&json!([{"text": "no-type"}]))),
+            "[part]"
+        );
+        // text part with missing text field → empty segment
+        assert_eq!(
+            extract_mcp_text_content(Some(&json!([{"type": "text"}]))),
+            ""
+        );
+        // object without text/content falls back to JSON stringification
+        let obj = json!({"foo": 1, "bar": true});
+        let out = extract_mcp_text_content(Some(&obj));
+        assert!(out.contains("foo"), "got: {out}");
+        // bool / null scalar
+        assert_eq!(extract_mcp_text_content(Some(&json!(true))), "true");
+        assert_eq!(extract_mcp_text_content(Some(&json!(null))), "null");
+        // nested content with mixed parts
+        assert_eq!(
+            extract_mcp_text_content(Some(&json!({
+                "content": [
+                    {"type": "text", "text": "x"},
+                    {"type": "resource", "uri": "r"}
+                ]
+            }))),
+            "x\n[resource]"
+        );
+    }
+
+    #[test]
+    fn mcp_sampling_message_defaults_missing_role_to_user() {
+        let m = mcp_sampling_message_to_core(&json!({"content": "no-role"})).unwrap();
+        assert!(matches!(m.role, Role::User));
+        assert!(matches!(m.content, MessageContent::Text(ref t) if t == "no-role"));
+        assert!(m.tool_call_id.is_none());
+    }
+
+    #[test]
     fn mcp_sampling_message_to_core_roles() {
         let user = mcp_sampling_message_to_core(&json!({
             "role": "user",

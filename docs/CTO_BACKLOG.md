@@ -105,12 +105,12 @@ Goal: MCP/LSP/bridges match marketing.
 Goal: competitive breadth.
 
 - [x] **W5.1** Providers: OpenAI-compatible generic endpoint + Mistral (highest leverage first). *(docs/PROVIDERS_OPENAI_COMPAT.md; 2026-07-30)*
-- [ ] **W5.2** Providers: Gemini + Bedrock.
-- [~] **W5.3** Models picker + router policy tests for new keys. *(models catalogue now includes gemini; router has no-key StaticProvider policy tests in lib.rs; full Gemini router integration pending W5.2; 2026-07-31)*
-- [ ] **W5.4** DatabaseTool (read-only default) behind config flag.
-- [ ] **W5.5** NotebookTool (`.ipynb` read/edit cells).
-- [ ] **W5.6** DockerTool (allowlisted compose/ps/logs; no unbounded docker.sock).
-- [ ] **W5.7** Computer-use / sandbox defaults documented per OS.
+- [x] **W5.2** Providers: Gemini + Bedrock. *(OpenAI-compat Gemini + Bedrock Converse SigV4; router/models; docs/PROVIDERS_GEMINI_BEDROCK.md; 2026-08-03)*
+- [x] **W5.3** Models picker + router policy tests for new keys. *(gemini+bedrock catalogue + build_provider tests; 2026-08-03)*
+- [x] **W5.4** DatabaseTool (read-only default) behind config flag. *(`[tools.database]`; 2026-08-03)*
+- [x] **W5.5** NotebookTool (`.ipynb` read/edit cells). *(`[tools.notebook]`; 2026-08-03)*
+- [x] **W5.6** DockerTool (allowlisted compose/ps/logs; no unbounded docker.sock). *(`[tools.docker]`; 2026-08-03)*
+- [x] **W5.7** Computer-use / sandbox defaults documented per OS. *(`docs/COMPUTER_USE.md`; 2026-08-03)*
 
 ### WAVE 6 — Surfaces (desktop / editor) (2–4 weeks)
 Goal: installable shells, not prototypes.
@@ -123,9 +123,9 @@ Goal: installable shells, not prototypes.
 ### WAVE 7 — Scale & differentiation (quarter)
 Goal: max multi-agent + measurable excellence.
 
-- [ ] **W7.1** Optional remote/shared swarm registry.
-- [ ] **W7.2** Per-worker tool allowlist + quota.
-- [ ] **W7.3** Benchmark harness (fixed tasks, cost/latency dashboard).
+- [~] **W7.1** Optional remote/shared swarm registry. *(design: docs/WAVE7_SCALE.md 2026-08-03)*
+- [x] **W7.2** Per-worker tool allowlist + quota. *(`worker_tool_allowlist` + `worker_max_wall_secs` on swarm run/enqueue; 2026-08-03)*
+- [~] **W7.3** Benchmark harness (fixed tasks, cost/latency dashboard). *(design: docs/WAVE7_SCALE.md)*
 - [ ] **W7.4** Split `agent.rs` / `server.rs` / heavy TUI modules behind stable APIs.
 - [ ] **W7.5** Threat model v2 after feature freeze; external audit checklist.
 - [ ] **W7.6** Stable **0.2.0** cut only after Waves 0–2 + W1 smoke matrix.
@@ -189,3 +189,13 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 
 - W5.2 partial: Gemini crate added (Cargo + client/types/stream/lib); router wiring + Bedrock pending. (2026-07-31)
 - W5.2: Gemini crate + PROVIDERS.md research/stub + router placeholder done (subagent); full integration pending. (2026-07-31)
+
+### 2026-08-03 max-opt swarm
+- Specialized team: provider-engineer · tools-engineer · quality-engineer (Hermes delegate_task + orch integrate).
+- **W5.2–W5.7 [x]**: Gemini (OpenAI-compat) + Bedrock Converse; Database/Notebook/Docker tools config-gated; COMPUTER_USE.md.
+- **W5.3 [x]**: models catalogue + router `build_provider_gemini_*` / `build_provider_bedrock_*` tests.
+- Quality: expanded swarm/notifications/mcp/memory/filesystem/shell unit tests (harness-tools 95 pass).
+- Release: `scripts/smoke_linux_docker.sh` (W1.2 offline path); smoke_rel01 swarm/mcp offline checks.
+- Design: `docs/WAVE7_SCALE.md` for W7.1–W7.4.
+- Skip still: W1.4–W1.5 📌 billing; full REL-01 live keys.
+- Verify: `cargo build --bin harness`; clippy -D warnings clean; provider/tools package tests green.

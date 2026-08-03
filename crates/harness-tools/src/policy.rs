@@ -2,6 +2,10 @@
 
 use serde_json::Value;
 
+use crate::tools::database::database_action_is_mutating;
+use crate::tools::docker::docker_action_is_mutating;
+use crate::tools::notebook::notebook_action_is_mutating;
+
 /// Built-in tools that mutate the workspace without going through `git`.
 pub const BUILTIN_DESTRUCTIVE_TOOLS: &[&str] =
     &["write_file", "patch_file", "shell", "apply_patch"];
@@ -13,6 +17,18 @@ pub fn tool_requires_checkpoint(name: &str, args: &Value) -> bool {
     }
     if name == "git" {
         return git_action_is_mutating(args);
+    }
+    if name == "notebook" {
+        return notebook_action_is_mutating(args);
+    }
+    if name == "docker" {
+        return docker_action_is_mutating(args);
+    }
+    if name == "database" {
+        // When the tool is configured readonly (default), execute rejects writes.
+        // If readonly was disabled, treat non-SELECT queries as mutating.
+        // We cannot read runtime config here; use SQL shape: non-readonly SQL → checkpoint.
+        return database_action_is_mutating(args, false);
     }
     false
 }
@@ -130,6 +146,70 @@ mod tests {
         assert!(!tool_requires_checkpoint(
             "git",
             &json!({"action": "stash"})
+        ));
+    }
+
+    #[test]
+    fn notebook_write_requires_checkpoint_read_skips() {
+        assert!(tool_requires_checkpoint(
+            "notebook",
+            &json!({"action": "write_cell", "path": "a.ipynb", "index": 0})
+        ));
+        assert!(tool_requires_checkpoint(
+            "notebook",
+            &json!({"action": "add_cell", "path": "a.ipynb"})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "notebook",
+            &json!({"action": "list_cells", "path": "a.ipynb"})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "notebook",
+            &json!({"action": "read_cell", "path": "a.ipynb", "index": 0})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "notebook",
+            &json!({"action": "metadata", "path": "a.ipynb"})
+        ));
+    }
+
+    #[test]
+    fn docker_mutating_requires_checkpoint_readonly_skips() {
+        assert!(tool_requires_checkpoint(
+            "docker",
+            &json!({"action": "compose_up"})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "docker",
+            &json!({"action": "ps"})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "docker",
+            &json!({"action": "logs", "container": "x"})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "docker",
+            &json!({"action": "images"})
+        ));
+    }
+
+    #[test]
+    fn database_write_sql_requires_checkpoint_select_skips() {
+        assert!(!tool_requires_checkpoint(
+            "database",
+            &json!({"action": "query", "sql": "SELECT 1", "path": "a.db"})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "database",
+            &json!({"action": "list_tables", "path": "a.db"})
+        ));
+        assert!(!tool_requires_checkpoint(
+            "database",
+            &json!({"action": "schema", "path": "a.db", "table": "t"})
+        ));
+        assert!(tool_requires_checkpoint(
+            "database",
+            &json!({"action": "query", "sql": "DELETE FROM t", "path": "a.db"})
         ));
     }
 }

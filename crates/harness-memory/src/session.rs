@@ -44,3 +44,24 @@ impl Session {
         self.id.get(..8).unwrap_or(&self.id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harness_provider_core::Message;
+
+    #[test]
+    fn session_new_with_name_push_and_short_id() {
+        let mut s = Session::new("claude-sonnet-4-6").with_name("demo");
+        assert_eq!(s.name.as_deref(), Some("demo"));
+        assert_eq!(s.model, "claude-sonnet-4-6");
+        assert!(s.messages.is_empty());
+        assert_eq!(s.short_id().len(), 8);
+        assert!(s.id.starts_with(s.short_id()));
+
+        let before = s.updated_at;
+        s.push(Message::user("hi"));
+        assert_eq!(s.messages.len(), 1);
+        assert!(s.updated_at >= before);
+    }
+}

@@ -174,4 +174,15 @@ mod allowlist_tests {
         assert!(!command_is_allowed("bash", None));
         assert!(!command_is_allowed("/bin/sh", None));
     }
+
+    #[test]
+    fn allowlist_rejects_similar_but_not_exact_basenames() {
+        let list = vec!["node".to_string()];
+        assert!(!command_is_allowed("nodejs", Some(&list)));
+        assert!(!command_is_allowed("node.exe", Some(&list)));
+        // Full path must match exactly when listed as full path only
+        let full = vec!["/opt/bin/mcp".to_string()];
+        assert!(!command_is_allowed("/other/mcp", Some(&full)));
+        assert!(command_is_allowed("/opt/bin/mcp", Some(&full)));
+    }
 }

@@ -71,6 +71,17 @@ impl OpenAIConfig {
             .with_base_url("https://api.mistral.ai/v1")
             .with_model("mistral-large-latest")
     }
+
+    /// Google Gemini via the OpenAI-compatible Generative Language API.
+    ///
+    /// Base: `https://generativelanguage.googleapis.com/v1beta/openai`
+    /// Auth: `GEMINI_API_KEY` or `GOOGLE_API_KEY` (Bearer).
+    pub fn gemini(api_key: impl Into<String>) -> Self {
+        Self::new(api_key)
+            .with_provider_name("gemini")
+            .with_base_url("https://generativelanguage.googleapis.com/v1beta/openai")
+            .with_model("gemini-2.0-flash")
+    }
 }
 
 #[derive(Clone)]

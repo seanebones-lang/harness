@@ -4,7 +4,7 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 
 | Field | Value |
 |-------|--------|
-| **Current measured** | **40.22%** lines (7814 / 19430; llvm-cov, 2026-07-30) — near-term ≥40% **met** |
+| **Current measured** | **44.67%** lines (9723 / 21766; llvm-cov, 2026-08-03) — near-term ≥40% **met** |
 | **CI gate (target)** | ≥ 60% lines via `cargo llvm-cov --fail-under-lines 60` — **not met** |
 | **Near-term goal** | Workspace **≥ 40%** ✓, then critical crates **≥ 60%** |
 | **Stretch** | Meet CI **≥ 60%** workspace |
@@ -19,17 +19,20 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 
 ## Concrete next test modules
 
-| Module | What to cover next |
-|--------|--------------------|
-| `crates/harness-tools/src/tools/filesystem.rs` | Missing args, line-range clamp, patch uniqueness errors |
-| `crates/harness-tools/src/tools/apply_patch.rs` | Parse/apply edge cases (empty hunk, mismatch) |
+| Module | Status / what to cover next |
+|--------|------------------------------|
+| `crates/harness-tools/src/tools/filesystem.rs` | **Done (W2):** missing args, line-range clamp, patch uniqueness/dry_run, trim_context, def names (~99% lines) |
+| `crates/harness-tools/src/tools/apply_patch.rs` | **Done (W2):** empty patch/hunk, malformed header, strip prefix, deletion `/dev/null`, missing patch (~95%) |
+| `crates/harness-tools/src/tools/shell.rs` | **Done (W2):** denylist case-insensitive, confirm without run, empty allowlist, def name (~96%) |
+| `crates/harness-tools/src/tools/swarm_tool.rs` | **Done (W2):** prompt/count clamps, runner error, def name (100%) |
+| `src/swarm.rs` | **Done (W2 residual):** fmt_ts/trunc_chars edges, task_to_json statuses, GC keep-N (~86%) |
+| `src/notifications.rs` | **Done (W2 residual):** kind maps + enabled=false / flag no-ops (~76%) |
+| `crates/harness-mcp` | **Done (W2 residual):** extract_mcp_text_content edges + allowlist basename exactness |
+| `crates/harness-memory` | **Done (W2 residual):** session store CRUD/list/upsert, cosine/search, session short_id |
 | `crates/harness-tools/src/tools/git.rs` | Readonly vs mutating action dispatch (args only) |
 | `crates/harness-tools/src/executor.rs` | Confirm deny/approve paths with mock tools |
-| `src/swarm.rs` | Keep GC keep-N + concurrent cancel edges green |
 | `src/agent.rs` | Pure message/tool-result formatting helpers |
 | `src/auth_token.rs` | Token shape / expiry helpers |
-| `crates/harness-mcp/src/client.rs` | More `extract_mcp_text_content` / sampling approval unit paths |
-| `crates/harness-memory` | Session store CRUD on temp DB (no network) |
 
 Prefer **unit tests in existing modules** over new integration binaries. No API keys, no live MCP servers, no real desktop notification asserts (disabled-config no-ops only).
 
@@ -40,6 +43,9 @@ Prefer **unit tests in existing modules** over new integration binaries. No API 
 cargo install cargo-llvm-cov   # once
 cargo llvm-cov --workspace --all-features --summary-only
 
+# Package slice (fast climb check)
+cargo llvm-cov -p harness-tools -p harness-mcp -p harness-memory --summary-only
+
 # Alternate (historical COVERAGE.md tool)
 cargo tarpaulin --workspace --out Stdout --timeout 300
 ```
@@ -49,9 +55,12 @@ After a fresh run, update **Measured**, **Date**, and tool in `COVERAGE.md`. Kee
 ## Verification (this wave)
 
 ```bash
-cargo test --bin harness notifications swarm
+# ONE filter per cargo test invocation
+cargo test --bin harness notifications
+cargo test --bin harness swarm
 cargo test -p harness-tools
 cargo test -p harness-mcp
+cargo test -p harness-memory
 ```
 
 ## Notes

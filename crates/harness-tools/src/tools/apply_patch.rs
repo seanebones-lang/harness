@@ -349,4 +349,83 @@ mod tests {
         let err = parse_unified_diff(patch, &ws).expect_err("bad hunk header");
         assert!(err.to_string().contains("hunk"));
     }
+
+    #[test]
+    fn strip_diff_prefix_and_hunk_header_edges() {
+        assert_eq!(strip_diff_prefix("/dev/null"), "/dev/null");
+        assert_eq!(strip_diff_prefix("a/src/foo.rs"), "src/foo.rs");
+        assert_eq!(strip_diff_prefix("b/src/foo.rs"), "src/foo.rs");
+        assert_eq!(strip_diff_prefix("src/foo.rs"), "src/foo.rs");
+
+        let (ol, oc, nl, nc) = parse_hunk_header("@@ -1,3 +1,4 @@ fn").expect("header");
+        assert_eq!((ol, oc, nl, nc), (1, 3, 1, 4));
+        // Single-number ranges default count to 1
+        let (ol, oc, nl, nc) = parse_hunk_header("@@ -5 +7 @@").expect("single");
+        assert_eq!((ol, oc, nl, nc), (5, 1, 7, 1));
+        assert!(parse_hunk_header("@@ only-one @@").is_err());
+    }
+
+    #[test]
+    fn parse_empty_hunk_body_is_ok() {
+        let (dir, ws) = workspace_with_file("empty_hunk.txt", "only\n");
+        let _ = dir;
+        // Header present but no body lines — should still parse without panic
+        let patch = "--- a/empty_hunk.txt\n+++ b/empty_hunk.txt\n@@ -1,1 +1,1 @@\n";
+        let changes = parse_unified_diff(patch, &ws).expect("empty hunk body");
+        assert_eq!(changes.len(), 1);
+        assert!(!changes[0].2);
+    }
+
+    #[test]
+    fn parse_deletion_marks_dev_null() {
+        let (dir, ws) = workspace_with_file("gone.txt", "bye\n");
+        let _ = dir;
+        let patch = "--- a/gone.txt\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-bye\n";
+        let changes = parse_unified_diff(patch, &ws).expect("delete");
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].2, "expected is_deletion");
+    }
+
+    #[test]
+    fn execute_missing_patch_and_empty_patch() {
+        let dir = tempdir().unwrap();
+        let ws = Arc::new(
+            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("ws"),
+        );
+        let tool = ApplyPatchTool {
+            workspace: ws.clone(),
+        };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let err = tool.execute(json!({})).await.expect_err("missing");
+            assert!(err.to_string().contains("missing patch"));
+            let out = tool
+                .execute(json!({"patch": "not a real diff"}))
+                .await
+                .expect("empty changes");
+            assert!(out.contains("No changes"), "got: {out}");
+        });
+    }
+
+    #[test]
+    fn definition_name_is_apply_patch() {
+        let dir = tempdir().unwrap();
+        let ws = Arc::new(
+            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("ws"),
+        );
+        let tool = ApplyPatchTool { workspace: ws };
+        assert_eq!(tool.definition().function.name, "apply_patch");
+    }
+
+    #[test]
+    fn parse_rejects_missing_plus_line() {
+        let dir = tempdir().unwrap();
+        let ws = WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).unwrap();
+        let patch = "--- a/foo.rs\n";
+        let err = parse_unified_diff(patch, &ws).expect_err("truncated");
+        assert!(
+            err.to_string().contains("+++") || err.to_string().contains("expected"),
+            "got: {err}"
+        );
+    }
 }

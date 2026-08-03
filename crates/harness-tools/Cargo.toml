@@ -21,3 +21,4 @@ tracing = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
 tempfile = "3"
+rusqlite = { workspace = true }

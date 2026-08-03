@@ -47,6 +47,15 @@ impl ToolRegistry {
     pub fn names(&self) -> Vec<String> {
         self.tools.keys().cloned().collect()
     }
+
+    /// Keep only tools whose names appear in `allow`. Empty allow → no change.
+    pub fn retain_allowlist(&mut self, allow: &[String]) {
+        if allow.is_empty() {
+            return;
+        }
+        let set: std::collections::HashSet<&str> = allow.iter().map(|s| s.as_str()).collect();
+        self.tools.retain(|name, _| set.contains(name.as_str()));
+    }
 }
 
 impl Default for ToolRegistry {

@@ -223,12 +223,52 @@ enabled = true
 url = "http://127.0.0.1:9222"
 ```
 
+## 14. Database tool (SQLite, config-gated)
+
+**Enable** in `.harness/config.toml` or `~/.harness/config.toml`:
+
+```toml
+[tools.database]
+enabled = true
+readonly = true   # default — only SELECT/WITH/PRAGMA/EXPLAIN
+max_rows = 500
+```
+
+**Prompt:** `List tables in data/app.db and show the schema for users.`
+
+**Expected tools:** `database` with `action: list_tables` then `action: schema` (`table: users`), optional `action: query` with a `SELECT`. Paths must stay under the workspace root. Postgres/MySQL URLs are rejected (sqlite-only).
+
+## 15. Notebook tool (`.ipynb`, config-gated)
+
+```toml
+[tools.notebook]
+enabled = true
+```
+
+**Prompt:** `Open notebooks/demo.ipynb, list cells, and rewrite cell 1 to print hello.`
+
+**Expected tools:** `notebook` — `list_cells` / `read_cell` / `write_cell` / `add_cell` / `metadata`. Structure-only JSON edits (no kernel execution). `write_cell` and `add_cell` trigger checkpoint/confirm in plan mode.
+
+## 16. Docker tool (allowlisted, config-gated)
+
+```toml
+[tools.docker]
+enabled = true
+allow_mutating = false   # set true only to allow compose_up -d
+timeout_secs = 60
+```
+
+**Prompt:** `Show running containers and the last 100 lines of logs for web.`
+
+**Expected tools:** `docker` with `action: ps` and `action: logs` (`container: web`, `tail: 100`). Also: `images`, `compose_ps`, `compose_logs`. No `run` / `build` / `rm`; no docker.sock mount. Missing `docker` binary returns an honest error.
+
 ## See also
 
 - [`README.md`](../README.md) — platform matrix and troubleshooting
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — how to add tools
 - [`TODO.md`](../TODO.md) — severity-ranked backlog + roadmap (stable blocked on REL-01 manual smoke)
 - [`BROWSER_CDP.md`](BROWSER_CDP.md) — browser tool setup
+- [`COMPUTER_USE.md`](COMPUTER_USE.md) — computer-use per-OS defaults and risks
 - [`SHORTCUTS.md`](SHORTCUTS.md) — TUI keys including F2 / `/swarm`; MCP CLI
 - [`NOTIFICATIONS_AUDIT.md`](NOTIFICATIONS_AUDIT.md) — desktop notification kinds + call sites
 - [`OTLP_SMOKE.md`](OTLP_SMOKE.md) — local traces + experimental OTLP

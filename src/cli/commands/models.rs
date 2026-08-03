@@ -50,8 +50,22 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
         (
             "gemini",
             &[
-                ("gemini-1.5-pro", "Google · 1M ctx · new ★"),
+                ("gemini-2.0-flash", "Google · fast default ★"),
+                ("gemini-1.5-pro", "Google · 1M ctx"),
                 ("gemini-1.5-flash", "Google · fast / cheap"),
+            ],
+        ),
+        (
+            "bedrock",
+            &[
+                (
+                    "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "AWS Bedrock · Claude 3.5 Sonnet",
+                ),
+                (
+                    "amazon.nova-pro-v1:0",
+                    "AWS Bedrock · Nova Pro",
+                ),
             ],
         ),
     ];
@@ -86,6 +100,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             "openai" => "OPENAI_API_KEY",
             "xai" => "XAI_API_KEY",
             "gemini" => "GEMINI_API_KEY",
+            "bedrock" => "AWS_ACCESS_KEY_ID",
             _ => "",
         };
         let available = if env_key.is_empty() {

@@ -11,9 +11,10 @@ use harness_lsp::{
 use harness_mcp;
 use harness_provider_core::ArcProvider;
 use harness_tools::tools::{
-    ApplyPatchTool, ComputerUseTool, GhTool, GitTool, ListDirTool, PatchFileTool, ReadFileTool,
-    SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool, SpawnSwarmTool,
-    SwarmEnqueueRunner, TestRunnerTool, WriteFileTool,
+    ApplyPatchTool, ComputerUseTool, DatabaseTool, DatabaseToolConfig, DockerTool, DockerToolConfig,
+    GhTool, GitTool, ListDirTool, NotebookTool, PatchFileTool, ReadFileTool, SearchCodeTool,
+    ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool, SpawnSwarmTool, SwarmEnqueueRunner,
+    TestRunnerTool, WriteFileTool,
 };
 use harness_tools::{ConfirmGate, SandboxMode, ToolExecutor, ToolRegistry, WorkspaceRoot};
 use std::collections::HashSet;
@@ -79,6 +80,12 @@ pub async fn build_tools(
                     None, // sub-agents: no interactive sampling UI
                 )
                 .await?;
+                let tools = if let Some(allow) = cfg_clone.swarm.effective_worker_allowlist() {
+                    tools.with_tool_allowlist(&allow)
+                } else {
+                    tools
+                };
+                let wall = cfg_clone.swarm.worker_wall_timeout();
                 let mut ids = Vec::new();
                 for i in 0..n {
                     let label = if n > 1 {
@@ -105,26 +112,39 @@ pub async fn build_tools(
                         async move {
                             use harness_memory::Session;
                             use harness_provider_core::Message;
-                            let mut session = Session::new(&m2);
-                            session.push(Message::user(&label));
-                            agent::drive_agent(
-                                &p,
-                                &t,
-                                mem.as_ref(),
-                                emb.as_deref(),
-                                &mut session,
-                                sys.as_deref().unwrap_or(agent::DEFAULT_SYSTEM),
-                                None,
-                            )
-                            .await?;
-                            let reply = session
-                                .messages
-                                .iter()
-                                .rev()
-                                .find(|m| matches!(m.role, harness_provider_core::Role::Assistant))
-                                .map(|m| m.content.as_str().to_string())
-                                .unwrap_or_else(|| "(no response)".into());
-                            Ok(reply)
+                            let work = async {
+                                let mut session = Session::new(&m2);
+                                session.push(Message::user(&label));
+                                agent::drive_agent(
+                                    &p,
+                                    &t,
+                                    mem.as_ref(),
+                                    emb.as_deref(),
+                                    &mut session,
+                                    sys.as_deref().unwrap_or(agent::DEFAULT_SYSTEM),
+                                    None,
+                                )
+                                .await?;
+                                let reply = session
+                                    .messages
+                                    .iter()
+                                    .rev()
+                                    .find(|m| {
+                                        matches!(m.role, harness_provider_core::Role::Assistant)
+                                    })
+                                    .map(|m| m.content.as_str().to_string())
+                                    .unwrap_or_else(|| "(no response)".into());
+                                Ok::<String, anyhow::Error>(reply)
+                            };
+                            match wall {
+                                Some(d) => match tokio::time::timeout(d, work).await {
+                                    Ok(r) => r,
+                                    Err(_) => Err(anyhow::anyhow!(
+                                        "swarm worker exceeded wall timeout ({d:?})"
+                                    )),
+                                },
+                                None => work.await,
+                            }
                         }
                     })
                     .await;
@@ -309,6 +329,39 @@ pub async fn build_tools_inner(
         } else {
             tracing::warn!("computer_use enabled in config but model {} does not support it (requires Claude 4.7+)", model);
         }
+    }
+
+    // Optional tools (off by default — see [tools.database|notebook|docker] in config).
+    if cfg.tools.database.is_enabled() {
+        registry.register(DatabaseTool::new(
+            workspace.clone(),
+            DatabaseToolConfig {
+                readonly: cfg.tools.database.is_readonly(),
+                max_rows: cfg.tools.database.effective_max_rows(),
+            },
+        ));
+        tracing::info!(
+            readonly = cfg.tools.database.is_readonly(),
+            max_rows = cfg.tools.database.effective_max_rows(),
+            "database tool enabled"
+        );
+    }
+    if cfg.tools.notebook.is_enabled() {
+        registry.register(NotebookTool {
+            workspace: workspace.clone(),
+        });
+        tracing::info!("notebook tool enabled");
+    }
+    if cfg.tools.docker.is_enabled() {
+        registry.register(DockerTool::new(DockerToolConfig {
+            allow_mutating: cfg.tools.docker.allow_mutating(),
+            timeout_secs: cfg.tools.docker.effective_timeout_secs(),
+            docker_bin: std::path::PathBuf::from("docker"),
+        }));
+        tracing::info!(
+            allow_mutating = cfg.tools.docker.allow_mutating(),
+            "docker tool enabled"
+        );
     }
 
     // Lazy LSP: only spawn if a supported project type is detected in the cwd.

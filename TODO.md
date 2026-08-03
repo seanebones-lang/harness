@@ -55,9 +55,9 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 | Task | Status |
 |------|--------|
 | MCP sampling interactive TUI approval | [x] CTO W4.1 |
-| DatabaseTool / NotebookTool / DockerTool | [ ] CTO W5.4–W5.6 |
-| New providers (Mistral, Gemini, Bedrock) | [ ] CTO W5.1–W5.2 |
-| VS Code + Tauri packaging | [ ] CTO W6.* |
+| DatabaseTool / NotebookTool / DockerTool | [x] CTO W5.4–W5.6 (2026-08-03) |
+| New providers (Mistral, Gemini, Bedrock) | [x] CTO W5.1–W5.2 (2026-08-03) |
+| VS Code + Tauri packaging | [x] CTO W6.* (2026-07-31) |
 | Community channel | [ ] optional |
 | Full CTO waves 0–8 | [~] [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md) |
 
@@ -74,8 +74,8 @@ Most P0/P1 closed. P2 reconciled 2026-07-30:
 | P2-3 | Notification kinds | [x] W3.7 |
 | P2-4 | Swarm status | [x] + panel |
 | P2-5–P2-6 | Collab max_users; browser Err | [x] |
-| P2-7 | Coverage | [~] ~23% — W2.1 plan + tests |
-| P2-8–P2-9 | VS Code / desktop CI | [~] W6 |
+| P2-7 | Coverage | [~] ~40% llvm-cov — W2.1; 60% CI target open |
+| P2-8–P2-9 | VS Code / desktop CI | [x] W6 |
 | P2-10 | Homebrew | [ ] maintainer |
 
 ---

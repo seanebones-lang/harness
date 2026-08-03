@@ -30,6 +30,40 @@ pub struct SwarmConfig {
     pub db_path: Option<PathBuf>,
     /// When set, `configure` reaps orphan pending/running older than this many seconds.
     pub auto_gc_stale_secs: Option<u64>,
+    /// When set, swarm workers only receive these tool names (read-only default recommended).
+    pub worker_tool_allowlist: Option<Vec<String>>,
+    /// Soft cap on tool-call rounds per worker (agent loop also has a hard 50).
+    pub worker_max_tool_calls: Option<usize>,
+    /// Wall-clock timeout per worker task in seconds (None = no extra timeout).
+    pub worker_max_wall_secs: Option<u64>,
+}
+
+impl SwarmConfig {
+    /// Default allowlist for safe parallel workers (no shell/write/git/push).
+    pub fn default_worker_allowlist() -> Vec<String> {
+        vec![
+            "read_file".into(),
+            "list_dir".into(),
+            "search_code".into(),
+            "test_runner".into(),
+        ]
+    }
+
+    /// Effective worker tool allowlist: explicit list, empty → safe defaults, or `None` if unrestricted.
+    pub fn effective_worker_allowlist(&self) -> Option<Vec<String>> {
+        match &self.worker_tool_allowlist {
+            None => None,
+            Some(v) if v.is_empty() => Some(Self::default_worker_allowlist()),
+            Some(v) => Some(v.clone()),
+        }
+    }
+
+    /// Wall timeout duration if configured.
+    pub fn worker_wall_timeout(&self) -> Option<Duration> {
+        self.worker_max_wall_secs
+            .filter(|&s| s > 0)
+            .map(Duration::from_secs)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1032,5 +1066,124 @@ mod tests {
             get_task(&id).expect("g").expect("f").status,
             TaskStatus::Running
         );
+    }
+
+    #[test]
+    fn task_to_json_pending_has_null_error_and_not_terminal() {
+        let task = TaskEntry {
+            id: "sw1".into(),
+            prompt: "p".into(),
+            status: TaskStatus::Pending,
+            result: None,
+            created_ts: 0,
+            completed_ts: None,
+        };
+        let v = task_to_json(&task);
+        assert_eq!(v["status"], "pending");
+        assert!(v["error"].is_null());
+        assert_eq!(v["terminal"], false);
+        assert!(v["completed"].is_null());
+        assert_eq!(v["result"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn task_to_json_cancelled_and_running() {
+        for (status, label) in [
+            (TaskStatus::Cancelled, "cancelled"),
+            (TaskStatus::Running, "running"),
+        ] {
+            let task = TaskEntry {
+                id: "x".into(),
+                prompt: "p".into(),
+                status: status.clone(),
+                result: None,
+                created_ts: 86_400,
+                completed_ts: None,
+            };
+            let v = task_to_json(&task);
+            assert_eq!(v["status"], label);
+            assert!(v["error"].is_null());
+            assert_eq!(v["terminal"], status.is_terminal());
+            assert_eq!(v["created"], "1970-01-02 00:00:00 UTC");
+        }
+    }
+
+    #[test]
+    fn status_label_empty_fail_and_truncation_boundary() {
+        assert_eq!(status_label(&TaskStatus::Failed(String::new())), "failed");
+        // Exactly 40 chars — no ellipsis inside failed(...)
+        let exact = "a".repeat(40);
+        let label = status_label(&TaskStatus::Failed(exact.clone()));
+        assert_eq!(label, format!("failed({exact})"));
+        let over = "b".repeat(41);
+        let label = status_label(&TaskStatus::Failed(over));
+        assert!(label.contains('…'));
+        assert!(label.starts_with("failed("));
+    }
+
+    #[test]
+    fn trunc_chars_zero_and_empty() {
+        assert_eq!(trunc_chars("", 0), "");
+        assert_eq!(trunc_chars("abc", 0), "…");
+        assert_eq!(trunc_chars("", 5), "");
+    }
+
+    #[test]
+    fn gc_keep_terminal_retains_newest_n() {
+        let _db = TestDb::new();
+        let mut ids = Vec::new();
+        for i in 0..4 {
+            let id = register_task(&format!("t{i}")).expect("reg");
+            update_status(&id, &TaskStatus::Done, Some("ok")).expect("done");
+            // Distinct completed_ts so newest ordering is stable
+            {
+                let conn = open_db().expect("db");
+                conn.execute(
+                    "UPDATE tasks SET completed_ts = ?1 WHERE id = ?2",
+                    params![now_ts() - (3 - i) as i64, id],
+                )
+                .expect("ts");
+            }
+            ids.push(id);
+        }
+        let report = gc(&GcOptions {
+            stale_secs: 60,
+            keep_terminal: Some(2),
+            older_than_secs: None,
+            dry_run: false,
+        })
+        .expect("gc");
+        assert!(report.deleted >= 2, "deleted={}", report.deleted);
+        let remaining = list_tasks(20).expect("list");
+        assert_eq!(remaining.len(), 2);
+    }
+
+    #[test]
+    fn get_task_missing_returns_none() {
+        let _db = TestDb::new();
+        assert!(get_task("sw_does_not_exist").expect("get").is_none());
+    }
+
+    #[test]
+    fn fmt_ts_month_boundaries() {
+        // 1970-02-01 00:00:00 UTC = 31 days
+        assert_eq!(fmt_ts(31 * 86_400), "1970-02-01 00:00:00 UTC");
+        // 1970-12-31 roughly
+        assert_eq!(fmt_ts(364 * 86_400), "1970-12-31 00:00:00 UTC");
+    }
+
+    #[test]
+    fn swarm_config_worker_allowlist_and_timeout() {
+        let mut cfg = SwarmConfig::default();
+        assert!(cfg.effective_worker_allowlist().is_none());
+        assert!(cfg.worker_wall_timeout().is_none());
+        cfg.worker_tool_allowlist = Some(SwarmConfig::default_worker_allowlist());
+        cfg.worker_max_wall_secs = Some(120);
+        let allow = cfg.effective_worker_allowlist().unwrap();
+        assert!(allow.contains(&"read_file".into()));
+        assert!(!allow.iter().any(|t| t == "shell"));
+        assert_eq!(cfg.worker_wall_timeout(), Some(Duration::from_secs(120)));
+        cfg.worker_max_wall_secs = Some(0);
+        assert!(cfg.worker_wall_timeout().is_none());
     }
 }
