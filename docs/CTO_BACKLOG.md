@@ -123,7 +123,7 @@ Goal: installable shells, not prototypes.
 ### WAVE 7 — Scale & differentiation (quarter)
 Goal: max multi-agent + measurable excellence.
 
-- [~] **W7.1** Optional remote/shared swarm registry. *(`SwarmRegistry` trait + LocalSqlite + Http stub; HTTP client still open; 2026-08-03)*
+- [x] **W7.1** Optional remote/shared swarm registry. *(`SwarmRegistry` + LocalSqlite + **HttpRegistry REST client** register/list/get/update; bearer token; hard-fail if unreachable; 2026-08-04)*
 - [x] **W7.2** Per-worker tool allowlist + quota. *(`worker_tool_allowlist` + `worker_max_wall_secs` on swarm run/enqueue; 2026-08-03)*
 - [x] **W7.3** Benchmark harness (fixed tasks, cost/latency dashboard). *(`harness bench` offline pack demo/bench_tasks; live cost still open; 2026-08-03)*
 - [x] **W7.4** Split `agent.rs` / `server.rs` / heavy TUI modules behind stable APIs. *(`src/agent/*` + `src/server/{state,auth,collab_ws,project_ops,mod}.rs` 2026-08-03)*

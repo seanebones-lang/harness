@@ -6,17 +6,18 @@ Engineering design for open W7 items. Implementation follows Batch 1 (providers 
 
 **Current:** local SQLite `~/.harness/swarm.db` (`HARNESS_SWARM_DB`).
 
-**Proposal:**
-1. Keep SQLite as default; add `[swarm] registry_url` optional HTTP endpoint.
-2. Protocol: thin REST compatible with existing task JSON (`task_to_json`):
-   - `POST /tasks` spawn
-   - `GET /tasks` list
-   - `GET /tasks/:id` status/result
-   - `POST /tasks/:id/cancel`
-   - `POST /gc`
-3. Auth: bearer token from env `HARNESS_SWARM_TOKEN`; never commit secrets.
-4. Fallback: if `registry_url` set but unreachable → error with local-db tip (no silent split-brain).
-5. Ship order: client trait `SwarmRegistry` + `SqliteRegistry` + `HttpRegistry` stub; CLI unchanged.
+**Shipped (2026-08-04):**
+1. SQLite default; `[swarm] registry_url` selects `HttpRegistry`.
+2. REST client (sync blocking reqwest):
+   - `POST /tasks` — `{prompt, model?}` → task JSON (`task_to_json` shape)
+   - `GET /tasks?limit=N` — `{tasks:[…]}` or bare array
+   - `GET /tasks/:id` — task or 404
+   - `PUT /tasks/:id` — `{status, result?, error?}`
+3. Auth: `Authorization: Bearer $HARNESS_SWARM_TOKEN`
+4. Unreachable → hard error + tip to unset `registry_url` (no split-brain)
+5. Tests: pure JSON parse + in-process axum mock server roundtrip + unreachable
+
+**Server side** of the registry is still external; this is the client.
 
 ## W7.2 Per-worker tool allowlist + quota
 

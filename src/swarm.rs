@@ -211,10 +211,10 @@ pub fn configure(cfg: &SwarmConfig) {
     let backend = crate::swarm_registry::select_registry(cfg.registry_url.as_deref());
     match crate::swarm_registry::probe_registry(backend.as_ref()) {
         Ok(name) if name != "sqlite-local" => {
-            tracing::warn!(
+            tracing::info!(
                 backend = name,
                 url = ?cfg.registry_url,
-                "non-local swarm registry selected — remote ops return stub errors until W7.1 HTTP client ships"
+                "remote swarm registry client selected (REST); set HARNESS_SWARM_TOKEN if required"
             );
         }
         Ok(name) => tracing::debug!(backend = name, "swarm registry ready"),
@@ -308,6 +308,7 @@ fn new_task_id() -> TaskId {
 }
 
 /// Register a new task in the DB and return its ID.
+#[allow(dead_code)] // convenience wrapper; call sites use register_task_with_model
 pub fn register_task(prompt: &str) -> Result<TaskId> {
     register_task_with_model(prompt, None)
 }
