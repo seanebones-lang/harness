@@ -169,3 +169,61 @@ impl Tool for ReloadSelfTool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::Tool;
+    use serde_json::json;
+
+    #[test]
+    fn rebuild_definition_name() {
+        let tool = RebuildSelfTool::new(PathBuf::from("/tmp/harness-src"));
+        assert_eq!(tool.definition().function.name, "rebuild_self");
+        assert!(tool.definition().function.description.contains("Rebuild"));
+    }
+
+    #[test]
+    fn reload_definition_name() {
+        let tool = ReloadSelfTool::new(PathBuf::from("/tmp/harness-src"));
+        assert_eq!(tool.definition().function.name, "reload_self");
+        assert!(tool.definition().function.description.contains("Hot-reload"));
+    }
+
+    #[test]
+    fn rebuild_default_profile_is_selfdev() {
+        let tool = RebuildSelfTool::new(PathBuf::from("/tmp/harness-src"));
+        assert_eq!(tool.profile, "selfdev");
+        assert_eq!(tool.src_dir, PathBuf::from("/tmp/harness-src"));
+    }
+
+    #[test]
+    fn rebuild_with_profile_overrides_default() {
+        let tool = RebuildSelfTool::new(PathBuf::from("/tmp/harness-src")).with_profile("release");
+        assert_eq!(tool.profile, "release");
+        // Definition name is independent of cargo profile.
+        assert_eq!(tool.definition().function.name, "rebuild_self");
+    }
+
+    #[test]
+    fn reload_default_profile_is_selfdev() {
+        let tool = ReloadSelfTool::new(PathBuf::from("/tmp/harness-src"));
+        assert_eq!(tool.profile, "selfdev");
+        assert_eq!(tool.src_dir, PathBuf::from("/tmp/harness-src"));
+    }
+
+    #[tokio::test]
+    async fn reload_missing_binary_errors_honestly() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tool = ReloadSelfTool::new(dir.path().to_path_buf());
+        let err = tool
+            .execute(json!({}))
+            .await
+            .expect_err("binary missing under empty tempdir");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Binary not found") && msg.contains("rebuild_self"),
+            "unexpected error: {msg}"
+        );
+    }
+}

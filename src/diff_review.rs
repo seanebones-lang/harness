@@ -444,9 +444,56 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn sample_hunk(decision: HunkDecision) -> DiffHunk {
+        DiffHunk {
+            header: "@@ -1,1 +1,1 @@".into(),
+            lines: vec![('-', "old".into()), ('+', "new".into())],
+            decision,
+        }
+    }
+
     #[test]
     fn compute_hunks_detects_single_line_change() {
         let hunks = compute_hunks("alpha\nbeta", "alpha\ngamma");
+        assert!(!hunks.is_empty());
+        assert!(hunks
+            .iter()
+            .any(|h| h.lines.iter().any(|(op, _)| *op == '+')));
+    }
+
+    #[test]
+    fn compute_hunks_identical_strings_no_changes() {
+        let hunks = compute_hunks("same\nline\n", "same\nline\n");
+        assert!(
+            hunks.is_empty()
+                || hunks
+                    .iter()
+                    .all(|h| h.lines.iter().all(|(op, _)| *op == ' ')),
+            "identical inputs should not produce change ops"
+        );
+    }
+
+    #[test]
+    fn compute_hunks_pure_insertion() {
+        let hunks = compute_hunks("a\n", "a\nb\n");
+        assert!(!hunks.is_empty());
+        assert!(hunks
+            .iter()
+            .any(|h| h.lines.iter().any(|(op, s)| *op == '+' && s == "b")));
+    }
+
+    #[test]
+    fn compute_hunks_pure_deletion() {
+        let hunks = compute_hunks("a\nb\n", "a\n");
+        assert!(!hunks.is_empty());
+        assert!(hunks
+            .iter()
+            .any(|h| h.lines.iter().any(|(op, s)| *op == '-' && s == "b")));
+    }
+
+    #[test]
+    fn compute_hunks_empty_to_content() {
+        let hunks = compute_hunks("", "only\n");
         assert!(!hunks.is_empty());
         assert!(hunks
             .iter()
@@ -468,6 +515,17 @@ mod tests {
     }
 
     #[test]
+    fn file_diff_from_unknown_tool_is_none() {
+        assert!(file_diff_from_tool("bash", &json!({"cmd": "ls"})).is_none());
+    }
+
+    #[test]
+    fn file_diff_from_write_file_missing_fields() {
+        assert!(file_diff_from_tool("write_file", &json!({"path": "/tmp/x"})).is_none());
+        assert!(file_diff_from_tool("write_file", &json!({"content": "x"})).is_none());
+    }
+
+    #[test]
     fn finalize_all_rejected_is_none() {
         let mut diff = FileDiff {
             path: PathBuf::from("x.rs"),
@@ -486,5 +544,164 @@ mod tests {
             finalize_for_apply(&diff).map(|(_, c)| c),
             Some("b".to_string())
         );
+    }
+
+    #[test]
+    fn finalize_empty_hunks_returns_proposed() {
+        let diff = FileDiff {
+            path: PathBuf::from("empty.rs"),
+            original: Some("a".into()),
+            proposed: "proposed".into(),
+            hunks: vec![],
+            file_decision: None,
+        };
+        let (path, content) = finalize_for_apply(&diff).expect("some");
+        assert_eq!(path, PathBuf::from("empty.rs"));
+        assert_eq!(content, "proposed");
+    }
+
+    #[test]
+    fn set_hunk_decision_accept_reject_and_oob() {
+        let mut diff = FileDiff {
+            path: PathBuf::from("t.rs"),
+            original: Some("a".into()),
+            proposed: "b".into(),
+            hunks: vec![sample_hunk(HunkDecision::Pending)],
+            file_decision: None,
+        };
+        set_hunk_decision(&mut diff, 0, true);
+        assert_eq!(diff.hunks[0].decision, HunkDecision::Accept);
+        set_hunk_decision(&mut diff, 0, false);
+        assert_eq!(diff.hunks[0].decision, HunkDecision::Reject);
+        // Out-of-bounds is a no-op
+        set_hunk_decision(&mut diff, 99, true);
+        assert_eq!(diff.hunks[0].decision, HunkDecision::Reject);
+    }
+
+    #[test]
+    fn next_pending_hunk_skips_decided() {
+        let diff = FileDiff {
+            path: PathBuf::from("t.rs"),
+            original: None,
+            proposed: "x".into(),
+            hunks: vec![
+                sample_hunk(HunkDecision::Accept),
+                sample_hunk(HunkDecision::Pending),
+                sample_hunk(HunkDecision::Reject),
+                sample_hunk(HunkDecision::Pending),
+            ],
+            file_decision: None,
+        };
+        assert_eq!(next_pending_hunk(&diff, 0), Some(1));
+        assert_eq!(next_pending_hunk(&diff, 1), Some(1));
+        assert_eq!(next_pending_hunk(&diff, 2), Some(3));
+        assert_eq!(next_pending_hunk(&diff, 4), None);
+    }
+
+    #[test]
+    fn format_hunk_for_display_includes_header() {
+        let hunk = sample_hunk(HunkDecision::Pending);
+        let lines = format_hunk_for_display(&hunk);
+        assert_eq!(lines[0], (' ', hunk.header.clone()));
+        assert_eq!(lines.len(), 1 + hunk.lines.len());
+        assert_eq!(lines[1].0, '-');
+        assert_eq!(lines[2].0, '+');
+    }
+
+    #[test]
+    fn staging_buffer_empty_and_pending_count() {
+        let mut buf = StagingBuffer::new();
+        assert!(buf.is_empty());
+        assert_eq!(buf.pending_count(), 0);
+        assert_eq!(
+            render_staging_summary(&buf),
+            "0 file(s), 0 hunk(s), 0 pending"
+        );
+
+        // Stage a brand-new file (no original on disk) via pure path
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("new_only.txt");
+        buf.stage_write(&path, "line1\nline2\n");
+        assert!(!buf.is_empty());
+        assert_eq!(buf.pending_count(), 1);
+        let summary = render_staging_summary(&buf);
+        assert!(summary.contains("1 file(s)"));
+        assert!(summary.contains("1 hunk(s)"));
+        assert!(summary.contains("1 pending"));
+
+        // Decide the hunk → pending drops
+        if let Some(diff) = buf.entries.get_mut(&path) {
+            set_hunk_decision(diff, 0, true);
+        }
+        assert_eq!(buf.pending_count(), 0);
+    }
+
+    #[test]
+    fn apply_accepted_hunks_all_accept_returns_proposed() {
+        let hunks = vec![sample_hunk(HunkDecision::Accept)];
+        let out = apply_accepted_hunks("orig", "prop", &hunks);
+        assert_eq!(out, "prop");
+    }
+
+    #[test]
+    fn apply_accepted_hunks_all_reject_returns_original() {
+        let hunks = vec![sample_hunk(HunkDecision::Reject)];
+        let out = apply_accepted_hunks("orig", "prop", &hunks);
+        assert_eq!(out, "orig");
+    }
+
+    #[test]
+    fn apply_accepted_hunks_mixed_with_accept_uses_proposed() {
+        let hunks = vec![
+            sample_hunk(HunkDecision::Accept),
+            sample_hunk(HunkDecision::Reject),
+        ];
+        let out = apply_accepted_hunks("orig", "prop", &hunks);
+        assert_eq!(out, "prop");
+    }
+
+    #[test]
+    fn apply_accepted_hunks_only_pending_uses_proposed() {
+        let hunks = vec![sample_hunk(HunkDecision::Pending)];
+        let out = apply_accepted_hunks("orig", "prop", &hunks);
+        assert_eq!(out, "prop");
+    }
+
+    #[test]
+    fn glob_match_simple_and_double_star() {
+        assert!(glob_match("*.rs", "main.rs"));
+        assert!(!glob_match("*.rs", "src/main.rs"));
+        assert!(glob_match("**/*.rs", "src/main.rs"));
+        assert!(glob_match("src/*", "src/main.rs"));
+        assert!(!glob_match("src/*", "src/a/b.rs"));
+        assert!(glob_match("exact.txt", "exact.txt"));
+        assert!(!glob_match("exact.txt", "other.txt"));
+    }
+
+    #[test]
+    fn auto_trust_patterns_accept_reject() {
+        let pats = AutoTrustPatterns {
+            always_accept: vec!["**/generated/**".into(), "*.lock".into()],
+            always_reject: vec!["**/.env".into(), "secrets/*".into()],
+        };
+        assert!(pats.should_auto_accept(Path::new("foo/generated/x.rs")));
+        assert!(pats.should_auto_accept(Path::new("Cargo.lock")));
+        assert!(!pats.should_auto_accept(Path::new("src/main.rs")));
+        assert!(pats.should_auto_reject(Path::new("app/.env")));
+        assert!(pats.should_auto_reject(Path::new("secrets/key")));
+        assert!(!pats.should_auto_reject(Path::new("src/main.rs")));
+    }
+
+    #[test]
+    fn auto_trust_patterns_default_empty() {
+        let pats = AutoTrustPatterns::default();
+        assert!(!pats.should_auto_accept(Path::new("any.rs")));
+        assert!(!pats.should_auto_reject(Path::new("any.rs")));
+    }
+
+    #[test]
+    fn hunk_decision_equality() {
+        assert_eq!(HunkDecision::Pending, HunkDecision::Pending);
+        assert_ne!(HunkDecision::Accept, HunkDecision::Reject);
     }
 }

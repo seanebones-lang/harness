@@ -1,9 +1,9 @@
 # CTO Engineering Backlog — NextEleven Harness
 
-**Updated:** 2026-08-03  
-**Perspective:** CTO review + max-opt swarm execution  
-**Ship branch:** **`main`** @ merge `46ab97f`+ (dev folded; single branch)  
-**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed. Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)**, coverage 60% climb, and optional remote swarm HTTP client depth.
+**Updated:** 2026-08-05  
+**Perspective:** CTO review + max-opt swarm execution + swarm-50 honesty pass  
+**Ship branch:** **`main`** only (dev folded; single branch)  
+**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed (incl. Gemini/Bedrock, remote swarm HTTP cutover). Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)** and coverage climb to 60% (measured **51.98%**).
 
 **Pointers:** [`README.md`](../README.md) · [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) · [`docs/TEAM_UPDATE_2026-08-03.md`](TEAM_UPDATE_2026-08-03.md) · historical PR https://github.com/seanebones-lang/harness/pull/5
 
@@ -18,9 +18,9 @@
 |-----|----------|------|
 | Stable blocked | REL-01 incomplete; Linux/Windows smoke missing | Cannot claim production-ready |
 | Prebuilt matrix partial | macOS arm64 only; CI billing history (W1.4–1.5 📌) | Broken install story outside one arch |
-| Coverage lag | `COVERAGE.md` **40.22%** lines (llvm-cov 2026-07-30); badge ~40%; CI 60% still target | OK if honest; not stable gate yet |
-| Doc/status drift | Largely reconciled 2026-07-30 (TODO + CTO + vault) | Keep checkboxes honest on ship days |
-| Vault | Populated Index/Status/Backlog + session close | Maintain on each ship day |
+| Coverage lag | `COVERAGE.md` **51.98%** lines (llvm-cov 2026-08-05 swarm-50; 12224/23516); badge ~52%; CI 60% still target | OK if honest; not stable gate yet |
+| Doc/status drift | Exec findings refreshed 2026-08-05 (swarm-50); vault Index → main | Keep checkboxes honest on ship days |
+| Vault | Index on `main`; Swarm-50 notes under `Vault/Swarm-50/` + `docs/swarm-50-2026-08-05/` | Maintain on each ship day |
 
 ### B. Product honesty (UX debt)
 | Gap | Evidence | Risk |
@@ -37,14 +37,14 @@
 | MCP sampling UX | **Closed** — TUI y/n + auto | — |
 | Version drift | **Closed** — desktop 0.1.2-beta aligned | — |
 | Toolchain pin | **Closed** — `1.95.0` | — |
-| Swarm next | cancel-all / auto-gc / --json done; model-on-task optional | Ops mostly unblocked |
+| Swarm next | cancel-all / auto-gc / --json / model-on-task / HttpRegistry public cutover **done** | Ops unblocked; residual coverage/tests |
 
 ### D. Compatibility surface
 | Gap | Notes |
 |-----|--------|
 | Windows/Linux release artifacts | Install scripts exist; Release matrix incomplete |
-| Provider breadth | **Mistral + openai-compatible done**; Gemini/Bedrock open (W5.2) |
-| Editor/desktop | VS Code + Tauri early; packaging incomplete (W6) |
+| Provider breadth | **Closed W5.1–W5.3** — Mistral + openai-compat + **Gemini (OpenAI-compat) + Bedrock Converse/SigV4**; keep provider docs current |
+| Editor/desktop | VS Code + Tauri early shells shipped (W6 [x]); packaging/signing residual |
 | i18n | ES manual partial/draft |
 
 ---
@@ -180,7 +180,7 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 
 ---
 
-*Next action: start **W0.1** unless Sean overrides.*
+*Next action (2026-08-05): eng-owned open residuals via **swarm-50** — coverage climb toward 60% (now **51.98%** after swarm-50), crates unwrap audit, REL offline when Docker available. Skip 📌 billing + keys-only smoke. See `docs/swarm-50-2026-08-05/`.*
 
 ### 2026-07-31 Wave continuation (cont)
 - W1.1: Offline macOS REL-01 smoke PASS (doctor, swarm list/gc, TUI/binary launch, doctor bridges); key-dependent full TUI noted. RELEASE_STATUS.md appended.

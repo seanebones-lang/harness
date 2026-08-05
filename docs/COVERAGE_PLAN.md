@@ -4,7 +4,7 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 
 | Field | Value |
 |-------|--------|
-| **Current measured** | **46.52%** lines (10459 / 22481; llvm-cov, 2026-08-05) — near-term ≥40% **met** |
+| **Current measured** | **51.98%** lines (12224 / 23516; llvm-cov, 2026-08-05 swarm-50) — near-term ≥40% **met** |
 | **CI gate (target)** | ≥ 60% lines via `cargo llvm-cov --fail-under-lines 60` — **not met** |
 | **Near-term goal** | Workspace **≥ 40%** ✓, then critical crates **≥ 60%** |
 | **Stretch** | Meet CI **≥ 60%** workspace |
@@ -29,10 +29,17 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 | `src/notifications.rs` | **Done (W2 residual):** kind maps + enabled=false / flag no-ops (~76%) |
 | `crates/harness-mcp` | **Done (W2 residual):** extract_mcp_text_content edges + allowlist basename exactness |
 | `crates/harness-memory` | **Done (W2 residual):** session store CRUD/list/upsert, cosine/search, session short_id |
-| `crates/harness-tools/src/tools/git.rs` | Readonly vs mutating + force-push/missing action/status/stash tests (W2 climb 2026-08-05) |
-| `crates/harness-tools/src/executor.rs` | Confirm deny/approve + preview/trust/always_ask pure helpers (W2 climb 2026-08-05) |
-| `src/agent.rs` | Pure message/tool-result formatting helpers |
-| `src/auth_token.rs` | Token shape / expiry + `load_or_create_in` / `read_token_file_in` tempdir tests (W2 climb 2026-08-05) |
+| `crates/harness-tools/src/tools/git.rs` | **Done climb 2026-08-05** — readonly vs mutating + force-push/missing action/status/stash |
+| `crates/harness-tools/src/executor.rs` | **Done climb 2026-08-05** — confirm deny/approve + preview/trust/always_ask pure helpers |
+| `src/auth_token.rs` | **Done climb 2026-08-05** — token shape/expiry + `load_or_create_in` / `read_token_file_in` tempdir |
+| `src/trust.rs` | **Next (swarm-50)** — path-isolated pure tests (no CWD asserts) |
+| `src/projects.rs` | **Next (swarm-50)** — path-isolated pure tests |
+| `crates/harness-tools/src/tools/gh.rs` | **Next (swarm-50)** — arg validation + def name |
+| `crates/harness-tools/src/tools/search.rs` | **Next (swarm-50)** — validation + def |
+| `crates/harness-tools/src/tools/test_runner.rs` | **Next (swarm-50)** — validation edges |
+| `crates/harness-tools/src/tools/selfdev.rs` | **Next (swarm-50)** — validation edges |
+| `src/agent/*` | Pure message/tool-result + compact/token estimate helpers |
+| TUI driver / CLI wiring | Later — near 0%; extract pure helpers before heavy UI tests |
 
 Prefer **unit tests in existing modules** over new integration binaries. No API keys, no live MCP servers, no real desktop notification asserts (disabled-config no-ops only).
 

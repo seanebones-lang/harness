@@ -200,9 +200,9 @@ async fn drive_agent_executes_tool_then_continues() {
     assert!(events
         .iter()
         .any(|e| matches!(e, AgentEvent::ToolStart { name, .. } if name == "echo")));
-    assert!(events.iter().any(
-        |e| matches!(e, AgentEvent::ToolResult { result, .. } if result.contains("echo:hi"))
-    ));
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, AgentEvent::ToolResult { result, .. } if result.contains("echo:hi"))));
     assert_eq!(script.calls.load(Ordering::SeqCst), 2);
     assert!(session.messages.len() >= 4);
 }
@@ -292,8 +292,7 @@ async fn build_augmented_system_injects_matching_memories() {
         .insert("other", "prior architecture fact", &embedding)
         .expect("insert memory");
 
-    let provider: ArcProvider =
-        Arc::new(ScriptProvider::new(vec![]).with_embed(embedding.clone()));
+    let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![]).with_embed(embedding.clone()));
     let mut session = Session::new("script-model");
     session.id = "current".to_string();
     session.push(Message::user("tell me about architecture"));

@@ -171,9 +171,19 @@ fn parse_cargo(output: &str, _success: bool) -> TestReport {
     let mut errors: Vec<TestFailure> = Vec::new();
 
     for line in output.lines() {
+        if line.contains("test result:") {
+            // e.g. "test result: FAILED. 3 passed; 2 failed; ..."
+            if let Some(p) = extract_number(line, "passed") {
+                passed = p;
+            }
+            if let Some(f) = extract_number(line, "failed") {
+                failed = f;
+            }
+            continue;
+        }
         if line.starts_with("test ") && line.ends_with(" ... ok") {
             passed += 1;
-        } else if line.starts_with("test ") && line.contains("FAILED") {
+        } else if line.starts_with("test ") && line.contains(" ... FAILED") {
             failed += 1;
             let name = line
                 .trim_start_matches("test ")
@@ -185,14 +195,6 @@ fn parse_cargo(output: &str, _success: bool) -> TestReport {
                 name,
                 message: "test failed".to_string(),
             });
-        } else if line.contains("test result:") {
-            // e.g. "test result: FAILED. 3 passed; 2 failed; ..."
-            if let Some(p) = extract_number(line, "passed") {
-                passed = p;
-            }
-            if let Some(f) = extract_number(line, "failed") {
-                failed = f;
-            }
         }
     }
 
@@ -323,4 +325,79 @@ fn extract_number(line: &str, word: &str) -> Option<usize> {
     let idx = line.find(word)?;
     let before = line[..idx].trim_end();
     before.split_whitespace().last()?.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn definition_name() {
+        assert_eq!(TestRunnerTool.definition().function.name, "test_runner");
+    }
+
+    #[test]
+    fn extract_number_from_cargo_summary() {
+        let line = "test result: ok. 3 passed; 2 failed; 0 ignored";
+        assert_eq!(extract_number(line, "passed"), Some(3));
+        assert_eq!(extract_number(line, "failed"), Some(2));
+        assert_eq!(extract_number("nope", "passed"), None);
+    }
+
+    #[test]
+    fn parse_cargo_counts_and_failures() {
+        let out = "\
+test foo::bar ... ok
+test foo::baz ... FAILED
+test result: FAILED. 1 passed; 1 failed; 0 ignored
+failures:
+---- foo::baz stdout ----
+assertion failed
+";
+        let report = parse_cargo(out, false);
+        // summary line wins for totals when present
+        assert_eq!(report.passed, 1);
+        assert_eq!(report.failed, 1);
+        assert!(!report.errors.is_empty());
+        let s = report.to_agent_string();
+        assert!(s.contains("FAIL"));
+        assert!(s.contains("FAILED:"));
+    }
+
+    #[test]
+    fn parse_cargo_all_pass_agent_string() {
+        let out = "test a ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored\n";
+        let report = parse_cargo(out, true);
+        assert_eq!(report.failed, 0);
+        assert!(report.to_agent_string().contains("PASS"));
+        assert!(report.to_agent_string().contains("All tests passed"));
+    }
+
+    #[test]
+    fn parse_pytest_and_go_and_generic() {
+        let py = "== 2 passed, 1 failed in 0.1s ==\nFAILED test_a.py::t - boom\n";
+        let pr = parse_pytest(py, false);
+        assert_eq!(pr.passed, 2);
+        assert_eq!(pr.failed, 1);
+        assert_eq!(pr.errors[0].name, "test_a.py::t");
+
+        let go = "--- PASS: TestA (0.00s)\n--- FAIL: TestB (0.00s)\n";
+        let gr = parse_go(go, false);
+        assert_eq!(gr.passed, 1);
+        assert_eq!(gr.failed, 1);
+
+        let gen_ok = parse_generic("ok\n", true);
+        assert_eq!(gen_ok.failed, 0);
+        let gen_bad = parse_generic("last line err\n", false);
+        assert_eq!(gen_bad.failed, 1);
+        assert!(gen_bad.errors[0].message.contains("err"));
+    }
+
+    #[test]
+    fn parse_output_dispatches_runner() {
+        let r = parse_output(&Runner::Cargo, "test x ... ok\ntest result: ok. 1 passed; 0 failed\n", true);
+        assert_eq!(r.passed, 1);
+        let r2 = parse_output(&Runner::Make, "done\n", true);
+        assert_eq!(r2.failed, 0);
+    }
 }

@@ -66,7 +66,6 @@ pub(crate) async fn build_augmented_system(
     format!("{system_prompt}\n\n## Relevant past context\n{mem_block}")
 }
 
-
 /// Store the most recent user↔assistant exchange as an embedded memory.
 pub async fn store_turn_memory(
     provider: &ArcProvider,

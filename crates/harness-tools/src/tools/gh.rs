@@ -253,3 +253,57 @@ pub async fn pr_context(number: u64) -> Result<String> {
         "# PR #{number} — Context\n\n## PR Details\n{view}\n\n## Diff\n```diff\n{diff}\n```\n\n## CI Checks\n{checks}"
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::Tool;
+
+    #[test]
+    fn definition_name_is_gh() {
+        assert_eq!(GhTool.definition().function.name, "gh");
+    }
+
+    #[test]
+    fn require_number_errors_when_missing() {
+        let err = require_number(None).unwrap_err();
+        assert!(err.to_string().contains("number"));
+        assert_eq!(require_number(Some(42)).unwrap(), "42");
+    }
+
+    #[tokio::test]
+    async fn pr_view_requires_number() {
+        let err = GhTool
+            .execute(json!({"action": "pr_view"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("number"));
+    }
+
+    #[tokio::test]
+    async fn pr_comment_requires_message() {
+        let err = GhTool
+            .execute(json!({"action": "pr_comment", "number": 1}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("message"));
+    }
+
+    #[tokio::test]
+    async fn pr_create_requires_title() {
+        let err = GhTool
+            .execute(json!({"action": "pr_create"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("title"));
+    }
+
+    #[tokio::test]
+    async fn unknown_action_errors() {
+        let err = GhTool
+            .execute(json!({"action": "not_a_real_action"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Unknown gh action"));
+    }
+}

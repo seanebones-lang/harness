@@ -189,4 +189,3 @@ pub(crate) fn collect_files(
     }
     Ok(())
 }
-

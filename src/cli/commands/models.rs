@@ -62,10 +62,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
                     "anthropic.claude-3-5-sonnet-20241022-v2:0",
                     "AWS Bedrock · Claude 3.5 Sonnet",
                 ),
-                (
-                    "amazon.nova-pro-v1:0",
-                    "AWS Bedrock · Nova Pro",
-                ),
+                ("amazon.nova-pro-v1:0", "AWS Bedrock · Nova Pro"),
             ],
         ),
     ];

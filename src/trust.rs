@@ -139,3 +139,49 @@ impl ApprovalTracker {
         self.counts.get(&key).copied().unwrap_or(0) >= 3
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_trusted_wildcard_tool_and_pattern() {
+        let mut store = TrustStore::default();
+        assert!(store.add_rule("*", "*"));
+        assert!(store.is_trusted("shell", "rm -rf /"));
+        assert!(!store.add_rule("*", "*")); // duplicate
+    }
+
+    #[test]
+    fn is_trusted_substring_pattern() {
+        let mut store = TrustStore::default();
+        store.add_rule("shell", "cargo check");
+        assert!(store.is_trusted("shell", "cargo check --all"));
+        assert!(!store.is_trusted("shell", "cargo test"));
+        assert!(!store.is_trusted("write_file", "cargo check"));
+    }
+
+    #[test]
+    fn remove_rule_and_list() {
+        let mut store = TrustStore::default();
+        store.add_rule("shell", "ls");
+        store.add_rule("shell", "pwd");
+        assert_eq!(store.list().len(), 2);
+        assert!(store.remove_rule("shell", "ls"));
+        assert!(!store.remove_rule("shell", "ls"));
+        assert_eq!(store.list().len(), 1);
+    }
+
+    #[test]
+    fn approval_tracker_prompts_after_three() {
+        let mut t = ApprovalTracker {
+            counts: Default::default(),
+        };
+        assert_eq!(t.record("shell", "cargo test"), 1);
+        assert!(!t.should_prompt_to_trust("shell", "cargo test"));
+        t.record("shell", "cargo test");
+        t.record("shell", "cargo test");
+        assert!(t.should_prompt_to_trust("shell", "cargo test"));
+        assert!(!t.should_prompt_to_trust("shell", "other"));
+    }
+}

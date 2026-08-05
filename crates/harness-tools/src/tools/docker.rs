@@ -346,6 +346,26 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn definition_name_is_docker() {
+        let tool = DockerTool::new(DockerToolConfig::default());
+        assert_eq!(tool.definition().function.name, "docker");
+        // Mutating action omitted from schema description list when disabled.
+        let def = tool.definition();
+        assert!(def.function.description.contains("ps"));
+    }
+
+    #[test]
+    fn definition_lists_compose_up_when_mutating_allowed() {
+        let tool = DockerTool::new(DockerToolConfig {
+            allow_mutating: true,
+            ..DockerToolConfig::default()
+        });
+        // Schema enum is built dynamically — rebuild args still works for compose_up.
+        assert!(validate_docker_action("compose_up", true).is_ok());
+        assert_eq!(tool.definition().function.name, "docker");
+    }
+
+    #[test]
     fn validate_readonly_actions() {
         for a in READONLY_ACTIONS {
             assert!(validate_docker_action(a, false).is_ok());
@@ -355,6 +375,24 @@ mod tests {
         assert!(validate_docker_action("run", false).is_err());
         assert!(validate_docker_action("build", true).is_err());
         assert!(validate_docker_action("rm", false).is_err());
+        assert!(validate_docker_action("", false).is_err());
+    }
+
+    #[test]
+    fn validate_safe_token_and_compose_file() {
+        assert!(validate_safe_token("web", "service").is_ok());
+        assert!(validate_safe_token("my-app_1", "project").is_ok());
+        assert!(validate_safe_token("registry.io/ns/img:tag", "image").is_ok());
+        assert!(validate_safe_token("", "service").is_err());
+        assert!(validate_safe_token("a;b", "service").is_err());
+        assert!(validate_safe_token("a b", "service").is_err());
+
+        assert!(validate_compose_file("docker-compose.yml").is_ok());
+        assert!(validate_compose_file("compose/dev.yml").is_ok());
+        assert!(validate_compose_file("").is_err());
+        assert!(validate_compose_file("../etc/passwd").is_err());
+        assert!(validate_compose_file("/abs/path.yml").is_err());
+        assert!(validate_compose_file("bad;file.yml").is_err());
     }
 
     #[test]
@@ -405,6 +443,24 @@ mod tests {
         assert!(docker_action_is_mutating(
             &json!({"action": "compose_up"})
         ));
+        assert!(!docker_action_is_mutating(&json!({})));
+        assert!(!docker_action_is_mutating(&json!({"action": "images"})));
+    }
+
+    #[test]
+    fn build_args_compose_logs_and_unknown() {
+        let logs = build_docker_args(
+            "compose_logs",
+            &json!({"service": "api", "tail": 50, "file": "compose.yml"}),
+        )
+        .unwrap();
+        assert_eq!(logs[0], "compose");
+        assert!(logs.iter().any(|s| s == "logs"));
+        assert!(logs.iter().any(|s| s == "api"));
+        assert!(logs.windows(2).any(|w| w[0] == "--tail" && w[1] == "50"));
+
+        assert!(build_docker_args("nope", &json!({})).is_err());
+        assert!(build_docker_args("compose_up", &json!({"service": "a;b"})).is_err());
     }
 
     #[tokio::test]

@@ -430,6 +430,15 @@ mod tests {
     }
 
     #[test]
+    fn definition_name_is_notebook() {
+        let (_dir, ws) = setup();
+        let tool = NotebookTool {
+            workspace: ws.clone(),
+        };
+        assert_eq!(tool.definition().function.name, "notebook");
+    }
+
+    #[test]
     fn mutating_policy_helper() {
         assert!(notebook_action_is_mutating(
             &json!({"action": "write_cell"})
@@ -444,5 +453,29 @@ mod tests {
         assert!(!notebook_action_is_mutating(
             &json!({"action": "metadata"})
         ));
+        assert!(!notebook_action_is_mutating(&json!({})));
+        assert!(!notebook_action_is_mutating(&json!({"action": "unknown"})));
+    }
+
+    #[test]
+    fn require_index_edges() {
+        assert_eq!(require_index(&json!({"index": 0})).unwrap(), 0);
+        assert_eq!(require_index(&json!({"index": 3})).unwrap(), 3);
+        assert!(require_index(&json!({})).is_err());
+        assert!(require_index(&json!({"index": -1})).is_err());
+        assert!(require_index(&json!({"index": "0"})).is_err());
+    }
+
+    #[tokio::test]
+    async fn unknown_action_errors() {
+        let (_dir, ws) = setup();
+        let tool = NotebookTool {
+            workspace: ws.clone(),
+        };
+        let err = tool
+            .execute(json!({"action": "delete_cell", "path": "demo.ipynb"}))
+            .await
+            .expect_err("unknown");
+        assert!(err.to_string().contains("unknown notebook action"));
     }
 }

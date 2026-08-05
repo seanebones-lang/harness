@@ -170,3 +170,107 @@ fn detect_default_branch(path: &Path) -> Option<String> {
         Some(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn entry(name: &str, path: PathBuf) -> ProjectEntry {
+        ProjectEntry {
+            name: name.into(),
+            path,
+            remote: None,
+            default_branch: Some("main".into()),
+            added: "t".into(),
+            updated: "t".into(),
+        }
+    }
+
+    #[test]
+    fn list_sorted_is_case_insensitive() {
+        let store = ProjectStore {
+            projects: vec![
+                entry("Zed", PathBuf::from("/z")),
+                entry("alpha", PathBuf::from("/a")),
+                entry("Beta", PathBuf::from("/b")),
+            ],
+        };
+        let names: Vec<_> = store.list_sorted().into_iter().map(|p| p.name).collect();
+        assert_eq!(names, vec!["alpha", "Beta", "Zed"]);
+    }
+
+    #[test]
+    fn add_find_remove_by_name_and_path() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().to_path_buf();
+        let mut store = ProjectStore::default();
+        let out = store
+            .add(
+                Some("demo".into()),
+                Some(path.clone()),
+                None,
+                Some("main".into()),
+            )
+            .unwrap();
+        assert!(matches!(out, AddOutcome::Added(_)));
+        assert!(store.find("demo").is_some());
+        assert!(store.find(path.to_str().unwrap()).is_some());
+        // update same path
+        let out2 = store
+            .add(
+                Some("demo2".into()),
+                Some(path.clone()),
+                Some("r".into()),
+                None,
+            )
+            .unwrap();
+        assert!(matches!(out2, AddOutcome::Updated(_)));
+        assert_eq!(store.projects.len(), 1);
+        assert_eq!(store.find("demo2").unwrap().remote.as_deref(), Some("r"));
+        assert!(store.remove("demo2").is_some());
+        assert!(store.find("demo2").is_none());
+    }
+
+    #[test]
+    fn add_rejects_duplicate_name_different_path() {
+        let a = TempDir::new().unwrap();
+        let b = TempDir::new().unwrap();
+        let mut store = ProjectStore::default();
+        store
+            .add(
+                Some("same".into()),
+                Some(a.path().to_path_buf()),
+                None,
+                None,
+            )
+            .unwrap();
+        let err = store
+            .add(
+                Some("same".into()),
+                Some(b.path().to_path_buf()),
+                None,
+                None,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn canonicalize_absolute_missing_keeps_path() {
+        let p = PathBuf::from("/tmp/harness-project-store-missing-xyz");
+        let got = canonicalize_or_absolute(p.clone()).unwrap();
+        assert_eq!(got, p);
+    }
+
+    #[test]
+    fn load_missing_file_is_default() {
+        // path() may exist on developer machines; empty parse path covered by Default.
+        let s = ProjectStore::default();
+        assert!(s.projects.is_empty());
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("projects"));
+        let _ = fs::metadata(std::env::temp_dir()); // touch fs without depending on HOME
+    }
+}

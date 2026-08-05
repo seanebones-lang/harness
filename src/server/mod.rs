@@ -39,10 +39,10 @@ use crate::projects;
 use auth::{extract_bearer, require_auth};
 use collab_ws::{agent_event_to_collab, collab_ws};
 use project_ops::{
-    collect_change_counts, collect_files, current_git_branch, default_test_command, git_output,
-    git_ahead_behind, is_allowed_test_command, run_git_in_project, run_shell_in_project,
+    collect_change_counts, collect_files, current_git_branch, default_test_command,
+    git_ahead_behind, git_output, is_allowed_test_command, run_git_in_project,
+    run_shell_in_project,
 };
-
 
 // ── Request / response types ──────────────────────────────────────────────────
 
@@ -137,9 +137,7 @@ struct ProjectSummary {
     updated: String,
 }
 
-
 const UI_HTML: &str = include_str!("../../static/index.html");
-
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
@@ -163,7 +161,6 @@ pub fn router(state: ServerState) -> Router {
         .merge(protected)
         .with_state(shared)
 }
-
 
 pub async fn serve(state: ServerState, addr: SocketAddr) -> Result<()> {
     if !addr.ip().is_loopback() {
@@ -682,7 +679,6 @@ async fn chat(
     let boxed: BoxSseStream = Box::pin(combined);
     Sse::new(boxed).keep_alive(KeepAlive::default())
 }
-
 
 #[cfg(test)]
 mod tests {

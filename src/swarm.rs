@@ -399,7 +399,11 @@ pub fn update_status(id: &str, status: &TaskStatus, result: Option<&str>) -> Res
 }
 
 /// Local SQLite status update.
-pub(crate) fn update_status_local(id: &str, status: &TaskStatus, result: Option<&str>) -> Result<()> {
+pub(crate) fn update_status_local(
+    id: &str,
+    status: &TaskStatus,
+    result: Option<&str>,
+) -> Result<()> {
     let conn = open_db()?;
     let status_str = match status {
         TaskStatus::Failed(msg) => format!("failed:{msg}"),

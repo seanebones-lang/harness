@@ -134,3 +134,34 @@ pub async fn compact_context(provider: &ArcProvider, session: &mut Session) -> b
     );
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harness_provider_core::Message;
+
+    #[test]
+    fn estimate_tokens_empty_is_zero() {
+        assert_eq!(estimate_tokens(&[]), 0);
+    }
+
+    #[test]
+    fn estimate_tokens_uses_char_heuristic_plus_one_per_message() {
+        // "abcd" → 4/4 + 1 = 2; "efghij" → 6/4 + 1 = 2
+        let msgs = vec![Message::user("abcd"), Message::assistant("efghij")];
+        assert_eq!(estimate_tokens(&msgs), 4);
+    }
+
+    #[test]
+    fn context_limit_for_model_covers_families_and_case() {
+        assert_eq!(context_limit_for_model("gpt-5.5"), 1_000_000);
+        assert_eq!(context_limit_for_model("GPT-4o"), 1_000_000);
+        assert_eq!(context_limit_for_model("grok-4.3"), 1_000_000);
+        assert_eq!(context_limit_for_model("claude-sonnet-4-6"), 200_000);
+        assert_eq!(context_limit_for_model("claude-opus-4"), 200_000);
+        assert_eq!(context_limit_for_model("claude-haiku-3-5"), 200_000);
+        assert_eq!(context_limit_for_model("Sonnet"), 200_000);
+        assert_eq!(context_limit_for_model("qwen3-coder:30b"), 256_000);
+        assert_eq!(context_limit_for_model("unknown-model"), 128_000);
+    }
+}

@@ -523,11 +523,32 @@ fn encode_base64(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn definition_name_is_computer() {
+        assert_eq!(ComputerUseTool.definition().function.name, "computer");
+        assert!(ComputerUseTool
+            .definition()
+            .function
+            .description
+            .contains("screenshot"));
+    }
 
     #[test]
     fn validate_type_text_rejects_control_chars() {
         assert!(validate_type_text("hello").is_ok());
         assert!(validate_type_text("hello\nworld").is_err());
+        assert!(validate_type_text("hello\rworld").is_err());
+        assert!(validate_type_text("a\0b").is_err());
+    }
+
+    #[test]
+    fn validate_type_text_empty_and_too_long() {
+        assert!(validate_type_text("").is_err());
+        let long = "x".repeat(513);
+        assert!(validate_type_text(&long).is_err());
+        assert!(validate_type_text(&"y".repeat(512)).is_ok());
     }
 
     #[test]
@@ -538,8 +559,44 @@ mod tests {
     }
 
     #[test]
+    fn validate_key_combo_length_and_empty_segments() {
+        assert!(validate_key_combo("").is_err());
+        assert!(validate_key_combo(&"a".repeat(49)).is_err());
+        assert!(validate_key_combo("cmd++c").is_err());
+        assert!(validate_key_combo("return").is_ok());
+    }
+
+    #[test]
+    fn extract_coord_requires_array() {
+        let err = extract_coord(&json!({})).expect_err("missing");
+        assert!(err.to_string().contains("coordinate"));
+        let (x, y) = extract_coord(&json!({"coordinate": [10, 20]})).unwrap();
+        assert_eq!((x, y), (10, 20));
+        let (x, y) = extract_coord(&json!({"coordinate": [7]})).unwrap();
+        assert_eq!((x, y), (7, 0));
+    }
+
+    #[test]
+    fn escape_applescript_string_escapes_quotes_and_backslashes() {
+        assert_eq!(escape_applescript_string(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(escape_applescript_string(r"a\b"), r"a\\b");
+    }
+
+    #[test]
     fn cliclick_type_safe_rejects_colons() {
         assert!(cliclick_type_safe("hello"));
         assert!(!cliclick_type_safe("a:b"));
+        assert!(!cliclick_type_safe(""));
+        assert!(!cliclick_type_safe(&"x".repeat(129)));
+        assert!(!cliclick_type_safe("say\"hi\""));
+    }
+
+    #[tokio::test]
+    async fn unknown_action_errors_without_side_effects() {
+        let err = ComputerUseTool
+            .execute(json!({"action": "teleport"}))
+            .await
+            .expect_err("unknown");
+        assert!(err.to_string().contains("Unknown computer action"));
     }
 }

@@ -124,4 +124,3 @@ pub(crate) fn agent_event_to_collab(event: &AgentEvent) -> Option<CollabEvent> {
         _ => None,
     }
 }
-

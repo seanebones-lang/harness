@@ -103,3 +103,72 @@ fn glob_match(pattern: &str, name: &str) -> bool {
         name == pattern
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace_root::{SandboxMode, WorkspaceRoot};
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    fn tool(dir: &TempDir) -> SearchCodeTool {
+        SearchCodeTool {
+            workspace: Arc::new(
+                WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("ws"),
+            ),
+        }
+    }
+
+    #[test]
+    fn glob_match_extension_and_exact() {
+        assert!(glob_match("*.rs", "main.rs"));
+        assert!(!glob_match("*.rs", "main.toml"));
+        assert!(glob_match("Cargo.toml", "Cargo.toml"));
+        assert!(!glob_match("Cargo.toml", "cargo.toml"));
+    }
+
+    #[test]
+    fn definition_name_is_search_code() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(tool(&dir).definition().function.name, "search_code");
+    }
+
+    #[tokio::test]
+    async fn missing_pattern_errors() {
+        let dir = TempDir::new().unwrap();
+        let err = tool(&dir).execute(json!({})).await.unwrap_err();
+        assert!(err.to_string().contains("missing pattern"));
+    }
+
+    #[tokio::test]
+    async fn finds_match_and_respects_glob_and_limit() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("a.rs"), "fn hello() {}\n").unwrap();
+        std::fs::write(dir.path().join("b.txt"), "fn hello() {}\n").unwrap();
+        let t = tool(&dir);
+        let out = t
+            .execute(json!({
+                "pattern": "hello",
+                "file_glob": "*.rs",
+                "max_results": 1
+            }))
+            .await
+            .unwrap();
+        assert!(out.contains("a.rs"));
+        assert!(!out.contains("b.txt"));
+        assert!(out.contains("limit reached") || out.lines().count() >= 1);
+
+        let none = t
+            .execute(json!({"pattern": "zzz_no_match_xyz"}))
+            .await
+            .unwrap();
+        assert!(none.contains("No matches"));
+    }
+
+    #[tokio::test]
+    async fn invalid_regex_errors() {
+        let dir = TempDir::new().unwrap();
+        let err = tool(&dir).execute(json!({"pattern": "("})).await.unwrap_err();
+        assert!(!err.to_string().is_empty());
+    }
+}

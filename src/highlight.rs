@@ -165,3 +165,215 @@ fn syn_color_to_ratatui(c: syntect::highlighting::Color) -> Color {
     // syntect uses RGBA; map straight to ratatui RGB
     Color::Rgb(c.r, c.g, c.b)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn is_text(b: &Block) -> bool {
+        matches!(b, Block::Text(_))
+    }
+
+    fn is_code(b: &Block) -> bool {
+        matches!(b, Block::Code { .. })
+    }
+
+    #[test]
+    fn parse_blocks_empty_input() {
+        assert!(parse_blocks("").is_empty());
+        assert!(parse_blocks("   \n\n").is_empty());
+    }
+
+    #[test]
+    fn parse_blocks_plain_text_only() {
+        let blocks = parse_blocks("hello\nworld\n");
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            Block::Text(t) => assert!(t.contains("hello") && t.contains("world")),
+            Block::Code { .. } => panic!("expected text"),
+        }
+    }
+
+    #[test]
+    fn parse_blocks_single_fenced_rust() {
+        let src = "intro\n```rust\nfn main() {}\n```\noutro\n";
+        let blocks = parse_blocks(src);
+        assert_eq!(blocks.len(), 3);
+        assert!(is_text(&blocks[0]));
+        match &blocks[1] {
+            Block::Code { lang, code } => {
+                assert_eq!(lang, "rust");
+                assert!(code.contains("fn main()"));
+            }
+            Block::Text(_) => panic!("expected code"),
+        }
+        assert!(is_text(&blocks[2]));
+    }
+
+    #[test]
+    fn parse_blocks_empty_lang_token() {
+        let blocks = parse_blocks("```\nprint(1)\n```\n");
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            Block::Code { lang, code } => {
+                assert!(lang.is_empty());
+                assert!(code.contains("print(1)"));
+            }
+            Block::Text(_) => panic!("expected code"),
+        }
+    }
+
+    #[test]
+    fn parse_blocks_unclosed_fence_treated_as_code() {
+        let blocks = parse_blocks("before\n```py\nx = 1\n");
+        assert!(blocks.iter().any(is_code));
+        let code = blocks.iter().find_map(|b| match b {
+            Block::Code { lang, code } => Some((lang.as_str(), code.as_str())),
+            _ => None,
+        });
+        let (lang, code) = code.expect("unclosed code");
+        assert_eq!(lang, "py");
+        assert!(code.contains("x = 1"));
+    }
+
+    #[test]
+    fn parse_blocks_empty_fence_does_not_emit_code() {
+        // Opening + closing with no body → no Code block
+        let blocks = parse_blocks("pre\n```rs\n```\npost\n");
+        assert!(blocks.iter().all(is_text));
+        assert!(!blocks.iter().any(is_code));
+    }
+
+    #[test]
+    fn parse_blocks_multiple_fences() {
+        let src = "```a\n1\n```\nmid\n```b\n2\n```\n";
+        let blocks = parse_blocks(src);
+        let codes: Vec<_> = blocks
+            .iter()
+            .filter_map(|b| match b {
+                Block::Code { lang, code } => Some((lang.clone(), code.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(codes.len(), 2);
+        assert_eq!(codes[0].0, "a");
+        assert!(codes[0].1.contains('1'));
+        assert_eq!(codes[1].0, "b");
+        assert!(codes[1].1.contains('2'));
+    }
+
+    #[test]
+    fn parse_blocks_lang_is_trimmed() {
+        let blocks = parse_blocks("```  go  \npackage main\n```\n");
+        match &blocks[0] {
+            Block::Code { lang, .. } => assert_eq!(lang, "go"),
+            Block::Text(_) => panic!("expected code"),
+        }
+    }
+
+    #[test]
+    fn highlighter_new_and_default() {
+        let a = Highlighter::new();
+        let b = Highlighter::default();
+        // Both construct usable highlighters
+        assert!(!a.highlight_code("x = 1\n", "python").is_empty());
+        assert!(!b.highlight_code("x = 1\n", "python").is_empty());
+    }
+
+    #[test]
+    fn highlight_code_lang_header_when_lang_set() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight_code("let x = 1;\n", "rust");
+        assert!(!lines.is_empty());
+        // First line is the italic lang label "  rust"
+        let header: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(header, "  rust");
+        assert!(lines.len() >= 2);
+    }
+
+    #[test]
+    fn highlight_code_no_header_when_lang_empty() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight_code("plain\n", "");
+        assert!(!lines.is_empty());
+        let first: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_ne!(first.trim(), "");
+        assert!(!first.contains("  ")); // no "  {lang}" header line content pattern forced
+                                        // empty lang must not inject a DarkGray italic header-only line
+        assert!(
+            first.contains("plain")
+                || lines
+                    .iter()
+                    .any(|l| { l.spans.iter().any(|s| s.content.contains("plain")) })
+        );
+    }
+
+    #[test]
+    fn highlight_code_unknown_lang_falls_back_to_plain() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight_code("not_a_real_lang_token xyz\n", "not-a-real-syntax-xyz");
+        assert!(!lines.is_empty());
+        let joined: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.as_ref())
+            .collect::<Vec<_>>()
+            .join("");
+        assert!(joined.contains("not_a_real_lang_token") || joined.contains("xyz"));
+    }
+
+    #[test]
+    fn highlight_code_empty_source() {
+        let hl = Highlighter::new();
+        let lines = hl.highlight_code("", "rust");
+        // Only the language header line
+        assert_eq!(lines.len(), 1);
+        let header: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
+        assert_eq!(header, "  rust");
+    }
+
+    #[test]
+    fn render_message_wraps_code_with_dividers() {
+        let hl = Highlighter::new();
+        let style = Style::default().fg(Color::White);
+        let lines = hl.render_message("hi\n```rs\nfn x(){}\n```\nbye\n", style);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|l| {
+                l.spans
+                    .iter()
+                    .map(|s| s.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t == "hi"));
+        assert!(texts.iter().any(|t| t == "bye"));
+        let dividers = texts.iter().filter(|t| t.contains("─────")).count();
+        assert!(dividers >= 2, "expected divider above and below code");
+        assert!(texts.iter().any(|t| t.contains("rs") || t.contains("fn")));
+    }
+
+    #[test]
+    fn render_message_text_only() {
+        let hl = Highlighter::new();
+        let style = Style::default();
+        let lines = hl.render_message("one\ntwo\n", style);
+        assert_eq!(lines.len(), 2);
+    }
+
+    #[test]
+    fn syn_color_to_ratatui_maps_rgb() {
+        let c = syntect::highlighting::Color {
+            r: 10,
+            g: 20,
+            b: 30,
+            a: 255,
+        };
+        match syn_color_to_ratatui(c) {
+            Color::Rgb(r, g, b) => {
+                assert_eq!((r, g, b), (10, 20, 30));
+            }
+            other => panic!("expected Rgb, got {other:?}"),
+        }
+    }
+}

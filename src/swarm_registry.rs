@@ -90,7 +90,10 @@ impl HttpRegistry {
             .context("build HTTP client for swarm registry")
     }
 
-    fn apply_auth(&self, req: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {
+    fn apply_auth(
+        &self,
+        req: reqwest::blocking::RequestBuilder,
+    ) -> reqwest::blocking::RequestBuilder {
         match &self.token {
             Some(t) => req.header("Authorization", format!("Bearer {t}")),
             None => req,
@@ -117,7 +120,9 @@ impl SwarmRegistry for HttpRegistry {
             "model": model,
         });
         let req = self.apply_auth(client.post(self.url("/tasks")).json(&body));
-        let resp = req.send().map_err(|e| Self::map_transport(e, &self.base_url))?;
+        let resp = req
+            .send()
+            .map_err(|e| Self::map_transport(e, &self.base_url))?;
         let status = resp.status();
         let text = resp.text().unwrap_or_default();
         if !status.is_success() {
@@ -145,7 +150,9 @@ impl SwarmRegistry for HttpRegistry {
         });
         let path = format!("/tasks/{}", urlencoding_path(id));
         let req = self.apply_auth(client.put(self.url(&path)).json(&body));
-        let resp = req.send().map_err(|e| Self::map_transport(e, &self.base_url))?;
+        let resp = req
+            .send()
+            .map_err(|e| Self::map_transport(e, &self.base_url))?;
         let code = resp.status();
         if !code.is_success() {
             let text = resp.text().unwrap_or_default();
@@ -164,11 +171,16 @@ impl SwarmRegistry for HttpRegistry {
                 .get(self.url("/tasks"))
                 .query(&[("limit", limit.to_string())]),
         );
-        let resp = req.send().map_err(|e| Self::map_transport(e, &self.base_url))?;
+        let resp = req
+            .send()
+            .map_err(|e| Self::map_transport(e, &self.base_url))?;
         let code = resp.status();
         let text = resp.text().unwrap_or_default();
         if !code.is_success() {
-            bail!("remote swarm list failed HTTP {code}: {}", trunc(&text, 200));
+            bail!(
+                "remote swarm list failed HTTP {code}: {}",
+                trunc(&text, 200)
+            );
         }
         let v: Value = serde_json::from_str(&text)
             .with_context(|| format!("list response not JSON: {}", trunc(&text, 120)))?;
@@ -186,7 +198,9 @@ impl SwarmRegistry for HttpRegistry {
         let client = self.client()?;
         let path = format!("/tasks/{}", urlencoding_path(id));
         let req = self.apply_auth(client.get(self.url(&path)));
-        let resp = req.send().map_err(|e| Self::map_transport(e, &self.base_url))?;
+        let resp = req
+            .send()
+            .map_err(|e| Self::map_transport(e, &self.base_url))?;
         let code = resp.status();
         if code.as_u16() == 404 {
             return Ok(None);
@@ -230,32 +244,24 @@ pub fn task_from_json(v: &Value) -> Result<TaskEntry> {
         "failed" => TaskStatus::Failed(error.unwrap_or("failed").to_string()),
         other => TaskStatus::Failed(format!("unknown status: {other}")),
     };
-    let result = v
-        .get("result")
-        .and_then(|x| {
-            if x.is_null() {
-                None
-            } else {
-                x.as_str().map(|s| s.to_string())
-            }
-        });
-    let model = v
-        .get("model")
-        .and_then(|x| {
-            if x.is_null() {
-                None
-            } else {
-                x.as_str().map(|s| s.to_string())
-            }
-        });
-    let created_ts = v.get("created_ts").and_then(|x| x.as_i64()).unwrap_or(0);
-    let completed_ts = v.get("completed_ts").and_then(|x| {
+    let result = v.get("result").and_then(|x| {
         if x.is_null() {
             None
         } else {
-            x.as_i64()
+            x.as_str().map(|s| s.to_string())
         }
     });
+    let model = v.get("model").and_then(|x| {
+        if x.is_null() {
+            None
+        } else {
+            x.as_str().map(|s| s.to_string())
+        }
+    });
+    let created_ts = v.get("created_ts").and_then(|x| x.as_i64()).unwrap_or(0);
+    let completed_ts =
+        v.get("completed_ts")
+            .and_then(|x| if x.is_null() { None } else { x.as_i64() });
     Ok(TaskEntry {
         id,
         prompt,
@@ -456,9 +462,8 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let listener = rt.block_on(async {
-            tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap()
-        });
+        let listener =
+            rt.block_on(async { tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap() });
         let addr = listener.local_addr().unwrap();
         let handle = thread::spawn(move || {
             rt.block_on(async move {
@@ -501,7 +506,10 @@ mod tests {
             timeout_secs: 1,
         };
         let err = reg.register("x", None).unwrap_err().to_string();
-        assert!(err.contains("unreachable") || err.contains("Connection"), "{err}");
+        assert!(
+            err.contains("unreachable") || err.contains("Connection"),
+            "{err}"
+        );
     }
 
     #[test]

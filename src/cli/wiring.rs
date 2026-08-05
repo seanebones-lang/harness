@@ -11,10 +11,10 @@ use harness_lsp::{
 use harness_mcp;
 use harness_provider_core::ArcProvider;
 use harness_tools::tools::{
-    ApplyPatchTool, ComputerUseTool, DatabaseTool, DatabaseToolConfig, DockerTool, DockerToolConfig,
-    GhTool, GitTool, ListDirTool, NotebookTool, PatchFileTool, ReadFileTool, SearchCodeTool,
-    ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool, SpawnSwarmTool, SwarmEnqueueRunner,
-    TestRunnerTool, WriteFileTool,
+    ApplyPatchTool, ComputerUseTool, DatabaseTool, DatabaseToolConfig, DockerTool,
+    DockerToolConfig, GhTool, GitTool, ListDirTool, NotebookTool, PatchFileTool, ReadFileTool,
+    SearchCodeTool, ShellConfig as ToolShellConfig, ShellTool, SpawnAgentTool, SpawnSwarmTool,
+    SwarmEnqueueRunner, TestRunnerTool, WriteFileTool,
 };
 use harness_tools::{ConfirmGate, SandboxMode, ToolExecutor, ToolRegistry, WorkspaceRoot};
 use std::collections::HashSet;

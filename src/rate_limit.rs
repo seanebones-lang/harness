@@ -48,13 +48,59 @@ pub fn allow(ip: IpAddr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     #[test]
     fn allows_requests_under_limit() {
+        // Unique TEST-NET IP so parallel tests don't share a bucket.
         let ip = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 1));
         for _ in 0..10 {
             assert!(allow(ip));
         }
+    }
+
+    #[test]
+    fn local_check_allows_then_denies_at_max() {
+        let mut rl = RateLimiter::default();
+        let ip = IpAddr::V4(Ipv4Addr::new(198, 51, 100, 50));
+        for i in 0..MAX_REQUESTS {
+            assert!(rl.check(ip), "request {i} should be allowed");
+        }
+        assert!(!rl.check(ip), "request past MAX_REQUESTS must be denied");
+        assert!(!rl.check(ip), "subsequent requests stay denied in-window");
+    }
+
+    #[test]
+    fn local_check_independent_ips() {
+        let mut rl = RateLimiter::default();
+        let a = IpAddr::V4(Ipv4Addr::new(198, 51, 100, 1));
+        let b = IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2));
+        for _ in 0..MAX_REQUESTS {
+            assert!(rl.check(a));
+        }
+        assert!(!rl.check(a));
+        // Exhausting A must not affect B
+        assert!(rl.check(b));
+    }
+
+    #[test]
+    fn local_check_supports_ipv6() {
+        let mut rl = RateLimiter::default();
+        let ip = IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
+        assert!(rl.check(ip));
+        assert!(rl.check(ip));
+    }
+
+    #[test]
+    fn allow_public_api_uses_unique_ip() {
+        let ip = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 99));
+        assert!(allow(ip));
+        assert!(allow(ip));
+    }
+
+    #[test]
+    fn default_rate_limiter_starts_empty() {
+        let rl = RateLimiter::default();
+        assert!(rl.buckets.is_empty());
     }
 }

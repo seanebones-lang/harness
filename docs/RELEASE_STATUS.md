@@ -4,12 +4,43 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-05 — Swarm-50 complete (specialized agents)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| Iterations | **50/50** in `docs/swarm-50-2026-08-05/iterations/` |
+| `cargo test --bin harness` | **190** pass |
+| `cargo test -p harness-tools` | **148** pass |
+| clippy `-D warnings` | clean |
+| llvm-cov workspace lines | **51.98%** (12224/23516) |
+| smoke_rel01 offline | PASS |
+| Vault / HQ | `Vault/Swarm-50/` · HQ Projects/Harness + Activity Log |
+
+---
+
+**2026-08-05 — Swarm-50 start (docs honesty + residual climb)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** @ `b29993f` (start HEAD) |
+| Campaign | `docs/swarm-50-2026-08-05/` — 50 eng iterations; skip 📌 billing + keys-only |
+| Baseline `cargo test --bin harness` | **123** pass (do not invent higher) |
+| Coverage SoT | **51.98%** lines (`COVERAGE.md`; llvm-cov 2026-08-05 swarm-50) — 60% still target |
+| Docs honesty slice | CTO exec findings: Gemini/Bedrock **closed**; coverage **51.98%**; Vault Index → `main` |
+| Linux Docker smoke | **Not run** — Docker unavailable on this Mac host |
+| Billing prebuilts | 📌 **PINNED** (W1.4–W1.5) |
+
+**Go / no-go:** **GO** public beta (unchanged). **Stable** still blocked on full REL-01 matrix + billing prebuilts. Swarm-50 in progress toward coverage 60% + residual hygiene.
+
+---
+
 **2026-08-05 — Coverage remeasure + offline REL-01 subset**
 
 | Item | Result |
 |------|--------|
 | Branch | **`main`** @ `b736ac0`+ |
-| `cargo llvm-cov --workspace --all-features --summary-only` | **46.52%** lines (10459/22481); regions 47.77%; functions 52.52% |
+| `cargo llvm-cov --workspace --all-features --summary-only` | **51.98%** lines (12224/23516); regions 53.37%; functions 58.96% |
 | `cargo test --bin harness` | **123** pass |
 | `cargo test -p harness-tools` | **110** pass |
 | `bash scripts/smoke_rel01.sh` | **PASS** offline (doctor, swarm list/gc dry-run, mcp roots, sessions) |
@@ -259,7 +290,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | Item | Status |
 |------|--------|
 | **License** | Proprietary NextEleven LLC (`LICENSE`) |
-| **Automated gates** | **123** bin tests; clippy clean on ship; CI multi-OS; coverage **target** 60% (measured **46.52%** / ~47%) |
+| **Automated gates** | **190** bin tests; clippy clean on ship; CI multi-OS; coverage **target** 60% (measured **51.98%** / ~52%) |
 | **P0 security** | **Closed** — see [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
 | **Threat model** | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) v2 |
 | **Open backlog** | [`TODO.md`](../TODO.md) · [`CTO_BACKLOG.md`](CTO_BACKLOG.md) |

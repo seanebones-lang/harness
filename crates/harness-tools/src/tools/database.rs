@@ -344,6 +344,16 @@ mod tests {
     }
 
     #[test]
+    fn definition_name_is_database() {
+        let dir = tempdir().unwrap();
+        let ws = Arc::new(
+            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("ws"),
+        );
+        let tool = DatabaseTool::new(ws, DatabaseToolConfig::default());
+        assert_eq!(tool.definition().function.name, "database");
+    }
+
+    #[test]
     fn readonly_sql_allows_select_with_pragma_explain() {
         assert!(is_readonly_sql("SELECT 1"));
         assert!(is_readonly_sql("  with cte as (select 1) select * from cte"));
@@ -355,6 +365,20 @@ mod tests {
         assert!(!is_readonly_sql("DELETE FROM t"));
         assert!(!is_readonly_sql("UPDATE t SET x=1"));
         assert!(!is_readonly_sql("DROP TABLE t"));
+        assert!(!is_readonly_sql(""));
+        assert!(!is_readonly_sql("-- only comment"));
+        assert!(!is_readonly_sql("/* unclosed"));
+        assert!(is_readonly_sql("/* multi\nline */\nSELECT 1"));
+    }
+
+    #[test]
+    fn validate_ident_accepts_alnum_underscore() {
+        assert!(validate_ident("items").is_ok());
+        assert!(validate_ident("t_1").is_ok());
+        assert!(validate_ident("").is_err());
+        assert!(validate_ident("items;drop").is_err());
+        assert!(validate_ident("a-b").is_err());
+        assert!(validate_ident("schema.table").is_err());
     }
 
     #[tokio::test]
