@@ -18,9 +18,9 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 
 | Gate | Status |
 |------|--------|
-| `cargo test --bin harness` | **116** pass (2026-08-03) |
+| `cargo test --bin harness` | **123** pass (2026-08-05) |
 | Clippy `-D warnings` (bin) | green on ship commits |
-| Coverage measured | **44.67%** lines — [`COVERAGE.md`](COVERAGE.md); CI target 60% open |
+| Coverage measured | **46.52%** lines — [`COVERAGE.md`](COVERAGE.md); CI target 60% open |
 | License | Proprietary NextEleven LLC ([`LICENSE`](LICENSE)) |
 
 ### Tier 0 — Beta shipped

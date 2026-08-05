@@ -4,6 +4,23 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-05 — Coverage remeasure + offline REL-01 subset**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** @ `b736ac0`+ |
+| `cargo llvm-cov --workspace --all-features --summary-only` | **46.52%** lines (10459/22481); regions 47.77%; functions 52.52% |
+| `cargo test --bin harness` | **123** pass |
+| `cargo test -p harness-tools` | **110** pass |
+| `bash scripts/smoke_rel01.sh` | **PASS** offline (doctor, swarm list/gc dry-run, mcp roots, sessions) |
+| Linux Docker smoke (`smoke_linux_docker.sh`) | **Not run** — Docker unavailable on this Mac host |
+| Key-dependent one-shot/TUI/export | **Still open** (W1.1) |
+| Billing prebuilts | 📌 **PINNED** (W1.4–W1.5) |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on full REL-01 matrix + billing prebuilts. CI 60% coverage gate still a target (~47% measured).
+
+---
+
 **2026-07-30 — Collab max_users, checkpoint CI isolation, Mistral/OpenAI-compat**
 
 | Item | Result |
@@ -242,7 +259,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | Item | Status |
 |------|--------|
 | **License** | Proprietary NextEleven LLC (`LICENSE`) |
-| **Automated gates** | **116** bin tests; clippy clean on ship; CI multi-OS; coverage **target** 60% (measured ~45%) |
+| **Automated gates** | **123** bin tests; clippy clean on ship; CI multi-OS; coverage **target** 60% (measured **46.52%** / ~47%) |
 | **P0 security** | **Closed** — see [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
 | **Threat model** | [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) v2 |
 | **Open backlog** | [`TODO.md`](../TODO.md) · [`CTO_BACKLOG.md`](CTO_BACKLOG.md) |

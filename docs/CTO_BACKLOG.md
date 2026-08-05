@@ -64,8 +64,8 @@ Goal: one backlog, honest metrics, vault usable, no lying checkboxes.
 ### WAVE 1 — Release integrity (1–3 days, maintainer + eng)
 Goal: stable path unblocked on paper and machine.
 
-- [~] **W1.1** REL-01 macOS full smoke with real API keys; log in `RELEASE_STATUS.md` (one-shot, TUI, export, serve, swarm list/gc). *(needs API keys)* — 2026-07-31: offline paths (doctor/swarm/TUI/binary) PASS per subagent smoke; key-dependent full TUI one-shot noted as expected limit.
-- [ ] **W1.2** REL-01 Linux (VM/CI runner) smoke log.
+- [~] **W1.1** REL-01 macOS full smoke with real API keys; log in `RELEASE_STATUS.md` (one-shot, TUI, export, serve, swarm list/gc). *(needs API keys)* — 2026-08-05: `scripts/smoke_rel01.sh` offline PASS again; key-dependent still open.
+- [ ] **W1.2** REL-01 Linux (VM/CI runner) smoke log. — 2026-08-05: Docker unavailable on Mac host; `smoke_linux_docker.sh` not run.
 - [ ] **W1.3** REL-01 Windows smoke log + `install.ps1` verify.
 - [ ] **W1.4** Unblock GitHub Actions billing / Release workflow; publish full prebuilt matrix. 📌 **PINNED** — user holding billing questions
 - [ ] **W1.5** Homebrew SHA update all platforms (`scripts/update-homebrew-sha.sh`). 📌 **PINNED** (depends on W1.4)

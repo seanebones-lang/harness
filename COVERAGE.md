@@ -5,19 +5,20 @@
 | Field | Value |
 |-------|--------|
 | **Tool** | cargo-llvm-cov |
-| **Measured lines** | **44.67%** (9723 covered / 21766 lines) |
-| **Regions** | 45.71% · **Functions** 50.44% |
-| **Date** | 2026-08-03 |
+| **Measured lines** | **46.52%** (10459 covered / 22481 lines) |
+| **Regions** | 47.77% · **Functions** 52.52% |
+| **Date** | 2026-08-05 |
 | **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **not yet met** |
 | **Near-term target** | ≥ 40% workspace lines — **met** (this measure) |
 
 Prior measures:
+- llvm-cov 2026-08-03: **44.67%** lines (9723 / 21766)
 - llvm-cov 2026-07-30: **40.22%** lines (7814 / 19430)
 - tarpaulin 2026-05-25: **23.33%** lines (2407 / 10317)
 
 Tooling differs across tools; treat llvm-cov as current SoT going forward.
 
-Note: Measured % is still below the 60% PR gate. The gate is a **target**, not current status. Critical pure modules climbed in W2 (examples from 2026-08-03 package/workspace run): `filesystem` ~99% lines, `swarm_tool` 100%, `apply_patch` ~95%, `shell` ~96%, `src/swarm.rs` ~86%, `harness-memory` session/store/memory high 90%+, `notifications` ~76%. TUI driver/input and some CLI wiring still near 0%. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
+Note: Measured % is still below the 60% PR gate. The gate is a **target**, not current status. 2026-08-05 climb: git tool ~78% lines, executor ~73%, auth_token ~85%, swarm ~87%, swarm_registry ~87%. TUI driver/input and some CLI wiring still near 0%. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
 
 ## How to re-run
 
