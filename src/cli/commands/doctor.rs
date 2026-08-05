@@ -22,41 +22,102 @@ pub async fn handle_doctor_command(cfg: &Config) {
     }
     println!();
 
-    let checks: &[(&str, &str, &str)] = &[
+    // Doctor must honor config.toml keys the same way runtime/status do.
+    // Env vars still win for messaging; config/[providers.*] count as configured.
+    let config_top_key = cfg
+        .provider
+        .api_key
+        .as_ref()
+        .map(|k| !k.is_empty())
+        .unwrap_or(false);
+    let provider_entry_key = |name: &str| -> bool {
+        cfg.providers
+            .get(name)
+            .and_then(|e| e.api_key.as_ref())
+            .map(|k| !k.is_empty())
+            .unwrap_or(false)
+    };
+    let env_key = |env: &str| -> bool {
+        std::env::var(env).map(|k| !k.is_empty()).unwrap_or(false)
+    };
+
+    let checks: &[(&str, &str, &str, &str)] = &[
         (
             "ANTHROPIC_API_KEY",
+            "anthropic",
             "Anthropic Claude 4.x",
             "claude-sonnet-4-6",
         ),
-        ("XAI_API_KEY", "xAI Grok 4.x", "grok-4.3"),
-        ("OPENAI_API_KEY", "OpenAI GPT-5.x", "gpt-5.5"),
+        ("XAI_API_KEY", "xai", "xAI Grok 4.x", "grok-4.3"),
+        ("OPENAI_API_KEY", "openai", "OpenAI GPT-5.x", "gpt-5.5"),
         (
             "MISTRAL_API_KEY",
+            "mistral",
             "Mistral (OpenAI-compatible)",
             "mistral-large-latest",
         ),
     ];
     println!("  API Keys:");
     let mut any_key = false;
-    for (env, name, model) in checks {
-        let set = std::env::var(env).map(|k| !k.is_empty()).unwrap_or(false);
+    for (env, provider_name, name, model) in checks {
+        let from_env = env_key(env);
+        let from_provider = provider_entry_key(provider_name);
+        // Top-level [provider].api_key is historically used for the active/default provider.
+        let from_top = config_top_key
+            && matches!(
+                provider_name,
+                &"xai" | &"anthropic" | &"openai" | &"mistral"
+            )
+            && cfg
+                .provider
+                .model
+                .as_deref()
+                .map(|m| {
+                    let m = m.to_ascii_lowercase();
+                    match *provider_name {
+                        "xai" => m.contains("grok") || m.starts_with("xai"),
+                        "anthropic" => m.contains("claude") || m.contains("sonnet") || m.contains("opus") || m.contains("haiku"),
+                        "openai" => m.starts_with("gpt") || m.contains("o1") || m.contains("o3") || m.contains("o4"),
+                        "mistral" => m.contains("mistral") || m.contains("mixtral") || m.contains("codestral"),
+                        _ => false,
+                    }
+                })
+                .unwrap_or(false);
+        let set = from_env || from_provider || from_top;
         if set {
             any_key = true;
         }
+        let source = if from_env {
+            format!("env {env}")
+        } else if from_provider {
+            format!("config [providers.{provider_name}]")
+        } else if from_top {
+            "config [provider].api_key".to_string()
+        } else {
+            String::new()
+        };
         println!(
             "  {} {} → {}",
             if set { "✓" } else { "✗" },
             name,
             if set {
-                format!("key set, will use {model}")
+                format!("key set ({source}), will use {model}")
             } else {
-                format!("set {env} to enable")
+                format!("set {env} or config key to enable")
             }
         );
     }
+    // Any non-empty key in providers map counts even if not in the shortlist above.
     if !any_key {
-        println!("\n  ⚠ No API key found! Set ANTHROPIC_API_KEY to get started.");
-        println!("  Export it in your shell: export ANTHROPIC_API_KEY=sk-ant-...");
+        any_key = config_top_key
+            || cfg
+                .providers
+                .values()
+                .any(|e| e.api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false));
+    }
+    if !any_key {
+        println!("\n  ⚠ No API key found! Set ANTHROPIC_API_KEY / XAI_API_KEY / OPENAI_API_KEY,");
+        println!("  or put api_key under [provider] / [providers.<name>] in ~/.harness/config.toml.");
     }
 
     let ollama_running = tokio::process::Command::new("ollama")
