@@ -10,7 +10,7 @@
 #   xAI:       grok-4.3 (flagship) | grok-4.20-0309-reasoning (pinned) | grok-4.1-fast
 #   OpenAI:    gpt-5.5 | gpt-5.4 | gpt-5.4-mini | o4-mini
 #   Ollama:    qwen3-coder:30b | qwen2.5-coder:32b (local, free)
-model = "grok-4.3"
+model = "grok-4.5"
 
 max_tokens = 8192
 temperature = 0.7
@@ -210,6 +210,7 @@ timeout_secs = 60
 # max_concurrency = 4
 # db_path = "~/.harness/swarm.db"
 # auto_gc_stale_secs = 86400   # optional: reap orphans older than N seconds on startup
+# worker_model = "ollama:qwen2.5-coder:1.5b"  # slave agents; orchestrator is [provider].model
 # worker_tool_allowlist = ["read_file", "list_dir", "search_code", "test_runner"]
 # worker_max_tool_calls = 50   # reserved (agent loop hard-cap is 50)
 # worker_max_wall_secs = 600   # fail worker if wall clock exceeded

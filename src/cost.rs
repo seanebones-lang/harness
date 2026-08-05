@@ -52,6 +52,10 @@ pub fn price_for_model(model: &str) -> Option<TokenPrice> {
     let m = model.to_lowercase();
 
     // xAI / Grok — May 2026 SKUs (see https://docs.x.ai/docs/models )
+    // Grok 4.5 orchestrator flagship — check before 4.3 / generic grok-4
+    if m.contains("grok-4.5") || m.contains("grok-4-5") {
+        return Some(TokenPrice::new(1.25, 0.20, 2.50));
+    }
     // Grok 4.3 flagship: $1.25/$2.50 — must precede generic `grok-4` prefix checks
     if m.contains("grok-4.3") {
         return Some(TokenPrice::new(1.25, 0.20, 2.50));

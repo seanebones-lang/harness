@@ -41,6 +41,9 @@ pub struct SwarmConfig {
     pub worker_max_tool_calls: Option<usize>,
     /// Wall-clock timeout per worker task in seconds (None = no extra timeout).
     pub worker_max_wall_secs: Option<u64>,
+    /// Default model for swarm / spawn_agent slaves (e.g. `ollama:qwen2.5-coder:1.5b`).
+    /// Orchestrator keeps `[provider].model`. CLI `--model` on `swarm run` still wins.
+    pub worker_model: Option<String>,
     /// Optional remote swarm registry base URL (W7.1). Empty/unset = local SQLite.
     pub registry_url: Option<String>,
 }
@@ -70,6 +73,16 @@ impl SwarmConfig {
         self.worker_max_wall_secs
             .filter(|&s| s > 0)
             .map(Duration::from_secs)
+    }
+
+    /// Model id for slave workers. Prefers `[swarm].worker_model`, else orchestrator model.
+    pub fn effective_worker_model(&self, orchestrator_model: &str) -> String {
+        self.worker_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| orchestrator_model.to_string())
     }
 }
 
@@ -1323,5 +1336,11 @@ mod tests {
         assert_eq!(cfg.worker_wall_timeout(), Some(Duration::from_secs(120)));
         cfg.worker_max_wall_secs = Some(0);
         assert!(cfg.worker_wall_timeout().is_none());
+        assert_eq!(cfg.effective_worker_model("grok-4.5"), "grok-4.5");
+        cfg.worker_model = Some("ollama:qwen2.5-coder:1.5b".into());
+        assert_eq!(
+            cfg.effective_worker_model("grok-4.5"),
+            "ollama:qwen2.5-coder:1.5b"
+        );
     }
 }

@@ -28,7 +28,8 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
         (
             "xai",
             &[
-                ("grok-4.3", "$1.25/$2.50 · 1M ctx · flagship ★"),
+                ("grok-4.5", "$1.25/$2.50 · 1M ctx · orchestrator ★"),
+                ("grok-4.3", "$1.25/$2.50 · 1M ctx"),
                 (
                     "grok-4.20-0309-reasoning",
                     "$2/$6   · pinned 2M ctx snapshot",
@@ -42,7 +43,10 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
         (
             "ollama",
             &[
-                ("qwen3-coder:30b", "local · 256K ctx · agentic ★"),
+                ("qwen2.5-coder:1.5b", "local · small code slave ★"),
+                ("qwen2.5-coder:3b", "local · small-mid code"),
+                ("llama3.2:1b", "local · tiny general"),
+                ("qwen3-coder:30b", "local · 256K ctx · agentic"),
                 ("qwen2.5-coder:32b", "local · 92.7% HumanEval"),
                 ("nomic-embed-text", "local · embed"),
             ],

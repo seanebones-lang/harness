@@ -13,7 +13,7 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use tracing::debug;
 
-const OLLAMA_BASE_URL: &str = "http://localhost:11434";
+const OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
 
 #[derive(Debug, Clone)]
 pub struct OllamaConfig {

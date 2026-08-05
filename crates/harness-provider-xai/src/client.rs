@@ -177,7 +177,11 @@ impl Provider for XaiProvider {
     fn pricing(&self) -> Option<Pricing> {
         let m = self.config.model.to_lowercase();
         // May 2026 Grok SKUs (see https://docs.x.ai/docs/models )
-        if m.contains("grok-4.3") {
+        // 4.5 + 4.3 share current list pricing
+        if m.contains("grok-4.5")
+            || m.contains("grok-4-5")
+            || m.contains("grok-4.3")
+        {
             Some(Pricing {
                 input_per_m_usd: 1.25,
                 cached_input_per_m_usd: 0.20,

@@ -48,7 +48,7 @@ pub async fn handle_doctor_command(cfg: &Config) {
             "Anthropic Claude 4.x",
             "claude-sonnet-4-6",
         ),
-        ("XAI_API_KEY", "xai", "xAI Grok 4.x", "grok-4.3"),
+        ("XAI_API_KEY", "xai", "xAI Grok 4.x", "grok-4.5"),
         ("OPENAI_API_KEY", "openai", "OpenAI GPT-5.x", "gpt-5.5"),
         (
             "MISTRAL_API_KEY",

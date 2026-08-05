@@ -54,24 +54,25 @@ pub async fn build_tools(
     let browser_url_owned = browser_url.to_string();
     let cfg_clone = cfg.clone();
     let swarm_enqueue: SwarmEnqueueRunner = Arc::new({
-        let provider = provider.clone();
-        let model = model.clone();
         let cfg_clone = cfg_clone.clone();
         let memory_store = memory_store.clone();
         let embed_model = embed_model.clone();
         let browser_url_owned = browser_url_owned.clone();
+        let orch_model = model.clone();
         move |prompt: String, count: usize| {
-            let provider = provider.clone();
-            let model = model.clone();
             let cfg_clone = cfg_clone.clone();
             let memory_store = memory_store.clone();
             let embed_model = embed_model.clone();
             let browser_url_owned = browser_url_owned.clone();
+            let orch_model = orch_model.clone();
             Box::pin(async move {
                 let n = count.clamp(1, 32);
+                let worker_spec = cfg_clone.swarm.effective_worker_model(&orch_model);
+                let (worker_provider, worker_model) =
+                    crate::provider_build::build_worker_provider(&cfg_clone, &worker_spec)?;
                 let tools = build_tools_inner(
-                    provider.clone(),
-                    model.clone(),
+                    worker_provider.clone(),
+                    worker_model.clone(),
                     &cfg_clone,
                     browser_enabled,
                     &browser_url_owned,
@@ -93,14 +94,14 @@ pub async fn build_tools(
                     } else {
                         prompt.clone()
                     };
-                    let id = swarm::register_task_with_model(&label, Some(model.as_str()))?;
+                    let id = swarm::register_task_with_model(&label, Some(worker_model.as_str()))?;
                     ids.push(id.clone());
-                    let p = provider.clone();
+                    let p = worker_provider.clone();
                     let t = tools.clone();
                     let mem = memory_store.clone();
                     let emb = embed_model.clone();
                     let sys = cfg_clone.agent.system_prompt.clone();
-                    let m2 = model.clone();
+                    let m2 = worker_model.clone();
                     swarm::spawn_task(id, move |_tid| {
                         let p = p.clone();
                         let t = t.clone();
@@ -193,9 +194,20 @@ pub async fn build_tools_inner(
         cmd_allowlist: cfg.shell.cmd_allowlist.clone(),
     };
 
-    // Sub-agent runner: runs a prompt through a fresh session with base tools only.
-    let sub_provider: ArcProvider = provider.clone();
-    let sub_model = model.clone();
+    // Sub-agent runner: slaves use [swarm].worker_model when set (else orchestrator).
+    let worker_spec = cfg.swarm.effective_worker_model(&model);
+    let (sub_provider, sub_model) = match crate::provider_build::build_worker_provider(cfg, &worker_spec)
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                worker = %worker_spec,
+                "worker provider build failed — spawn_agent falls back to orchestrator"
+            );
+            (provider.clone(), model.clone())
+        }
+    };
     let sub_shell_cfg = shell_cfg.clone();
     let sub_workspace = workspace.clone();
     let sub_confirm = confirm_gate.clone();

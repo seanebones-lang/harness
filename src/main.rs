@@ -432,13 +432,23 @@ async fn main() -> Result<()> {
                 },
         }) => {
             let n = count.unwrap_or(1).clamp(1, 32);
-            let worker_model = run_model.unwrap_or_else(|| model.clone());
+            let worker_spec = run_model
+                .clone()
+                .unwrap_or_else(|| cfg.swarm.effective_worker_model(&model));
+            let (worker_provider, worker_model) =
+                provider_build::build_worker_provider(&cfg, &worker_spec)?;
+            tracing::info!(
+                orchestrator = %model,
+                worker = %worker_model,
+                "swarm run: orchestrator + slave model"
+            );
             let tools = if let Some(allow) = cfg.swarm.effective_worker_allowlist() {
                 tools.with_tool_allowlist(&allow)
             } else {
                 tools.clone()
             };
             let wall = cfg.swarm.worker_wall_timeout();
+            let mut ids = Vec::new();
             for i in 0..n {
                 let label = if n > 1 {
                     format!("{prompt} [swarm {}/{}]", i + 1, n)
@@ -446,7 +456,8 @@ async fn main() -> Result<()> {
                     prompt.clone()
                 };
                 let id = swarm::register_task_with_model(&label, Some(worker_model.as_str()))?;
-                let p = provider.clone();
+                ids.push(id.clone());
+                let p = worker_provider.clone();
                 let t = tools.clone();
                 let mem = memory_store.clone();
                 let emb = embed_model.clone();
@@ -498,7 +509,34 @@ async fn main() -> Result<()> {
                 })
                 .await;
             }
-            println!("Queued {n} swarm task(s). Use: harness swarm list");
+            println!(
+                "Queued {} swarm task(s) · orch={} · slave={}",
+                n, model, worker_model
+            );
+            for id in &ids {
+                println!("  {id}");
+            }
+            // Keep the runtime alive until workers finish (CLI has no detached supervisor).
+            let wait_budget = wall.unwrap_or(std::time::Duration::from_secs(600));
+            for id in &ids {
+                match swarm::wait_task(id, Some(wait_budget)).await? {
+                    Some(t) => {
+                        println!(
+                            "  {id} → {}{}",
+                            swarm::status_label(&t.status),
+                            t.result
+                                .as_deref()
+                                .map(|r| {
+                                    let preview: String = r.chars().take(80).collect();
+                                    format!(" · {preview}")
+                                })
+                                .unwrap_or_default()
+                        );
+                    }
+                    None => println!("  {id} → (missing)"),
+                }
+            }
+            println!("Use: harness swarm list | result <id>");
             return Ok(());
         }
 
