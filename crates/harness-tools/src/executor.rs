@@ -432,12 +432,82 @@ mod tests {
     use super::*;
     use crate::registry::ToolRegistry;
     use serde_json::json;
+    use std::collections::HashSet;
 
     fn executor_with_policy(policy: ConfirmPolicy) -> ToolExecutor {
         ToolExecutor::new(ToolRegistry::new())
             .with_confirm_policy(policy)
             .with_shell_confirm_patterns(vec!["git push".into()])
             .with_auto_approve(vec!["read_file".into()])
+    }
+
+    #[test]
+    fn first_arg_preview_prefers_command_path_action_patch() {
+        assert_eq!(
+            ToolExecutor::first_arg_preview(&json!({"command": "ls", "path": "x"})),
+            "ls"
+        );
+        assert_eq!(
+            ToolExecutor::first_arg_preview(&json!({"path": "a.rs"})),
+            "a.rs"
+        );
+        assert_eq!(
+            ToolExecutor::first_arg_preview(&json!({"action": "status"})),
+            "status"
+        );
+        assert_eq!(
+            ToolExecutor::first_arg_preview(&json!({"patch": "@@"})),
+            "@@"
+        );
+        assert_eq!(ToolExecutor::first_arg_preview(&json!({})), "");
+    }
+
+    #[test]
+    fn is_trusted_matches_tool_and_pattern() {
+        let ex = ToolExecutor::new(ToolRegistry::new())
+            .with_trusted(vec![("shell".into(), "cargo test".into())]);
+        assert!(ex.is_trusted("shell", "cargo test -p harness"));
+        assert!(!ex.is_trusted("shell", "rm -rf /"));
+        assert!(!ex.is_trusted("write_file", "cargo test"));
+        let star = ToolExecutor::new(ToolRegistry::new()).with_trusted(vec![("*".into(), "*".into())]);
+        assert!(star.is_trusted("anything", "x"));
+    }
+
+    #[test]
+    fn matches_always_ask_wildcard_and_substring() {
+        let ex = ToolExecutor::new(ToolRegistry::new())
+            .with_always_ask(vec![("shell".into(), "rm -rf".into()), ("*".into(), "prod".into())]);
+        assert!(ex.matches_always_ask("shell", "sudo rm -rf /tmp"));
+        assert!(!ex.matches_always_ask("shell", "echo hi"));
+        assert!(ex.matches_always_ask("write_file", "deploy-prod.yaml"));
+    }
+
+    #[test]
+    fn build_preview_shapes() {
+        let shell = build_preview(
+            "shell",
+            &json!({"command": "echo hi", "cwd": "/tmp"}),
+        );
+        assert!(shell.contains("$ echo hi"));
+        assert!(shell.contains("/tmp"));
+
+        let write = build_preview(
+            "write_file",
+            &json!({"path": "a.txt", "content": "one\ntwo\nthree"}),
+        );
+        assert!(write.contains("write a.txt"));
+        assert!(write.contains("one"));
+
+        let patch = build_preview(
+            "patch_file",
+            &json!({"path": "a.rs", "old_string": "a", "new_string": "b"}),
+        );
+        assert!(patch.contains("patch a.rs"));
+        assert!(patch.contains("- a"));
+        assert!(patch.contains("+ b"));
+
+        let other = build_preview("git", &json!({"action": "status"}));
+        assert!(other.contains("status"));
     }
 
     #[tokio::test]
@@ -472,6 +542,41 @@ mod tests {
         let ex = executor_with_policy(ConfirmPolicy::Plan);
         assert!(
             !ex.test_needs_confirmation("read_file", &json!({"path": "x"}))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn off_policy_never_confirms() {
+        let ex = executor_with_policy(ConfirmPolicy::Off)
+            .with_always_ask(vec![("*".into(), "*".into())]);
+        // Off short-circuits after auto_approve check — always_ask still runs before policy match
+        // Actually: Off returns false after always_ask? Looking at code:
+        // auto_approve first, then Off check at top after auto_approve... wait:
+        // if confirm_policy == Off { return false } comes BEFORE always_ask.
+        assert!(
+            !ex.test_needs_confirmation("shell", &json!({"command": "rm -rf /"}))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_mode_confirms_mcp_tools() {
+        let mut names = HashSet::new();
+        names.insert("mcp_foo".into());
+        let ex = executor_with_policy(ConfirmPolicy::Plan).with_mcp_tool_names(names);
+        assert!(
+            ex.test_needs_confirmation("mcp_foo", &json!({}))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn always_ask_forces_confirm_in_smart() {
+        let ex = executor_with_policy(ConfirmPolicy::Smart)
+            .with_always_ask(vec![("shell".into(), "danger".into())]);
+        assert!(
+            ex.test_needs_confirmation("shell", &json!({"command": "do danger thing"}))
                 .await
         );
     }

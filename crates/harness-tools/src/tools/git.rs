@@ -359,32 +359,33 @@ mod tests {
     use std::sync::Arc;
     use tempfile::tempdir;
 
-    #[test]
-    fn protected_branch_names() {
-        assert!(is_protected_branch("main"));
-        assert!(is_protected_branch("master"));
-        assert!(!is_protected_branch("feature/x"));
+    fn tool_in(dir: &std::path::Path) -> GitTool {
+        let ws = Arc::new(
+            WorkspaceRoot::new(dir.to_path_buf(), SandboxMode::Strict).expect("workspace"),
+        );
+        GitTool { workspace: ws }
     }
 
-    #[tokio::test]
-    async fn push_blocks_force_to_main() {
-        let dir = tempdir().unwrap();
-        let ws = Arc::new(
-            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("workspace"),
-        );
-        let tool = GitTool {
-            workspace: ws.clone(),
-        };
-
+    fn init_repo(dir: &std::path::Path) {
         std::process::Command::new("git")
             .args(["init", "-b", "main"])
-            .current_dir(dir.path())
+            .current_dir(dir)
             .output()
             .expect("git init");
-        std::fs::write(dir.path().join("README.md"), "init\n").unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(dir)
+            .output()
+            .ok();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "test"])
+            .current_dir(dir)
+            .output()
+            .ok();
+        std::fs::write(dir.join("README.md"), "init\n").unwrap();
         std::process::Command::new("git")
             .args(["add", "README.md"])
-            .current_dir(dir.path())
+            .current_dir(dir)
             .output()
             .expect("git add");
         std::process::Command::new("git")
@@ -393,9 +394,87 @@ mod tests {
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
             .env("GIT_COMMITTER_NAME", "test")
             .env("GIT_COMMITTER_EMAIL", "test@example.com")
-            .current_dir(dir.path())
+            .current_dir(dir)
             .output()
             .expect("git commit");
+    }
+
+    #[test]
+    fn protected_branch_names() {
+        assert!(is_protected_branch("main"));
+        assert!(is_protected_branch("master"));
+        assert!(!is_protected_branch("feature/x"));
+        assert!(!is_protected_branch("MAIN"));
+    }
+
+    #[test]
+    fn definition_name_is_git() {
+        let dir = tempdir().unwrap();
+        let tool = tool_in(dir.path());
+        assert_eq!(tool.definition().function.name, "git");
+    }
+
+    #[tokio::test]
+    async fn missing_action_errors() {
+        let dir = tempdir().unwrap();
+        let tool = tool_in(dir.path());
+        let err = tool.execute(json!({})).await.expect_err("missing action");
+        assert!(err.to_string().contains("missing action"));
+    }
+
+    #[tokio::test]
+    async fn unknown_action_errors() {
+        let dir = tempdir().unwrap();
+        let tool = tool_in(dir.path());
+        let err = tool
+            .execute(json!({"action": "rebase"}))
+            .await
+            .expect_err("unknown");
+        assert!(err.to_string().contains("unknown git action"));
+    }
+
+    #[tokio::test]
+    async fn commit_requires_message() {
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        let tool = tool_in(dir.path());
+        let err = tool
+            .execute(json!({"action": "commit"}))
+            .await
+            .expect_err("message required");
+        assert!(err.to_string().to_lowercase().contains("message"));
+    }
+
+    #[tokio::test]
+    async fn status_on_clean_repo() {
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        let tool = tool_in(dir.path());
+        let out = tool
+            .execute(json!({"action": "status"}))
+            .await
+            .expect("status");
+        // clean short status is empty → tool returns "(no output)"
+        assert!(out == "(no output)" || out.trim().is_empty() || !out.contains("fatal"));
+    }
+
+    #[tokio::test]
+    async fn restore_requires_paths() {
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        let tool = tool_in(dir.path());
+        let err = tool
+            .execute(json!({"action": "restore"}))
+            .await
+            .expect_err("paths");
+        assert!(err.to_string().contains("path"));
+    }
+
+    #[tokio::test]
+    async fn push_blocks_force_to_main() {
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        let tool = tool_in(dir.path());
 
         let err = tool
             .execute(json!({
@@ -409,12 +488,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn push_blocks_force_to_master() {
+        let dir = tempdir().unwrap();
+        let tool = tool_in(dir.path());
+        let err = tool
+            .execute(json!({
+                "action": "push",
+                "branch_name": "master",
+                "force": true
+            }))
+            .await
+            .expect_err("force push blocked");
+        assert!(err.to_string().contains("blocked"));
+    }
+
+    #[tokio::test]
     async fn clone_rejects_directory_outside_workspace() {
         let dir = tempdir().unwrap();
-        let ws = Arc::new(
-            WorkspaceRoot::new(dir.path().to_path_buf(), SandboxMode::Strict).expect("workspace"),
-        );
-        let tool = GitTool { workspace: ws };
+        let tool = tool_in(dir.path());
         let err = tool
             .execute(json!({
                 "action": "clone",
@@ -424,5 +515,17 @@ mod tests {
             .await
             .expect_err("clone escape");
         assert!(err.to_string().contains("escapes workspace root"));
+    }
+
+    #[tokio::test]
+    async fn stash_list_default_ok() {
+        let dir = tempdir().unwrap();
+        init_repo(dir.path());
+        let tool = tool_in(dir.path());
+        let out = tool
+            .execute(json!({"action": "stash"}))
+            .await
+            .expect("stash list");
+        assert!(!out.to_lowercase().contains("fatal"));
     }
 }

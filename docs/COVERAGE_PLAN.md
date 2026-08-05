@@ -29,10 +29,10 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 | `src/notifications.rs` | **Done (W2 residual):** kind maps + enabled=false / flag no-ops (~76%) |
 | `crates/harness-mcp` | **Done (W2 residual):** extract_mcp_text_content edges + allowlist basename exactness |
 | `crates/harness-memory` | **Done (W2 residual):** session store CRUD/list/upsert, cosine/search, session short_id |
-| `crates/harness-tools/src/tools/git.rs` | Readonly vs mutating action dispatch (args only) |
-| `crates/harness-tools/src/executor.rs` | Confirm deny/approve paths with mock tools |
+| `crates/harness-tools/src/tools/git.rs` | Readonly vs mutating + force-push/missing action/status/stash tests (W2 climb 2026-08-05) |
+| `crates/harness-tools/src/executor.rs` | Confirm deny/approve + preview/trust/always_ask pure helpers (W2 climb 2026-08-05) |
 | `src/agent.rs` | Pure message/tool-result formatting helpers |
-| `src/auth_token.rs` | Token shape / expiry helpers |
+| `src/auth_token.rs` | Token shape / expiry + `load_or_create_in` / `read_token_file_in` tempdir tests (W2 climb 2026-08-05) |
 
 Prefer **unit tests in existing modules** over new integration binaries. No API keys, no live MCP servers, no real desktop notification asserts (disabled-config no-ops only).
 
