@@ -1,5 +1,5 @@
-//! Two-panel TUI: chat history (left) + tool/event log (right), input box + status bar.
-//! Agent runs in a background tokio task, streaming events via mpsc channel.
+//! Single-panel TUI (Hermes-style): full-width transcript + input + status.
+//! Tool/events stream inline in the chat. Agent runs in a background tokio task.
 //! Code blocks in assistant messages are syntax-highlighted via syntect.
 //!
 //! E1 improvements (16hr/day daily driver):
@@ -12,15 +12,14 @@
 //! - Slash command autocomplete popup
 //! - Ctrl+F in-chat search
 //! - Ctrl+Y copy last response
-//! - Tool output expansion (Enter on event log item)
 //! - /sessions browser
 //! - Timestamps (/ts toggle)
-//! - Resizable panel split (Ctrl+[ / Ctrl+])
 //! - Mouse scroll support
 //! - Theme system (theme.toml)
 //! - Role label uses model name, not hardcoded "grok"
 //! - Spinner during long operations
-//! - Status bar: persistent cost/tokens, transient messages above
+//! - Status bar: persistent cost/tokens, transient messages
+//! - Single-panel layout (no side events/swarm panel)
 
 use anyhow::Result;
 use crossterm::{

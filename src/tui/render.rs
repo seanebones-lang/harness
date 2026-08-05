@@ -16,7 +16,6 @@ use ratatui::{
 
 use crate::highlight::Highlighter;
 
-use super::state::RightPanelMode;
 use super::theme::Theme;
 use super::{AppState, PendingConfirm, PendingSampling};
 
@@ -59,37 +58,21 @@ pub(crate) fn draw_all(
 ) {
     let area = f.area();
 
-    let right_pct = state.right_panel_pct as u16;
-    let left_pct = 100u16.saturating_sub(right_pct);
-
+    // Hermes-style single column: transcript · input · status (no side panel).
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(4),    // main panels
-            Constraint::Length(4), // input box (taller for multi-line)
+            Constraint::Min(4),    // transcript
+            Constraint::Length(3), // compact input
             Constraint::Length(1), // status bar
         ])
         .split(area);
 
-    let main = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(left_pct),
-            Constraint::Percentage(right_pct),
-        ])
-        .split(root[0]);
-
-    // Compute item counts BEFORE drawing so scroll bounds are up to date
     let chat_item_count = compute_chat_items(state);
-    let event_item_count = state.event_log.len();
     state.chat_items_len = chat_item_count;
-    state.event_items_len = event_item_count;
+    state.event_items_len = state.event_log.len();
 
-    draw_chat(f, state, main[0], hl, theme);
-    match state.right_panel_mode {
-        RightPanelMode::Events => draw_event_log(f, state, main[1], theme),
-        RightPanelMode::Swarm => draw_swarm_panel(f, state, main[1], theme),
-    }
+    draw_chat(f, state, root[0], hl, theme);
     draw_input(f, state, root[1], theme);
     draw_status(f, state, root[2], theme);
 
@@ -104,9 +87,9 @@ pub(crate) fn draw_all(
         draw_slash_popup(f, state, root[1], theme);
     }
 
-    // Search bar overlay (bottom of chat panel)
+    // Search bar overlay (bottom of transcript)
     if state.search_mode {
-        draw_search_bar(f, state, main[0], theme);
+        draw_search_bar(f, state, root[0], theme);
     }
 
     if let Some(pc) = &state.pending_confirm {
@@ -118,14 +101,20 @@ pub(crate) fn draw_all(
 }
 
 fn compute_chat_items(state: &AppState) -> usize {
-    // Estimate: each message = header line + content lines + blank
+    // Estimate: event = 1 line; chat = label + content lines + blank
     state
         .chat
         .iter()
-        .map(|m| 1 + m.content.lines().count() + 1)
+        .map(|m| {
+            if m.role == "event" {
+                m.content.lines().count().max(1)
+            } else {
+                1 + m.content.lines().count().max(1) + 1
+            }
+        })
         .sum::<usize>()
-        + if !state.streaming.is_empty() {
-            1 + state.streaming.lines().count()
+        + if !state.streaming.is_empty() || state.busy {
+            1 + state.streaming.lines().count().max(if state.busy { 1 } else { 0 })
         } else {
             0
         }
@@ -144,9 +133,45 @@ fn draw_chat(
     } else {
         String::new()
     };
+    let content_width = area.width.saturating_sub(4) as usize;
 
     for (msg_idx, msg) in state.chat.iter().enumerate() {
         let is_search_match = !search_q.is_empty() && state.search_matches.contains(&msg_idx);
+
+        // Inline tool/system events (Hermes-style single stream)
+        if msg.role == "event" {
+            let color = if msg.content.starts_with('→') {
+                theme.tool_in_color
+            } else if msg.content.starts_with('←') {
+                theme.tool_out_color
+            } else if msg.content.starts_with('⚠')
+                || msg.content.contains("error")
+                || msg.content.starts_with("[error")
+            {
+                theme.error_color
+            } else if msg.content.starts_with("[swarm") || msg.content.contains("swarm") {
+                Color::LightCyan
+            } else {
+                theme.dim_color
+            };
+            let style = if is_search_match {
+                Style::default()
+                    .fg(theme.search_hl_color)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(color)
+            };
+            for raw in msg.content.lines() {
+                for wrapped in wrap_text(raw, content_width.saturating_sub(2)) {
+                    items.push(ListItem::new(Line::from(Span::styled(
+                        format!("  {wrapped}"),
+                        style,
+                    ))));
+                }
+            }
+            continue;
+        }
+
         let (color, label) = match msg.role.as_str() {
             "user" => (theme.user_color, "you"),
             "assistant" => (theme.assistant_color, theme.assistant_label(&state.model)),
@@ -170,16 +195,15 @@ fn draw_chat(
         } else {
             Style::default().fg(color).add_modifier(Modifier::BOLD)
         };
+        // Hermes-like: bold role label, plain body (no box drawing)
         items.push(ListItem::new(Line::from(Span::styled(
-            format!("┌ [{label}]{ts_str}"),
+            format!("{label}{ts_str}"),
             header_style,
         ))));
 
         if msg.role == "assistant" {
-            let content_width = area.width.saturating_sub(4) as usize;
             let rendered = hl.render_message(&msg.content, Style::default().fg(Color::White));
             for line in rendered {
-                // Wrap highlighted lines too
                 let plain = line
                     .spans
                     .iter()
@@ -187,17 +211,16 @@ fn draw_chat(
                     .collect::<String>();
                 for wrapped in wrap_text(&plain, content_width) {
                     items.push(ListItem::new(Line::from(Span::styled(
-                        format!("│ {wrapped}"),
+                        wrapped,
                         Style::default().fg(Color::White),
                     ))));
                 }
             }
         } else {
-            let content_width = area.width.saturating_sub(4) as usize;
             for raw in msg.content.lines() {
                 for wrapped in wrap_text(raw, content_width) {
                     items.push(ListItem::new(Line::from(Span::styled(
-                        format!("│ {wrapped}"),
+                        wrapped,
                         Style::default().fg(Color::White),
                     ))));
                 }
@@ -206,31 +229,37 @@ fn draw_chat(
         items.push(ListItem::new(Line::from(Span::raw(""))));
     }
 
-    // Streaming text
-    if !state.streaming.is_empty() {
+    // Streaming / busy spinner
+    if !state.streaming.is_empty() || state.busy {
         let label = theme.assistant_label(&state.model);
         let spinner = state.spinner_char();
         items.push(ListItem::new(Line::from(Span::styled(
-            format!("┌ [{label}] {spinner}"),
+            format!("{label} {spinner}"),
             Style::default()
                 .fg(theme.streaming_color)
                 .add_modifier(Modifier::BOLD),
         ))));
-        let content_width = area.width.saturating_sub(4) as usize;
-        for line in state.streaming.lines() {
-            for wrapped in wrap_text(line, content_width) {
-                items.push(ListItem::new(Line::from(Span::styled(
-                    format!("│ {wrapped}"),
-                    Style::default().fg(theme.streaming_color),
-                ))));
+        if !state.streaming.is_empty() {
+            for line in state.streaming.lines() {
+                for wrapped in wrap_text(line, content_width) {
+                    items.push(ListItem::new(Line::from(Span::styled(
+                        wrapped,
+                        Style::default().fg(theme.streaming_color),
+                    ))));
+                }
             }
+        } else {
+            items.push(ListItem::new(Line::from(Span::styled(
+                "thinking…",
+                Style::default().fg(theme.dim_color),
+            ))));
         }
     }
 
     // If no messages, show hint
     if items.is_empty() {
         items.push(ListItem::new(Line::from(Span::styled(
-            "  Type a message and press Enter · /help for commands · F1 for shortcuts",
+            "Type a message and press Enter · /help for commands · Esc quit",
             Style::default().fg(theme.dim_color),
         ))));
     }
@@ -240,11 +269,16 @@ fn draw_chat(
             .tool_start
             .map(|t| format!(" {:.0}s", t.elapsed().as_secs_f32()))
             .unwrap_or_default();
-        format!(" Chat {}  {} ", state.spinner_char(), elapsed)
+        format!(
+            " NextEleven Harness · {}{} ",
+            state.spinner_char(),
+            elapsed
+        )
     } else {
         format!(
-            " Chat [{} turns] ",
-            state.chat.iter().filter(|m| m.role == "user").count()
+            " NextEleven Harness · {} turns · {} ",
+            state.chat.iter().filter(|m| m.role == "user").count(),
+            state.model
         )
     };
 
@@ -288,6 +322,7 @@ fn prefix_line(line: Line<'static>, prefix: &'static str) -> Line<'static> {
     Line::from(spans)
 }
 
+#[allow(dead_code)] // kept for optional debug dumps; layout is single-panel
 fn draw_event_log(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, theme: &Theme) {
     let items: Vec<ListItem> = state
         .event_log
@@ -338,6 +373,7 @@ fn draw_event_log(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, them
     }
 }
 
+#[allow(dead_code)] // swarm dumps into transcript via /swarm · F2
 fn draw_swarm_panel(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, theme: &Theme) {
     let items: Vec<ListItem> = state
         .swarm_lines
@@ -434,7 +470,7 @@ fn draw_input(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &Them
             state.input_history.len()
         )
     } else {
-        " Message  [Enter send · Shift+Enter newline · /help · @file Tab] ".to_string()
+        " ›  Enter send · Shift+Enter newline · /help ".to_string()
     };
 
     let input_widget = Paragraph::new(input_with_cursor)
@@ -490,10 +526,8 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
     if state.search_mode {
         indicators.push_str("[SEARCH] ");
     }
-    if state.right_panel_mode == RightPanelMode::Swarm {
-        indicators.push_str("[SWARM] ");
-    } else if state.swarm_active > 0 {
-        indicators.push_str(&format!("[SWARM {}] ", state.swarm_active));
+    if state.swarm_active > 0 {
+        indicators.push_str(&format!("[swarm:{}] ", state.swarm_active));
     }
 
     // Left side: indicators + status message

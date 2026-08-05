@@ -205,9 +205,9 @@ fn run_search(st: &mut AppState) {
 pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
     let mut st = state.lock();
     for line in &[
-        "━━━ HARNESS COMMANDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "━━━ HARNESS (single-panel) ━━━━━━━━━━━━━━━━━━━━━━━",
         "SLASH COMMANDS",
-        " /clear            clear chat panel",
+        " /clear            clear transcript",
         " /undo             restore last checkpoint",
         " /diff             show git diff",
         " /test             run test suite",
@@ -229,19 +229,18 @@ pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
         " /trace [last|list] show last turn / list traces",
         " /schema           set structured output JSON schema",
         " /obsidian save    save response to Obsidian",
-        " /swarm [gc|refresh]  toggle swarm panel (F2)",
+        " /swarm [gc|refresh]  dump swarm status into transcript (F2)",
         " /help  F1         this list",
         "KEYBINDINGS",
         " Enter             send message",
         " Shift+Enter       new line in input",
-        " ↑/↓              scroll chat (or input history when empty)",
-        " PgUp/PgDn         scroll event log / swarm panel",
-        " F2                toggle swarm panel",
+        " ↑/↓              scroll transcript (or input history when empty)",
+        " PgUp/PgDn         scroll transcript",
+        " F2                dump swarm status into transcript",
         " Ctrl+S            voice record (5s, Whisper transcription)",
-        " Ctrl+F            search chat",
+        " Ctrl+F            search transcript",
         " Ctrl+Y            copy last response to clipboard",
         " Ctrl+E            fork session at past turn",
-        " Ctrl+[ / Ctrl+]   resize panels",
         " Ctrl+L            scroll to bottom",
         " Ctrl+A/E          line start/end",
         " Ctrl+W            kill word back",
@@ -251,11 +250,11 @@ pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
         " Tab               @file autocomplete / slash autocomplete",
         " y / n / a         plan overlay: approve hunk / deny / always-allow",
         " [ / ]             diff review: previous / next hunk",
-        " Ctrl+C            quit",
+        " Ctrl+C / Esc      quit",
     ] {
         st.push_event(line.to_string());
     }
-    st.status = "Help listed in event log →".to_string();
+    st.status = "Help listed in transcript".to_string();
 }
 
 // ── Slash command dispatcher ───────────────────────────────────────────────────
@@ -912,63 +911,57 @@ pub(crate) async fn handle_slash_command(
         }
 
         "/swarm" => {
-            let rest = cmd.trim_start_matches("/swarm").trim();
-            match rest {
-                "" | "toggle" | "panel" => {
-                    state.lock().toggle_swarm_panel();
-                }
-                "refresh" => {
-                    let mut st = state.lock();
-                    st.refresh_swarm();
-                    if st.right_panel_mode != super::state::RightPanelMode::Swarm {
-                        st.right_panel_mode = super::state::RightPanelMode::Swarm;
-                    }
-                    st.status = "Swarm panel refreshed".into();
-                }
-                s if s == "gc" || s.starts_with("gc ") => {
-                    let mut stale_secs = 3600u64;
-                    let mut keep: Option<usize> = None;
-                    for tok in s.split_whitespace().skip(1) {
-                        if let Some(v) = tok.strip_prefix("stale=") {
-                            if let Ok(n) = v.parse() {
-                                stale_secs = n;
+                    let rest = cmd.trim_start_matches("/swarm").trim();
+                    match rest {
+                        "" | "toggle" | "panel" => {
+                            state.lock().toggle_swarm_panel();
+                        }
+                        "refresh" => {
+                            state.lock().toggle_swarm_panel();
+                        }
+                        s if s == "gc" || s.starts_with("gc ") => {
+                            let mut stale_secs = 3600u64;
+                            let mut keep: Option<usize> = None;
+                            for tok in s.split_whitespace().skip(1) {
+                                if let Some(v) = tok.strip_prefix("stale=") {
+                                    if let Ok(n) = v.parse() {
+                                        stale_secs = n;
+                                    }
+                                } else if let Some(v) = tok.strip_prefix("keep=") {
+                                    if let Ok(n) = v.parse() {
+                                        keep = Some(n);
+                                    }
+                                } else if let Ok(n) = tok.parse::<u64>() {
+                                    stale_secs = n;
+                                }
                             }
-                        } else if let Some(v) = tok.strip_prefix("keep=") {
-                            if let Ok(n) = v.parse() {
-                                keep = Some(n);
+                            match crate::swarm::gc(&crate::swarm::GcOptions {
+                                stale_secs,
+                                keep_terminal: keep,
+                                older_than_secs: None,
+                                dry_run: false,
+                            }) {
+                                Ok(report) => {
+                                    let mut st = state.lock();
+                                    st.push_event(format!("[swarm] {}", report.summary()));
+                                    for (id, reason) in report.reaped.iter().take(8) {
+                                        st.push_event(format!("[swarm] reaped {id}: {reason}"));
+                                    }
+                                    st.refresh_swarm();
+                                    st.status = format!("[swarm] {}", report.summary());
+                                }
+                                Err(e) => {
+                                    state.lock().push_event(format!("[swarm] gc failed: {e}"));
+                                }
                             }
-                        } else if let Ok(n) = tok.parse::<u64>() {
-                            stale_secs = n;
+                        }
+                        other => {
+                            state.lock().push_event(format!(
+                                "[swarm] unknown subcommand `{other}` — try /swarm, /swarm refresh, /swarm gc"
+                            ));
                         }
                     }
-                    match crate::swarm::gc(&crate::swarm::GcOptions {
-                        stale_secs,
-                        keep_terminal: keep,
-                        older_than_secs: None,
-                        dry_run: false,
-                    }) {
-                        Ok(report) => {
-                            let mut st = state.lock();
-                            st.push_event(format!("[swarm] {}", report.summary()));
-                            for (id, reason) in report.reaped.iter().take(8) {
-                                st.push_event(format!("[swarm] reaped {id}: {reason}"));
-                            }
-                            st.refresh_swarm();
-                            st.right_panel_mode = super::state::RightPanelMode::Swarm;
-                            st.status = format!("[swarm] {}", report.summary());
-                        }
-                        Err(e) => {
-                            state.lock().push_event(format!("[swarm] gc failed: {e}"));
-                        }
-                    }
                 }
-                other => {
-                    state.lock().push_event(format!(
-                        "[swarm] unknown subcommand `{other}` — try /swarm, /swarm refresh, /swarm gc"
-                    ));
-                }
-            }
-        }
 
         "/help" | "/?" => {
             show_help(state);

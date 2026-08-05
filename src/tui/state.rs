@@ -23,8 +23,9 @@ pub(crate) struct ChatMessage {
     pub(crate) ts: Instant,
 }
 
-/// Right-panel mode: tool events vs swarm registry.
+/// Legacy right-panel mode (single-panel TUI no longer switches layouts).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[allow(dead_code)]
 pub(crate) enum RightPanelMode {
     #[default]
     Events,
@@ -123,7 +124,8 @@ pub(crate) struct AppState {
     pub(crate) slash_suggestions: Vec<String>,
     /// Which suggestion is selected.
     pub(crate) slash_suggest_idx: usize,
-    /// Right panel percentage (default 38).
+    /// Legacy field — layout is single-panel (kept for config compat / future).
+    #[allow(dead_code)]
     pub(crate) right_panel_pct: u8,
     /// Timestamps visible.
     pub(crate) timestamps_visible: bool,
@@ -143,7 +145,8 @@ pub(crate) struct AppState {
     pub(crate) theme: Theme,
     /// Active response schema for strict JSON output (set via /schema).
     pub(crate) response_schema: Option<harness_provider_core::ResponseSchema>,
-    /// Right panel content mode (events vs swarm).
+    /// Legacy field — swarm dumps into transcript instead of a side panel.
+    #[allow(dead_code)]
     pub(crate) right_panel_mode: RightPanelMode,
     /// Cached swarm panel lines.
     pub(crate) swarm_lines: Vec<String>,
@@ -451,13 +454,28 @@ impl AppState {
 
     pub(crate) fn push_event(&mut self, msg: impl Into<String>) {
         let s = msg.into();
-        self.event_log.push(s);
+        self.event_log.push(s.clone());
         if self.event_log.len() > 500 {
             self.event_log.remove(0);
         }
         // Auto-scroll event log to bottom (use live len — event_items_len lags until draw).
         let last = self.event_log.len().saturating_sub(1);
         self.event_scroll.select(Some(last));
+
+        // Single-panel transcript: also show events inline (Hermes-style).
+        self.chat.push(ChatMessage {
+            role: "event".into(),
+            content: s,
+            ts: Instant::now(),
+        });
+        // Cap event noise in the transcript (keep user/assistant forever).
+        const MAX_EVENT_MSGS: usize = 200;
+        let event_count = self.chat.iter().filter(|m| m.role == "event").count();
+        if event_count > MAX_EVENT_MSGS {
+            if let Some(idx) = self.chat.iter().position(|m| m.role == "event") {
+                self.chat.remove(idx);
+            }
+        }
     }
 
     pub(crate) fn scroll_chat_up(&mut self, n: usize) {
@@ -480,6 +498,7 @@ impl AppState {
         self.chat_scroll.select(Some(new));
     }
 
+    #[allow(dead_code)]
     pub(crate) fn scroll_event_up(&mut self, n: usize) {
         let cur = self
             .event_scroll
@@ -489,6 +508,7 @@ impl AppState {
         self.event_scroll.select(Some(new));
     }
 
+    #[allow(dead_code)]
     pub(crate) fn scroll_event_down(&mut self, n: usize) {
         let cur = self.event_scroll.selected().unwrap_or(0);
         let max = self.event_items_len.saturating_sub(1);
@@ -520,30 +540,26 @@ impl AppState {
         self.swarm_last_refresh = Instant::now();
     }
 
-    /// Toggle right panel between Events and Swarm.
+    /// Dump swarm registry into the transcript (single-panel; no side view).
     pub(crate) fn toggle_swarm_panel(&mut self) {
-        self.right_panel_mode = match self.right_panel_mode {
-            RightPanelMode::Events => {
-                self.refresh_swarm();
-                RightPanelMode::Swarm
+        self.refresh_swarm();
+        self.push_event(format!(
+            "[swarm] {} active · F2//swarm again to refresh · /swarm gc to clean",
+            self.swarm_active
+        ));
+        if self.swarm_lines.is_empty() {
+            self.push_event("[swarm] (empty registry)");
+        } else {
+            for line in self.swarm_lines.clone() {
+                self.push_event(format!("[swarm] {line}"));
             }
-            RightPanelMode::Swarm => RightPanelMode::Events,
-        };
-        self.status = match self.right_panel_mode {
-            RightPanelMode::Swarm => {
-                "Swarm panel — F2 or /swarm to leave · /swarm gc to clean".into()
-            }
-            RightPanelMode::Events => "Events panel".into(),
-        };
+        }
+        self.status = "Swarm status dumped into transcript".into();
     }
 
-    /// Maybe refresh swarm snapshot (panel open or periodic status chip).
+    /// Maybe refresh swarm snapshot for the status chip.
     pub(crate) fn maybe_refresh_swarm(&mut self, force: bool) {
-        let interval = if self.right_panel_mode == RightPanelMode::Swarm {
-            Duration::from_millis(800)
-        } else {
-            Duration::from_secs(5)
-        };
+        let interval = Duration::from_secs(5);
         if force || self.swarm_last_refresh.elapsed() >= interval {
             self.refresh_swarm();
         }
@@ -551,7 +567,7 @@ impl AppState {
 
     fn update_slash_suggestions(&mut self) {
         const ALL_COMMANDS: &[(&str, &str)] = &[
-            ("/clear", "clear chat panel"),
+            ("/clear", "clear transcript"),
             ("/undo", "restore last checkpoint"),
             ("/diff", "show git diff"),
             ("/test", "run test suite"),
@@ -577,7 +593,7 @@ impl AppState {
             ("/obsidian", "save to Obsidian vault"),
             ("/trace", "show/replay last turn trace"),
             ("/schema", "set structured output JSON schema"),
-            ("/swarm", "toggle swarm panel (gc / refresh)"),
+            ("/swarm", "dump swarm status into transcript (gc / refresh)"),
             ("/help", "show all commands"),
         ];
         let trimmed = self.input.trim_start();

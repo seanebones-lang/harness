@@ -269,16 +269,11 @@ pub(super) async fn run_terminal_loop(
                         }
                     }
 
-                    // ── Ctrl+] / Ctrl+[ — resize panels ───────────────────────
-                    (KeyCode::Char(']'), KeyModifiers::CONTROL) => {
-                        let mut st = state.lock();
-                        st.right_panel_pct = st.right_panel_pct.saturating_add(5).min(70);
-                        st.status = format!("Right panel: {}%", st.right_panel_pct);
-                    }
-                    (KeyCode::Char('['), KeyModifiers::CONTROL) => {
-                        let mut st = state.lock();
-                        st.right_panel_pct = st.right_panel_pct.saturating_sub(5).max(20);
-                        st.status = format!("Right panel: {}%", st.right_panel_pct);
+                    // ── Ctrl+] / Ctrl+[ — single-panel layout (no-op) ────────────────
+                    (KeyCode::Char(']'), KeyModifiers::CONTROL)
+                    | (KeyCode::Char('['), KeyModifiers::CONTROL) => {
+                        state.lock().status =
+                            "Single-panel layout (Hermes-style) — nothing to resize".into();
                     }
 
                     // ── Ctrl+L — scroll to bottom ─────────────────────────────
@@ -472,64 +467,6 @@ pub(super) async fn run_terminal_loop(
                         let busy = state.lock().busy;
                         if busy {
                             continue;
-                        }
-
-                        // Swarm panel: empty Enter peeks selected task result into the event log.
-                        {
-                            let mut st = state.lock();
-                            let empty = st.input.trim().is_empty();
-                            if empty && st.right_panel_mode == super::state::RightPanelMode::Swarm {
-                                if let Some(sel) = st.swarm_scroll.selected() {
-                                    if let Some(line) = st.swarm_lines.get(sel).cloned() {
-                                        if let Some(id) = extract_swarm_task_id(&line) {
-                                            match crate::swarm::get_task(&id) {
-                                                Ok(Some(t)) => {
-                                                    st.push_event(format!(
-                                                        "[swarm] {} [{}] {}",
-                                                        t.id,
-                                                        crate::swarm::status_label(&t.status),
-                                                        t.prompt
-                                                            .chars()
-                                                            .take(80)
-                                                            .collect::<String>()
-                                                    ));
-                                                    match t.result.as_deref() {
-                                                        Some(r) if !r.is_empty() => {
-                                                            let preview: String =
-                                                                r.chars().take(800).collect();
-                                                            st.push_event(format!(
-                                                                "[swarm result] {preview}"
-                                                            ));
-                                                            if r.chars().count() > 800 {
-                                                                st.push_event(
-                                                                    "[swarm result] …truncated — use `harness swarm result <id>`"
-                                                                        .to_string(),
-                                                                );
-                                                            }
-                                                        }
-                                                        _ => st.push_event(format!(
-                                                            "[swarm] no result yet (status={})",
-                                                            crate::swarm::status_label(&t.status)
-                                                        )),
-                                                    }
-                                                    st.status = format!(
-                                                        "Swarm {id} detail in event log (F2 for panel)"
-                                                    );
-                                                }
-                                                Ok(None) => {
-                                                    st.push_event(format!(
-                                                        "[swarm] task {id} not found"
-                                                    ));
-                                                }
-                                                Err(e) => {
-                                                    st.push_event(format!("[swarm] {e}"));
-                                                }
-                                            }
-                                            continue;
-                                        }
-                                    }
-                                }
-                            }
                         }
 
                         let prompt = {
@@ -758,35 +695,19 @@ pub(super) async fn run_terminal_loop(
                         }
                     }
 
-                    // ── PageUp/Down — scroll event log / swarm panel ──────────
+                    // ── PageUp/Down — scroll transcript ──────────────────────────────
                     (KeyCode::PageUp, _) => {
-                        let mut st = state.lock();
-                        if st.right_panel_mode == super::state::RightPanelMode::Swarm {
-                            let cur = st
-                                .swarm_scroll
-                                .selected()
-                                .unwrap_or(st.swarm_lines.len().saturating_sub(1));
-                            st.swarm_scroll.select(Some(cur.saturating_sub(5)));
-                        } else {
-                            st.scroll_event_up(5);
-                        }
+                        state.lock().scroll_chat_up(8);
                     }
                     (KeyCode::PageDown, _) => {
-                        let mut st = state.lock();
-                        if st.right_panel_mode == super::state::RightPanelMode::Swarm {
-                            let cur = st.swarm_scroll.selected().unwrap_or(0);
-                            let max = st.swarm_lines.len().saturating_sub(1);
-                            st.swarm_scroll.select(Some((cur + 5).min(max)));
-                        } else {
-                            st.scroll_event_down(5);
-                        }
+                        state.lock().scroll_chat_down(8);
                     }
 
                     // ── F1 — help ─────────────────────────────────────────────
                     (KeyCode::F(1), _) => {
                         show_help(&state);
                     }
-                    // ── F2 — swarm panel ──────────────────────────────────────
+                    // ── F2 — dump swarm into transcript ───────────────────────
                     (KeyCode::F(2), _) => {
                         state.lock().toggle_swarm_panel();
                     }
@@ -808,7 +729,8 @@ pub(super) async fn run_terminal_loop(
     Ok(())
 }
 
-/// Parse a task id from a swarm panel line (`*swabcdef01 status prompt…`).
+/// Parse a task id from a swarm line (`*swabcdef01 status prompt…`).
+#[allow(dead_code)] // used when peeking swarm results from transcript dumps
 fn extract_swarm_task_id(line: &str) -> Option<String> {
     let s = line.trim_start_matches(['*', '!', ' ']);
     let id = s.split_whitespace().next()?;

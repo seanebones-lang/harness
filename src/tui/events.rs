@@ -136,7 +136,13 @@ pub(crate) fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent)
             st.scroll_to_bottom();
         }
         AgentEvent::Error(msg) => {
-            st.push_event(format!("⚠ error: {msg}"));
+            // Keep event_log + a dedicated error chat bubble (don't use push_event —
+            // that would also inject a role=event line and double the transcript).
+            let line = format!("⚠ error: {msg}");
+            st.event_log.push(line);
+            if st.event_log.len() > 500 {
+                st.event_log.remove(0);
+            }
             st.chat.push(ChatMessage {
                 role: "error".into(),
                 content: msg.clone(),
