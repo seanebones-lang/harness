@@ -591,7 +591,7 @@ fn draw_welcome_overlay(f: &mut ratatui::Frame, theme: &Theme) {
 
     let lines: Vec<Line> = vec![
         Line::from(Span::styled(
-            " Welcome to Harness — May 2026",
+            " Welcome to NextEleven Harness",
             Style::default()
                 .fg(theme.accent_color)
                 .add_modifier(Modifier::BOLD),

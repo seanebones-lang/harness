@@ -1,4 +1,4 @@
-# Harness Desktop (Tauri 2)
+# NextEleven Harness Desktop (Tauri 2)
 
 Native wrapper around the Harness web UI (`harness serve` on `http://127.0.0.1:8787`).
 

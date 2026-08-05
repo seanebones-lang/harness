@@ -27,7 +27,7 @@ The software development tooling space has converged on several AI-assisted codi
 
 ### 2.2 The Gap Harness Fills
 
-The common thread across these tools is that none simultaneously satisfies: (1) multi-provider portability, (2) low-latency startup for interactive and scripted use, (3) persistent semantic memory across sessions, (4) parallel sub-agent execution, (5) local-first operation with optional cloud providers, and (6) a composable extension model (MCP). Harness is designed around all six properties.
+The common thread across these tools is that none simultaneously satisfies: (1) multi-provider portability, (2) low-latency startup for interactive and scripted use, (3) persistent semantic memory across sessions, (4) parallel sub-agent execution, (5) local-first operation with optional cloud providers, and (6) a composable extension model (MCP). NextEleven Harness is designed around all six properties.
 
 ---
 

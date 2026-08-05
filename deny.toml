@@ -27,6 +27,8 @@ allow = [
     "MPL-2.0",
     "OpenSSL",
     "Unlicense",
+    # Workspace product license (NextEleven LLC proprietary — not published to crates.io)
+    "LicenseRef-NextEleven-Proprietary",
 ]
 private = { ignore = true }
 confidence-threshold = 0.85

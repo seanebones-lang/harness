@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Harness",
+  "productName": "NextEleven Harness",
   "identifier": "ai.harness.desktop",
   "version": "0.1.2-beta",
   "build": {
@@ -12,7 +12,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "Harness",
+        "title": "NextEleven Harness",
         "label": "main",
         "width": 1200,
         "height": 800,

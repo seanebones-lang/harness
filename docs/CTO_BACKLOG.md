@@ -1,4 +1,4 @@
-# CTO Engineering Backlog — harness
+# CTO Engineering Backlog — NextEleven Harness
 
 **Updated:** 2026-08-03  
 **Perspective:** CTO review + max-opt swarm execution  

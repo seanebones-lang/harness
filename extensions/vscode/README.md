@@ -1,4 +1,4 @@
-# Harness VS Code Extension
+# NextEleven Harness VS Code Extension
 
 Side-panel chat against the harness daemon.
 

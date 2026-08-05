@@ -1,7 +1,7 @@
 {
   "name": "harness",
-  "displayName": "Harness — AI Coding Agent",
-  "description": "AI coding agent with Claude 4.x, GPT-5, Grok 4, and Qwen3 in VS Code",
+  "displayName": "NextEleven Harness — AI Coding Agent",
+  "description": "NextEleven Harness — AI coding agent with Claude 4.x, GPT-5, Grok 4, and Qwen3 in VS Code",
   "version": "0.1.2-beta",
   "license": "MIT",
   "publisher": "harness-ai",
@@ -19,21 +19,21 @@
     "commands": [
       {
         "command": "harness.openChat",
-        "title": "Harness: Open Chat",
+        "title": "NextEleven Harness: Open Chat",
         "icon": "$(sparkle)"
       },
       {
         "command": "harness.inlineEdit",
-        "title": "Harness: Inline Edit (Cmd+I)",
+        "title": "NextEleven Harness: Inline Edit (Cmd+I)",
         "icon": "$(edit)"
       },
       {
         "command": "harness.explainCode",
-        "title": "Harness: Explain Selected Code"
+        "title": "NextEleven Harness: Explain Selected Code"
       },
       {
         "command": "harness.fixDiagnostics",
-        "title": "Harness: Fix Diagnostics"
+        "title": "NextEleven Harness: Fix Diagnostics"
       }
     ],
     "keybindings": [
@@ -53,7 +53,7 @@
       "activitybar": [
         {
           "id": "harness",
-          "title": "Harness AI",
+          "title": "NextEleven Harness",
           "icon": "$(sparkle)"
         }
       ]
@@ -70,18 +70,18 @@
     "statusBar": [
       {
         "id": "harness.status",
-        "name": "Harness Status",
+        "name": "NextEleven Harness Status",
         "alignment": "right",
         "priority": 100
       }
     ],
     "configuration": {
-      "title": "Harness",
+      "title": "NextEleven Harness",
       "properties": {
         "harness.daemonSocket": {
           "type": "string",
           "default": "~/.harness/daemon.sock",
-          "description": "Path to the Harness daemon Unix socket."
+          "description": "Path to the NextEleven Harness daemon Unix socket."
         },
         "harness.model": {
           "type": "string",
@@ -91,7 +91,7 @@
         "harness.autoConnect": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically connect to the Harness daemon on startup."
+          "description": "Automatically connect to the NextEleven Harness daemon on startup."
         }
       }
     }

@@ -222,14 +222,14 @@ timeout_secs = 60
 # [bridges.obsidian]
 # enabled = false
 # vault = "MyVault"
-# folder = "Harness"
+# folder = "NextEleven Harness"
 
 # [bridges.notes]
 # enabled = false
 
 # [bridges.calendar]
 # enabled = false
-# calendar = "Harness"
+# calendar = "NextEleven Harness"
 
 # [bridges.github_projects]
 # enabled = false

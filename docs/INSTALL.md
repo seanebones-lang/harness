@@ -1,6 +1,6 @@
-# Harness — installation guide
+# NextEleven Harness — installation guide
 
-This guide walks through installing Harness on every OS the project **tests in CI** and supports in the field: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
+This guide walks through installing NextEleven Harness on every OS the project **tests in CI** and supports in the field: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
 
 **Status (May 2026):** Public **beta** — **218 automated tests**, P0 security closed. See [`TODO.md`](../TODO.md) for open work and [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for latest gates.
 
@@ -17,7 +17,7 @@ This guide walks through installing Harness on every OS the project **tests in C
 | **Windows** 10 / 11 (native PowerShell) | Fully supported | `windows-latest` |
 | **WSL2** (Linux distro on Windows) | Treat as **Linux** | Same as Linux |
 
-Harness does not ship OS-specific installers (`.msi`, `.dmg`, `.deb`). You **build from source** with Rust or use **GitHub Releases** binaries when published (see [README](../README.md)).
+NextEleven Harness does not ship OS-specific installers (`.msi`, `.dmg`, `.deb`). You **build from source** with Rust or use **GitHub Releases** binaries when published (see [README](../README.md)).
 
 ---
 
@@ -149,7 +149,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
-### 3. Install Harness
+### 3. Install NextEleven Harness
 
 **Option A — script**
 
@@ -205,7 +205,7 @@ harness doctor
 
 ## Windows (native)
 
-Harness is developed and tested with **PowerShell** and the **MSVC** toolchain.
+NextEleven Harness is developed and tested with **PowerShell** and the **MSVC** toolchain.
 
 ### 1. Install prerequisites
 
@@ -213,7 +213,7 @@ Harness is developed and tested with **PowerShell** and the **MSVC** toolchain.
 2. **Visual Studio Build Tools** — if rustup prompts for C++ build tools, install **“Desktop development with C++”** workload (or the minimal MSVC + Windows SDK components rustup links to).  
 3. **Git for Windows** — https://git-scm.com/download/win — use the option to add Git to PATH.
 
-### 2. Install Harness
+### 2. Install NextEleven Harness
 
 **Option A — script (from PowerShell)**
 
@@ -271,7 +271,7 @@ harness doctor
 | Question | Answer |
 |----------|--------|
 | PowerShell vs Command Prompt? | Use **PowerShell** for the install script; `harness.exe` runs from either once on PATH. |
-| Why Git for Windows? | The **`shell` tool** behaves best when `sh`/`bash` from Git is on PATH. Without Git, Harness tries **PowerShell**, then **`cmd.exe /C`** (not POSIX). |
+| Why Git for Windows? | The **`shell` tool** behaves best when `sh`/`bash` from Git is on PATH. Without Git, NextEleven Harness tries **PowerShell**, then **`cmd.exe /C`** (not POSIX). |
 | VS Code extension / daemon? | **macOS/Linux:** Unix socket at `~/.harness/daemon.sock`. **Windows native:** loopback **TCP** — daemon writes `~/.harness/daemon.port`; VS Code extension connects to `127.0.0.1:<port>`. Run **`harness daemon`** first. **WSL2** uses the Linux socket path. |
 | Computer use / `cliclick`? | **Not supported** on native Windows the same way as macOS/Linux. |
 
@@ -290,7 +290,7 @@ harness doctor
 
 ## Windows Subsystem for Linux (WSL2)
 
-If you already use **WSL2**, install Harness **inside Ubuntu (or another WSL distro)** using the **Linux** section above. Benefits:
+If you already use **WSL2**, install NextEleven Harness **inside Ubuntu (or another WSL distro)** using the **Linux** section above. Benefits:
 
 - POSIX **`shell` tool** without extra Windows quirks.  
 - Closer match to CI and many team dev environments.  

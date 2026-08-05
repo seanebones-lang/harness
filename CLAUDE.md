@@ -1,6 +1,6 @@
-# harness — Codebase Guide (August 2026)
+# NextEleven Harness — Codebase Guide (August 2026)
 
-Rust multi-provider coding agent. Anthropic / xAI / OpenAI / Mistral / Gemini / Bedrock / Ollama / MLX. Swarm, MCP, serve, TUI.
+NextEleven Harness — Rust multi-provider coding agent (binary/crate still `harness`). Anthropic / xAI / OpenAI / Mistral / Gemini / Bedrock / Ollama / MLX. Swarm, MCP, serve, TUI.
 
 **Release:** Public **beta** GO — **`cargo test --bin harness` → 116 tests** (no API keys), P0 security closed. **Stable** blocked on REL-01 smoke matrix ([`TODO.md`](TODO.md)).  
 **Ship branch:** **`main`** only.  
@@ -429,7 +429,7 @@ db_path = "~/.harness/swarm.db"
 
 [bridges]
 obsidian_vault = ""            # e.g. "/Users/you/Documents/Obsidian/Vault"
-apple_notes_folder = "Harness"
+apple_notes_folder = "NextEleven Harness"
 github_project_number = 0
 github_owner = ""
 

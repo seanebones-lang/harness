@@ -1,6 +1,6 @@
-# Contributing to Harness
+# Contributing to NextEleven Harness
 
-Thank you for your interest in contributing. Harness is a Rust coding agent — multi-provider, terminal-first, and built to be hacked on. Whether you fix a bug, add a test, improve docs, or ship a whole new feature, you are welcome here.
+Thank you for your interest in contributing. NextEleven Harness is a Rust coding agent — multi-provider, terminal-first, and built to be hacked on. Whether you fix a bug, add a test, improve docs, or ship a whole new feature, you are welcome here.
 
 ---
 

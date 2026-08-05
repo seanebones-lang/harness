@@ -48,7 +48,7 @@ db_path = "~/.harness/swarm.db"
 
 [bridges]
 obsidian_vault = ""
-apple_notes_folder = "Harness"
+apple_notes_folder = "NextEleven Harness"
 github_project_number = 0
 github_owner = ""
 

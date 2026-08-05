@@ -1,4 +1,4 @@
-# Harness — Open Tasks
+# NextEleven Harness — Open Tasks
 
 **New here?** Start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
 

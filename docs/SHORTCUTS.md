@@ -1,4 +1,4 @@
-# Harness TUI — Keyboard Shortcuts Cheat Sheet
+# NextEleven Harness TUI — Keyboard Shortcuts Cheat Sheet
 
 > All shortcuts work in the main TUI (`harness` or `harness serve` + browser).
 

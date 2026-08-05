@@ -1,4 +1,4 @@
-# Harness — Rust Coding Agent
+# NextEleven Harness — Rust Coding Agent
 
 [![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.76%2B-orange)](rust-toolchain.toml)
@@ -6,7 +6,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-~47%25%20(target%2060%25)-orange)](COVERAGE.md)
 [![Version](https://img.shields.io/badge/version-0.1.2--beta-informational)](Cargo.toml)
 
-**Harness** is a terminal-native AI coding agent written in Rust. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
+**NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
 
 Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls through **Anthropic → xAI → OpenAI → Mistral → Gemini → Bedrock → Ollama/MLX** based on configured keys and `[providers]` tables.
 

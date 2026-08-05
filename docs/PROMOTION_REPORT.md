@@ -1,4 +1,4 @@
-# Harness — Public Beta Promotion Report
+# NextEleven Harness — Public Beta Promotion Report
 
 **Date:** 2026-05-24  
 **Verdict:** **GO** for public beta promotion now. **Stable** remains blocked on maintainer-only REL-01 manual smoke (§3) per target OS and post-tag Homebrew tap publish (P2-10).
@@ -7,11 +7,11 @@
 
 ---
 
-Harness is a fast, safety-focused, Rust-native terminal coding agent with multi-provider support, MCP, cost tracking, semantic memory, and solid CI across macOS, Linux, and Windows. Automated quality gates are green; security P0 items from the May 2026 audit are closed. The repository is well-documented and ready for public discovery.
+NextEleven Harness is a fast, safety-focused, Rust-native terminal coding agent with multi-provider support, MCP, cost tracking, semantic memory, and solid CI across macOS, Linux, and Windows. Automated quality gates are green; security P0 items from the May 2026 audit are closed. The repository is well-documented and ready for public discovery.
 
 **Recommended messaging:**
 
-> Harness — a fast, Rust-native terminal coding agent. Multi-provider (Claude, Grok, GPT, Ollama), workspace sandbox, MCP, cost tracking. Public beta; stable after manual QA on macOS, Linux, and Windows.
+> NextEleven Harness — a fast, Rust-native terminal coding agent by NextEleven LLC. Multi-provider (Claude, Grok, GPT, Ollama), workspace sandbox, MCP, cost tracking. Public beta; stable after manual QA on macOS, Linux, and Windows.
 
 ---
 

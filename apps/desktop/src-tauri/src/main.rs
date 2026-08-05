@@ -1,4 +1,4 @@
-//! Harness Desktop — Tauri 2 shell around the Harness HTTP server.
+//! NextEleven Harness Desktop — Tauri 2 shell around the NextEleven Harness HTTP server.
 //!
 //! Features:
 //! - System tray with status indicator
@@ -48,7 +48,7 @@ fn main() {
         .setup(move |app| {
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("Harness AI")
+                .tooltip("NextEleven Harness")
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { .. } = event {
                         let app = tray.app_handle();
@@ -77,5 +77,5 @@ fn main() {
             daemon::daemon_status,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Harness Desktop");
+        .expect("error while running NextEleven Harness Desktop");
 }

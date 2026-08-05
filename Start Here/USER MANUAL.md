@@ -1,12 +1,12 @@
-# Start Here — Harness User Manual (May 2026)
+# Start Here — NextEleven Harness User Manual
 
-This guide explains how to use Harness in plain English.
+This guide explains how to use NextEleven Harness in plain English.
 
 ---
 
-## What Harness Does
+## What NextEleven Harness Does
 
-Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports multiple AI providers (Anthropic Claude, xAI Grok, OpenAI, local Ollama), has a full TUI with syntax highlighting, remembers past sessions semantically, integrates with your language server, and can orchestrate multiple linked repos via **`harness project`** or use an optional **`harness serve`** browser UI alongside the **`browser`** Chrome tool when enabled.
+NextEleven Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports multiple AI providers (Anthropic Claude, xAI Grok, OpenAI, local Ollama), has a full TUI with syntax highlighting, remembers past sessions semantically, integrates with your language server, and can orchestrate multiple linked repos via **`harness project`** or use an optional **`harness serve`** browser UI alongside the **`browser`** Chrome tool when enabled.
 
 **Default model: `claude-sonnet-4-6`** — 10x cheaper than base price on repeated context thanks to Anthropic prompt caching. Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
 
@@ -285,7 +285,7 @@ The status bar also shows **prompt cache hit rate** — when using Claude, repea
 
 ## Desktop Notifications
 
-Harness sends macOS Notification Center / libnotify alerts for:
+NextEleven Harness sends macOS Notification Center / libnotify alerts for:
 - Background agent runs completing (done or failed)
 - Auto-test failures
 - Budget threshold crossings (80%, 100%)
@@ -320,7 +320,7 @@ Encryption uses `age` with scrypt — no plaintext secrets ever leave your machi
 
 ## Undo / Checkpoints
 
-Before every destructive tool call, Harness automatically creates a git stash checkpoint:
+Before every destructive tool call, NextEleven Harness automatically creates a git stash checkpoint:
 
 ```bash
 harness undo               # restore from most recent checkpoint
@@ -333,7 +333,7 @@ Or type `/undo` in TUI.
 
 ## Resume a Previous Session
 
-The same `--resume` flow works **in the interactive TUI** — Harness loads saved messages from the session database before drawing the chat pane.
+The same `--resume` flow works **in the interactive TUI** — NextEleven Harness loads saved messages from the session database before drawing the chat pane.
 
 ```bash
 harness --resume <session-id>
@@ -350,7 +350,7 @@ cd my-project
 harness init --project   # writes .harness/config.toml
 ```
 
-You can also create `.harness/SYSTEM.md`, `AGENTS.md`, or `CLAUDE.md` in your project root — Harness reads whichever it finds first and prepends it to every session automatically.
+You can also create `.harness/SYSTEM.md`, `AGENTS.md`, or `CLAUDE.md` in your project root — NextEleven Harness reads whichever it finds first and prepends it to every session automatically.
 
 ---
 
@@ -413,7 +413,7 @@ Requires Chromium/Chrome launched with **`--remote-debugging-port=9222`** (or wh
 
 ## Linked repos (`harness project`)
 
-Harmonizes multiple checkouts inside Harness’s registry: dashboard, bulk sync/pull, safe push, scripted `exec`, `init`/`publish`/`clone`/`import`/`prune`, and short aliases (`harness proj ls`, …). Full command matrix: [`README.md`](../README.md) (Project lifecycle + quickstarts).
+Harmonizes multiple checkouts inside NextEleven Harness’s registry: dashboard, bulk sync/pull, safe push, scripted `exec`, `init`/`publish`/`clone`/`import`/`prune`, and short aliases (`harness proj ls`, …). Full command matrix: [`README.md`](../README.md) (Project lifecycle + quickstarts).
 
 ---
 
@@ -452,7 +452,7 @@ Runs tests automatically after every file write. Agent self-corrects on failures
 
 ## Auto-Format
 
-After every file write, Harness automatically runs:
+After every file write, NextEleven Harness automatically runs:
 - `.rs` → `rustfmt`
 - `.ts/.tsx/.js/.jsx/.json` → `prettier`
 - `.py` → `ruff format`

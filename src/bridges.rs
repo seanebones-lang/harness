@@ -60,7 +60,7 @@ pub async fn obsidian_write(cfg: &ObsidianConfig, title: &str, content: &str) ->
     }
 
     let vault = cfg.vault.as_deref().unwrap_or("");
-    let folder = cfg.folder.as_deref().unwrap_or("Harness");
+    let folder = cfg.folder.as_deref().unwrap_or("NextEleven Harness");
     let path = format!("{folder}/{title}.md");
 
     // Use obsidian://new URI scheme
@@ -167,7 +167,7 @@ pub async fn calendar_create_event(
         anyhow::bail!("Calendar bridge not enabled.");
     }
 
-    let calendar = escape_applescript(cfg.calendar.as_deref().unwrap_or("Harness"));
+    let calendar = escape_applescript(cfg.calendar.as_deref().unwrap_or("NextEleven Harness"));
     let escaped_title = escape_applescript(title);
     let escaped_start = escape_applescript(start);
     let escaped_end = escape_applescript(end);

@@ -662,7 +662,7 @@ pub(crate) async fn handle_slash_command(
                     st.push_event("  [bridges.obsidian]");
                     st.push_event("  enabled = true");
                     st.push_event("  vault = \"MyVault\"    # optional vault name");
-                    st.push_event("  folder = \"Harness\"   # optional folder (default Harness)");
+                    st.push_event("  folder = \"NextEleven Harness\"   # optional folder (default NextEleven Harness)");
                     st.push_event(
                         "See config/default.toml [bridges.obsidian] and `harness bridge obsidian`.",
                     );
@@ -693,7 +693,7 @@ pub(crate) async fn handle_slash_command(
                         st.push_event("  [bridges.obsidian]");
                         st.push_event("  enabled = true");
                         st.push_event("  vault = \"MyVault\"    # optional");
-                        st.push_event("  folder = \"Harness\"   # optional");
+                        st.push_event("  folder = \"NextEleven Harness\"   # optional");
                         st.push_event(
                             "Then restart harness (or `harness bridge obsidian <title> <content>`).",
                         );
@@ -718,7 +718,7 @@ pub(crate) async fn handle_slash_command(
                         .filter(|t| !t.is_empty())
                         .unwrap_or_else(|| {
                             chrono::Local::now()
-                                .format("Harness %Y-%m-%d %H%M")
+                                .format("NextEleven Harness %Y-%m-%d %H%M")
                                 .to_string()
                         });
                     let state2 = state.clone();

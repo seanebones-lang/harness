@@ -1,4 +1,4 @@
-# Harness prompt cookbook
+# NextEleven Harness prompt cookbook
 
 Real-world prompts and expected tool patterns. Adjust paths and model flags for your project.
 

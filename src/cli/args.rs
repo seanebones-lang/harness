@@ -6,8 +6,8 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     name = "harness",
-    about = "Harness — multi-provider AI coding agent (Claude · GPT · Grok · Qwen)",
-    long_about = "Harness is a Rust-native AI coding agent supporting Anthropic Claude 4.x, OpenAI GPT-5.x, xAI Grok 4.x, and Ollama Qwen3-Coder. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or XAI_API_KEY and run `harness` to start.",
+    about = "NextEleven Harness — multi-provider AI coding agent (Claude · GPT · Grok · Qwen)",
+    long_about = "NextEleven Harness is a Rust-native AI coding agent by NextEleven LLC. Supports Anthropic Claude 4.x, OpenAI GPT-5.x, xAI Grok 4.x, Gemini, Bedrock, Mistral, and Ollama Qwen3-Coder. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or XAI_API_KEY and run `harness` to start.",
     version
 )]
 pub struct Cli {

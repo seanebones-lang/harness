@@ -14,7 +14,7 @@ This document describes what harness is **designed** to trust, what it **must no
 | Swarm workers | Same as parent user; **tool allowlist** when configured | Worker prompts / model output |
 | Optional tools (DB/Docker/Notebook) | Off by default | SQL, docker CLI, notebook JSON |
 
-Harness is a **local coding agent**: it runs shell commands, edits files, and loads MCP tools on behalf of the operator. Treat it like `sudo` for your workspace.
+NextEleven Harness is a **local coding agent**: it runs shell commands, edits files, and loads MCP tools on behalf of the operator. Treat it like `sudo` for your workspace.
 
 ## HTTP server (`harness serve`)
 

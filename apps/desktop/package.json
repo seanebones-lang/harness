@@ -2,7 +2,7 @@
   "name": "harness-desktop",
   "version": "0.1.2-beta",
   "private": true,
-  "license": "MIT",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",

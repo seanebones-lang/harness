@@ -1,4 +1,4 @@
-# Release status — harness
+# Release status — NextEleven Harness
 
 This file records the latest **go / no-go** assessment for sharing the repo publicly. Update it when you run [`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md).
 

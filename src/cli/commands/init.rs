@@ -83,7 +83,7 @@ Always run tests after changes to confirm correctness.
             let system_md = project_dir.join("SYSTEM.md");
             if !system_md.exists() || force {
                 let md = format!(
-                    "# Harness system prompt — {cwd_name}\n\nEdit this file to customize the agent's behavior for this project.\nThen copy the contents into `.harness/config.toml` under `[agent] system_prompt`.\n"
+                    "# NextEleven Harness system prompt — {cwd_name}\n\nEdit this file to customize the agent's behavior for this project.\nThen copy the contents into `.harness/config.toml` under `[agent] system_prompt`.\n"
                 );
                 std::fs::write(&system_md, md)?;
                 println!("Created system prompt template at {}", system_md.display());

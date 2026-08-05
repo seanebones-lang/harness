@@ -21,7 +21,7 @@ resolver = "2"
 [workspace.package]
 version = "0.1.2-beta"
 edition = "2021"
-license = "MIT"
+license = "LicenseRef-NextEleven-Proprietary"
 rust-version = "1.76"
 
 [workspace.dependencies]
@@ -58,6 +58,7 @@ proptest = "1.6"
 
 [package]
 name = "harness"
+description = "NextEleven Harness — multi-provider Rust AI coding agent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

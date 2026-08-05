@@ -7,9 +7,9 @@
 use crate::config::NotificationsConfig;
 use tracing::warn;
 
-const APP_NAME: &str = "Harness AI";
+const APP_NAME: &str = "NextEleven Harness";
 
-/// All notification event kinds in Harness.
+/// All notification event kinds in NextEleven Harness.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NotificationKind {
     BackgroundDone,
@@ -27,7 +27,7 @@ pub enum NotificationKind {
     SwarmComplete,
     /// The harness daemon restarted/crashed.
     DaemonDied,
-    /// A new version of Harness is available.
+    /// A new version of NextEleven Harness is available.
     UpdateAvailable,
     /// Custom/test notification.
     Custom,
@@ -61,7 +61,7 @@ impl NotificationKind {
             Self::SwarmComplete => "Swarm",
             Self::DaemonDied => "Daemon",
             Self::UpdateAvailable => "Update",
-            Self::Custom => "Harness",
+            Self::Custom => "NextEleven Harness",
         }
     }
 }
@@ -239,7 +239,7 @@ pub fn daemon_died(cfg: &NotificationsConfig) {
         cfg,
         NotificationKind::DaemonDied,
         &format!("{APP_NAME} — Daemon Restarted"),
-        "The Harness daemon restarted. Sessions may have been reset.",
+        "The NextEleven Harness daemon restarted. Sessions may have been reset.",
     );
 }
 
@@ -318,7 +318,7 @@ mod tests {
         assert_eq!(NotificationKind::SwarmComplete.subtitle(), "Swarm");
         assert_eq!(NotificationKind::DaemonDied.subtitle(), "Daemon");
         assert_eq!(NotificationKind::UpdateAvailable.subtitle(), "Update");
-        assert_eq!(NotificationKind::Custom.subtitle(), "Harness");
+        assert_eq!(NotificationKind::Custom.subtitle(), "NextEleven Harness");
     }
 
     #[test]
