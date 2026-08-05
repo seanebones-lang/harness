@@ -19,13 +19,8 @@ use crate::swarm::{self, TaskEntry, TaskId, TaskStatus};
 /// Pluggable swarm task registry.
 pub trait SwarmRegistry: Send + Sync {
     /// Register a pending task.
-    ///
-    /// Local swarm CLI still calls `swarm::register_task*` directly; this method
-    /// is the remote/shared cutover surface (HttpRegistry + future full switch).
-    #[allow(dead_code)]
     fn register(&self, prompt: &str, model: Option<&str>) -> Result<TaskId>;
     /// Update status/result.
-    #[allow(dead_code)]
     fn update(&self, id: &str, status: &TaskStatus, result: Option<&str>) -> Result<()>;
     /// List recent tasks.
     fn list(&self, limit: usize) -> Result<Vec<TaskEntry>>;
@@ -35,28 +30,29 @@ pub trait SwarmRegistry: Send + Sync {
     fn backend_name(&self) -> &'static str;
 }
 
-/// Default local SQLite registry (wraps `crate::swarm` functions).
+/// Default local SQLite registry (wraps `crate::swarm` local helpers).
 #[derive(Debug, Default, Clone)]
 pub struct LocalSqliteRegistry;
 
 impl SwarmRegistry for LocalSqliteRegistry {
     fn register(&self, prompt: &str, model: Option<&str>) -> Result<TaskId> {
+        // Call local_* to avoid re-entering remote routing.
         match model {
-            Some(m) => swarm::register_task_with_model(prompt, Some(m)),
-            None => swarm::register_task(prompt),
+            Some(m) => swarm::register_task_local(prompt, Some(m)),
+            None => swarm::register_task_local(prompt, None),
         }
     }
 
     fn update(&self, id: &str, status: &TaskStatus, result: Option<&str>) -> Result<()> {
-        swarm::update_status(id, status, result)
+        swarm::update_status_local(id, status, result)
     }
 
     fn list(&self, limit: usize) -> Result<Vec<TaskEntry>> {
-        swarm::list_tasks(limit)
+        swarm::list_tasks_local(limit)
     }
 
     fn get(&self, id: &str) -> Result<Option<TaskEntry>> {
-        swarm::get_task(id)
+        swarm::get_task_local(id)
     }
 
     fn backend_name(&self) -> &'static str {
@@ -506,5 +502,22 @@ mod tests {
         };
         let err = reg.register("x", None).unwrap_err().to_string();
         assert!(err.contains("unreachable") || err.contains("Connection"), "{err}");
+    }
+
+    #[test]
+    fn public_api_routes_through_registry_url_override() {
+        let (base, _h) = spawn_test_server();
+        swarm::with_registry_url_override(Some(&base), || {
+            assert_eq!(swarm::registry_backend_name(), "http-remote");
+            let id = swarm::register_task_with_model("via public api", Some("m")).unwrap();
+            let t = swarm::get_task(&id).unwrap().unwrap();
+            assert_eq!(t.prompt, "via public api");
+            swarm::update_status(&id, &TaskStatus::Done, Some("done")).unwrap();
+            let listed = swarm::list_tasks(10).unwrap();
+            assert_eq!(listed.len(), 1);
+            assert_eq!(listed[0].status, TaskStatus::Done);
+        });
+        // override cleared
+        assert_eq!(swarm::registry_backend_name(), "sqlite-local");
     }
 }

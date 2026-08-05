@@ -61,7 +61,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 
 | Task | Status |
 |------|--------|
-| Remote swarm HTTP client (beyond stub) | [x] W7.1 client 2026-08-04 |
+| Remote swarm HTTP client + public cutover | [x] W7.1 client 2026-08-04 · cutover 2026-08-05 |
 | Coverage → 60% CI gate | [ ] |
 | Live provider cost/latency bench | [ ] optional |
 | Community channel / announce | [ ] maintainer |

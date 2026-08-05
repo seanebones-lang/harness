@@ -17,6 +17,11 @@ Engineering design for open W7 items. Implementation follows Batch 1 (providers 
 4. Unreachable → hard error + tip to unset `registry_url` (no split-brain)
 5. Tests: pure JSON parse + in-process axum mock server roundtrip + unreachable
 
+**Cutover (2026-08-05):** public `register_task*` / `list_tasks` / `get_task` / `update_status`
+route through HTTP when `registry_url` is set (or `HARNESS_SWARM_REGISTRY_URL` env).
+Local SQLite helpers stay under `*_local` for `LocalSqliteRegistry` + GC spawn paths.
+`swarm list` prints `registry: sqlite-local|http-remote`.
+
 **Server side** of the registry is still external; this is the client.
 
 ## W7.2 Per-worker tool allowlist + quota

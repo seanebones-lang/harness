@@ -18,8 +18,13 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{oneshot, Semaphore};
 
+use crate::swarm_registry::{HttpRegistry, SwarmRegistry};
+
 thread_local! {
     static SWARM_DB_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    /// When `Some`, force registry backend: `Some(url)` = HTTP, `None` = local SQLite.
+    static SWARM_REGISTRY_URL_OVERRIDE: RefCell<Option<Option<String>>> =
+        const { RefCell::new(None) };
 }
 
 pub type TaskId = String;
@@ -188,6 +193,8 @@ struct SwarmRuntime {
     semaphore: std::sync::Arc<Semaphore>,
     active: Mutex<SwarmState>,
     db_path: Option<PathBuf>,
+    /// Optional remote registry base URL from last successful `configure`.
+    registry_url: Option<String>,
 }
 
 static RUNTIME: OnceLock<SwarmRuntime> = OnceLock::new();
@@ -199,6 +206,7 @@ fn runtime() -> &'static SwarmRuntime {
             cancel_txs: std::collections::HashMap::new(),
         }),
         db_path: None,
+        registry_url: None,
     })
 }
 
@@ -220,12 +228,18 @@ pub fn configure(cfg: &SwarmConfig) {
         Ok(name) => tracing::debug!(backend = name, "swarm registry ready"),
         Err(e) => tracing::warn!(error = %e, "swarm registry probe failed"),
     }
+    let registry_url = cfg
+        .registry_url
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
     let _ = RUNTIME.set(SwarmRuntime {
         semaphore: std::sync::Arc::new(Semaphore::new(cfg.max_concurrency.unwrap_or(4).max(1))),
         active: Mutex::new(SwarmState {
             cancel_txs: std::collections::HashMap::new(),
         }),
         db_path: cfg.db_path.clone(),
+        registry_url,
     });
     if let Some(stale) = cfg.auto_gc_stale_secs {
         if stale > 0 {
@@ -277,6 +291,48 @@ pub fn with_db_path_override<R>(path: PathBuf, f: impl FnOnce() -> R) -> R {
     })
 }
 
+/// Run `f` with a forced registry URL (`Some(url)` = HTTP, `None` = local SQLite).
+///
+/// Thread-local; safe under parallel tests. Does not require `configure` (OnceLock).
+#[cfg(test)]
+pub fn with_registry_url_override<R>(url: Option<&str>, f: impl FnOnce() -> R) -> R {
+    let forced = Some(url.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()));
+    SWARM_REGISTRY_URL_OVERRIDE.with(|slot| {
+        let prev = slot.replace(forced);
+        let out = f();
+        *slot.borrow_mut() = prev;
+        out
+    })
+}
+
+/// Effective remote registry URL when HTTP backend is selected.
+fn effective_registry_url() -> Option<String> {
+    if let Some(forced) = SWARM_REGISTRY_URL_OVERRIDE.with(|slot| slot.borrow().clone()) {
+        return forced;
+    }
+    // Env override (ops / CI) without needing configure OnceLock.
+    if let Ok(url) = std::env::var("HARNESS_SWARM_REGISTRY_URL") {
+        let t = url.trim();
+        if !t.is_empty() {
+            return Some(t.to_string());
+        }
+    }
+    runtime()
+        .registry_url
+        .clone()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// Backend name for diagnostics (`sqlite-local` or `http-remote`).
+pub fn registry_backend_name() -> &'static str {
+    if effective_registry_url().is_some() {
+        "http-remote"
+    } else {
+        "sqlite-local"
+    }
+}
+
 fn open_db() -> Result<Connection> {
     let path = swarm_db_path();
     let _ = std::fs::create_dir_all(path.parent().unwrap_or(std::path::Path::new(".")));
@@ -314,7 +370,17 @@ pub fn register_task(prompt: &str) -> Result<TaskId> {
 }
 
 /// Register a task and record the worker model (for `status|result --json`).
+///
+/// When `[swarm].registry_url` (or test override) is set, registers via HTTP REST.
 pub fn register_task_with_model(prompt: &str, model: Option<&str>) -> Result<TaskId> {
+    if let Some(url) = effective_registry_url() {
+        return HttpRegistry::new(url).register(prompt, model);
+    }
+    register_task_local(prompt, model)
+}
+
+/// Local SQLite register (no remote routing). Used by [`LocalSqliteRegistry`].
+pub(crate) fn register_task_local(prompt: &str, model: Option<&str>) -> Result<TaskId> {
     let conn = open_db()?;
     let id = new_task_id();
     conn.execute(
@@ -324,8 +390,16 @@ pub fn register_task_with_model(prompt: &str, model: Option<&str>) -> Result<Tas
     Ok(id)
 }
 
-/// Update task status in the DB.
+/// Update task status in the DB (or remote registry).
 pub fn update_status(id: &str, status: &TaskStatus, result: Option<&str>) -> Result<()> {
+    if let Some(url) = effective_registry_url() {
+        return HttpRegistry::new(url).update(id, status, result);
+    }
+    update_status_local(id, status, result)
+}
+
+/// Local SQLite status update.
+pub(crate) fn update_status_local(id: &str, status: &TaskStatus, result: Option<&str>) -> Result<()> {
     let conn = open_db()?;
     let status_str = match status {
         TaskStatus::Failed(msg) => format!("failed:{msg}"),
@@ -346,8 +420,16 @@ pub fn update_status(id: &str, status: &TaskStatus, result: Option<&str>) -> Res
     Ok(())
 }
 
-/// List recent tasks from the DB.
+/// List recent tasks from the DB (or remote registry).
 pub fn list_tasks(limit: usize) -> Result<Vec<TaskEntry>> {
+    if let Some(url) = effective_registry_url() {
+        return HttpRegistry::new(url).list(limit);
+    }
+    list_tasks_local(limit)
+}
+
+/// Local SQLite list.
+pub(crate) fn list_tasks_local(limit: usize) -> Result<Vec<TaskEntry>> {
     let conn = open_db()?;
     let mut stmt = conn.prepare(
         "SELECT id, prompt, status, result, created_ts, completed_ts, model
@@ -380,8 +462,16 @@ fn parse_status_str(status_str: &str, result_col: Option<String>) -> TaskStatus 
     }
 }
 
-/// Get a specific task.
+/// Get a specific task (local or remote).
 pub fn get_task(id: &str) -> Result<Option<TaskEntry>> {
+    if let Some(url) = effective_registry_url() {
+        return HttpRegistry::new(url).get(id);
+    }
+    get_task_local(id)
+}
+
+/// Local SQLite get (prefix match).
+pub(crate) fn get_task_local(id: &str) -> Result<Option<TaskEntry>> {
     let conn = open_db()?;
     let mut stmt = conn.prepare(
         "SELECT id, prompt, status, result, created_ts, completed_ts, model
@@ -719,13 +809,15 @@ pub fn tui_lines(limit: usize) -> Result<(SwarmCounts, Vec<String>)> {
 
 /// Print a summary of recent swarm tasks (counts + table).
 pub fn print_status() -> Result<()> {
+    let backend = registry_backend_name();
     let tasks = list_tasks(20)?;
     if tasks.is_empty() {
-        println!("No swarm tasks yet.");
+        println!("No swarm tasks yet. (registry: {backend})");
         println!("Queue work with: harness swarm run \"…\" [--count N]");
         return Ok(());
     }
 
+    println!("registry: {backend}");
     let mut pending = 0usize;
     let mut running = 0usize;
     let mut done = 0usize;
