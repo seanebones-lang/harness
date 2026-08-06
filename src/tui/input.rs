@@ -105,7 +105,7 @@ pub(crate) fn handle_search_key(
     let code = key.code;
     let mods = key.modifiers;
     match (code, mods) {
-        (KeyCode::Esc, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL) => {
+        _ if is_search_exit_key(code, mods) => {
             let mut st = state.lock();
             st.search_mode = false;
             st.search_query.clear();
@@ -117,7 +117,7 @@ pub(crate) fn handle_search_key(
             let mut st = state.lock();
             let nmatches = st.search_matches.len();
             if nmatches > 0 {
-                st.search_match_pos = (st.search_match_pos + 1) % nmatches;
+                st.search_match_pos = search_pos_next(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
                 st.status = format!(
@@ -133,7 +133,7 @@ pub(crate) fn handle_search_key(
             let mut st = state.lock();
             let nmatches = st.search_matches.len();
             if nmatches > 0 {
-                st.search_match_pos = (st.search_match_pos + 1) % nmatches;
+                st.search_match_pos = search_pos_next(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
                 st.status = format!(
@@ -149,7 +149,7 @@ pub(crate) fn handle_search_key(
             let mut st = state.lock();
             let nmatches = st.search_matches.len();
             if nmatches > 0 {
-                st.search_match_pos = (st.search_match_pos + nmatches - 1) % nmatches;
+                st.search_match_pos = search_pos_prev(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
                 st.status = format!(
@@ -179,27 +179,78 @@ pub(crate) fn handle_search_key(
 
 fn run_search(st: &mut AppState) {
     let q = st.search_query.to_lowercase();
-    st.search_matches = st
-        .chat
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| m.content.to_lowercase().contains(&q))
-        .map(|(i, _)| i)
-        .collect();
+    st.search_matches = search_match_indices(
+        st.chat.iter().map(|m| m.content.as_str()),
+        &q,
+    );
     st.search_match_pos = 0;
     let nmatches = st.search_matches.len();
     if let Some(&first) = st.search_matches.first() {
         st.chat_scroll.select(Some(first));
     }
-    if q.is_empty() {
-        st.status = "Search: ".to_string();
-    } else {
-        st.status = format!(
-            "Search: \"{}\" — {nmatches} match{}",
-            q,
-            if nmatches == 1 { "" } else { "es" }
-        );
+    st.status = format_search_status(&q, nmatches);
+}
+
+/// Indices of chat messages whose content contains `query_lower` (already lowercased).
+pub(crate) fn search_match_indices<'a, I>(messages: I, query_lower: &str) -> Vec<usize>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    if query_lower.is_empty() {
+        return messages
+            .into_iter()
+            .enumerate()
+            .map(|(i, _)| i)
+            .collect();
     }
+    messages
+        .into_iter()
+        .enumerate()
+        .filter(|(_, content)| content.to_lowercase().contains(query_lower))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Cycle search position forward (Enter / n).
+pub(crate) fn search_pos_next(pos: usize, nmatches: usize) -> usize {
+    if nmatches == 0 {
+        0
+    } else {
+        (pos + 1) % nmatches
+    }
+}
+
+/// Cycle search position backward (p).
+pub(crate) fn search_pos_prev(pos: usize, nmatches: usize) -> usize {
+    if nmatches == 0 {
+        0
+    } else {
+        (pos + nmatches - 1) % nmatches
+    }
+}
+
+pub(crate) fn format_search_status(query_lower: &str, nmatches: usize) -> String {
+    if query_lower.is_empty() {
+        "Search: ".to_string()
+    } else {
+        format!(
+            "Search: \"{query_lower}\" — {nmatches} match{}",
+            if nmatches == 1 { "" } else { "es" }
+        )
+    }
+}
+
+/// First token of a slash command line (e.g. `/swarm gc` → `/swarm`).
+pub(crate) fn slash_command_head(cmd: &str) -> &str {
+    cmd.split_whitespace().next().unwrap_or(cmd)
+}
+
+/// Whether a search-mode key chord exits search without consuming further handlers.
+pub(crate) fn is_search_exit_key(code: KeyCode, mods: KeyModifiers) -> bool {
+    matches!(
+        (code, mods),
+        (KeyCode::Esc, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL)
+    )
 }
 
 pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
@@ -268,7 +319,7 @@ pub(crate) async fn handle_slash_command(
     agent_tx: &mpsc::Sender<AgentEvent>,
 ) {
     let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
-    let command = parts[0];
+    let command = slash_command_head(cmd);
 
     match command {
         "/clear" => {
@@ -972,5 +1023,79 @@ pub(crate) async fn handle_slash_command(
                 .lock()
                 .push_event(format!("[unknown] {cmd} — type /help or press F1"));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyModifiers};
+    use std::time::Instant;
+
+    #[test]
+    fn search_match_indices_filters_case_insensitive() {
+        let msgs = ["Hello world", "nope", "WORLD news", "other"];
+        assert_eq!(search_match_indices(msgs, "world"), vec![0, 2]);
+        assert_eq!(search_match_indices(msgs, "missing"), Vec::<usize>::new());
+        // empty query matches all (run_search uses this for progressive typing start)
+        assert_eq!(search_match_indices(msgs, ""), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn search_pos_cycles() {
+        assert_eq!(search_pos_next(0, 0), 0);
+        assert_eq!(search_pos_prev(0, 0), 0);
+        assert_eq!(search_pos_next(0, 3), 1);
+        assert_eq!(search_pos_next(2, 3), 0);
+        assert_eq!(search_pos_prev(0, 3), 2);
+        assert_eq!(search_pos_prev(1, 3), 0);
+    }
+
+    #[test]
+    fn format_search_status_pluralization() {
+        assert_eq!(format_search_status("", 0), "Search: ");
+        assert_eq!(format_search_status("foo", 1), "Search: \"foo\" — 1 match");
+        assert_eq!(format_search_status("foo", 2), "Search: \"foo\" — 2 matches");
+        assert_eq!(format_search_status("foo", 0), "Search: \"foo\" — 0 matches");
+    }
+
+    #[test]
+    fn slash_command_head_splits() {
+        assert_eq!(slash_command_head("/help"), "/help");
+        assert_eq!(slash_command_head("/swarm gc"), "/swarm");
+        assert_eq!(slash_command_head("  /cost today"), "/cost");
+        assert_eq!(slash_command_head(""), "");
+    }
+
+    #[test]
+    fn is_search_exit_key_esc_and_ctrl_f() {
+        assert!(is_search_exit_key(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(is_search_exit_key(KeyCode::Char('f'), KeyModifiers::CONTROL));
+        assert!(!is_search_exit_key(KeyCode::Char('f'), KeyModifiers::NONE));
+        assert!(!is_search_exit_key(KeyCode::Enter, KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn run_search_updates_app_state() {
+        let mut st = AppState::new("m");
+        st.chat.push(super::super::ChatMessage {
+            role: "user".into(),
+            content: "alpha beta".into(),
+            ts: Instant::now(),
+        });
+        st.chat.push(super::super::ChatMessage {
+            role: "assistant".into(),
+            content: "gamma".into(),
+            ts: Instant::now(),
+        });
+        st.search_query = "ALPHA".into();
+        run_search(&mut st);
+        assert_eq!(st.search_matches, vec![0]);
+        assert!(st.status.contains("1 match"), "{}", st.status);
+
+        st.search_query.clear();
+        run_search(&mut st);
+        assert_eq!(st.search_matches, vec![0, 1]);
+        assert_eq!(st.status, "Search: ");
     }
 }
