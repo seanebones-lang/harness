@@ -99,8 +99,8 @@ pub(crate) fn git_ahead_behind(path: &FsPath) -> anyhow::Result<(u64, u64)> {
     Ok((ahead, behind))
 }
 
-pub(crate) fn collect_change_counts(path: &FsPath) -> anyhow::Result<ChangeCounts> {
-    let out = git_output(path, &["status", "--porcelain"])?;
+/// Parse `git status --porcelain` into staged/unstaged/untracked counts.
+pub(crate) fn parse_porcelain_counts(out: &str) -> ChangeCounts {
     let mut counts = ChangeCounts::default();
     for line in out.lines() {
         if line.starts_with("?? ") {
@@ -120,7 +120,12 @@ pub(crate) fn collect_change_counts(path: &FsPath) -> anyhow::Result<ChangeCount
             counts.unstaged += 1;
         }
     }
-    Ok(counts)
+    counts
+}
+
+pub(crate) fn collect_change_counts(path: &FsPath) -> anyhow::Result<ChangeCounts> {
+    let out = git_output(path, &["status", "--porcelain"])?;
+    Ok(parse_porcelain_counts(&out))
 }
 
 pub(crate) fn default_test_command(path: &FsPath) -> String {
@@ -188,4 +193,112 @@ pub(crate) fn collect_files(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn parse_porcelain_counts_empty() {
+        let c = parse_porcelain_counts("");
+        assert_eq!((c.staged, c.unstaged, c.untracked), (0, 0, 0));
+    }
+
+    #[test]
+    fn parse_porcelain_counts_mixed() {
+        let out = "\
+M  staged.txt
+ M unstaged.txt
+MM both.txt
+?? untracked.txt
+A  added.txt
+ D deleted_worktree.txt
+";
+        let c = parse_porcelain_counts(out);
+        assert_eq!(c.untracked, 1);
+        // staged: M (col0), M of MM, A  => 3
+        assert_eq!(c.staged, 3);
+        // unstaged: M col1, M of MM, D => 3
+        assert_eq!(c.unstaged, 3);
+    }
+
+    #[test]
+    fn parse_porcelain_skips_short_lines() {
+        let c = parse_porcelain_counts("?\nX\n");
+        assert_eq!((c.staged, c.unstaged, c.untracked), (0, 0, 0));
+    }
+
+    #[test]
+    fn default_test_command_by_markers() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        assert!(default_test_command(root).contains("No known test"));
+
+        fs::write(root.join("go.mod"), "module t\n").unwrap();
+        assert_eq!(default_test_command(root), "go test ./...");
+        fs::remove_file(root.join("go.mod")).unwrap();
+
+        fs::write(root.join("pytest.ini"), "").unwrap();
+        assert_eq!(default_test_command(root), "pytest");
+        fs::remove_file(root.join("pytest.ini")).unwrap();
+
+        fs::write(root.join("package.json"), "{}").unwrap();
+        assert_eq!(default_test_command(root), "npm test");
+        fs::remove_file(root.join("package.json")).unwrap();
+
+        fs::write(root.join("Cargo.toml"), "[package]\nname=\"t\"\nversion=\"0.1.0\"\n").unwrap();
+        assert_eq!(default_test_command(root), "cargo test");
+    }
+
+    #[test]
+    fn is_allowed_test_command_prefixes() {
+        assert!(is_allowed_test_command("cargo test"));
+        assert!(is_allowed_test_command("  cargo test --bin harness "));
+        assert!(is_allowed_test_command("npm test"));
+        assert!(is_allowed_test_command("yarn test foo"));
+        assert!(is_allowed_test_command("pnpm test"));
+        assert!(is_allowed_test_command("go test ./..."));
+        assert!(is_allowed_test_command("pytest -q"));
+        assert!(is_allowed_test_command("make test"));
+        assert!(is_allowed_test_command("echo 'hi'"));
+        assert!(!is_allowed_test_command("rm -rf /"));
+        assert!(!is_allowed_test_command("curl evil"));
+        assert!(!is_allowed_test_command(""));
+    }
+
+    #[test]
+    fn collect_files_respects_limit_query_and_skips() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("target/debug")).unwrap();
+        fs::create_dir_all(root.join("node_modules/x")).unwrap();
+        fs::write(root.join("src/a.rs"), "").unwrap();
+        fs::write(root.join("src/b.txt"), "").unwrap();
+        fs::write(root.join("readme.md"), "").unwrap();
+        fs::write(root.join("target/debug/x"), "").unwrap();
+        fs::write(root.join("node_modules/x/y"), "").unwrap();
+
+        let mut out = Vec::new();
+        collect_files(root, root, "a.rs", 10, &mut out).unwrap();
+        assert_eq!(out, vec!["src/a.rs".to_string()]);
+
+        out.clear();
+        collect_files(root, root, "", 2, &mut out).unwrap();
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|p| !p.contains("target") && !p.contains("node_modules")));
+
+        out.clear();
+        collect_files(root, root, "readme", 10, &mut out).unwrap();
+        assert_eq!(out, vec!["readme.md".to_string()]);
+    }
+
+    #[test]
+    fn current_git_branch_none_outside_repo() {
+        let dir = tempdir().unwrap();
+        assert!(current_git_branch(dir.path()).is_none());
+    }
 }

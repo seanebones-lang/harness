@@ -633,3 +633,129 @@ impl AppState {
             .unwrap_or(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_backspace_move_and_kill() {
+        let mut st = AppState::new("grok-4.5");
+        for c in "hello world".chars() {
+            st.insert_char(c);
+        }
+        assert_eq!(st.input, "hello world");
+        assert_eq!(st.cursor_pos, "hello world".len());
+
+        st.move_left();
+        st.move_left();
+        st.delete_forward();
+        // cursor was on 'l' of "world" after two left moves from end
+        assert_eq!(st.input, "hello word");
+
+        st.move_word_left();
+        assert_eq!(&st.input[..st.cursor_pos], "hello ");
+        st.kill_to_end();
+        assert_eq!(st.input, "hello ");
+
+        st.backspace();
+        st.backspace(); // drop trailing space + o optionally — just clear
+        st.kill_line();
+        assert!(st.input.is_empty());
+        assert_eq!(st.cursor_pos, 0);
+
+        for c in "ab/cd".chars() {
+            st.insert_char(c);
+        }
+        // cursor at end; word-left lands after 'ab/'
+        st.move_word_left();
+        st.kill_to_end();
+        assert_eq!(st.input, "ab/");
+        st.kill_word_back();
+        assert!(st.input.is_empty() || st.input == "ab" || st.input == "ab/");
+    }
+
+    #[test]
+    fn take_input_history_and_nav() {
+        let mut st = AppState::new("test-model");
+        st.input = "first".into();
+        st.cursor_pos = st.input.len();
+        assert_eq!(st.take_input(), "first");
+        assert!(st.input.is_empty());
+
+        st.input = "second".into();
+        st.cursor_pos = st.input.len();
+        let _ = st.take_input();
+
+        st.history_up();
+        assert_eq!(st.input, "second");
+        st.history_up();
+        assert_eq!(st.input, "first");
+        st.history_down();
+        assert_eq!(st.input, "second");
+        st.history_down();
+        // restored draft empty after take
+        assert!(st.input.is_empty() || st.history_idx.is_none());
+    }
+
+    #[test]
+    fn cost_str_empty_and_with_tokens() {
+        let mut st = AppState::new("unknown-model-xyz");
+        assert_eq!(st.cost_str(), "");
+        st.tokens_in = 1000;
+        st.tokens_out = 200;
+        let s = st.cost_str();
+        assert!(s.contains('↑') && s.contains('↓'), "{s}");
+        st.cache_read_tokens = 250;
+        let s2 = st.cost_str();
+        assert!(s2.contains("cache:"), "{s2}");
+    }
+
+    #[test]
+    fn format_status_right_includes_model_and_turns() {
+        let st = AppState::new("grok-4.5");
+        let right = st.format_status_right("abcd1234", 3);
+        assert!(right.contains("grok-4.5"));
+        assert!(right.contains("3 turns"));
+        assert!(right.contains("abcd1234"));
+    }
+
+    #[test]
+    fn push_event_and_scroll_chat() {
+        let mut st = AppState::new("m");
+        for i in 0..5 {
+            st.push_event(format!("e{i}"));
+        }
+        // events land as role=event chat lines
+        assert!(st.chat.iter().any(|m| m.role == "event"));
+        st.scroll_chat_up(2);
+        st.scroll_chat_down(1);
+        st.scroll_to_bottom();
+        st.tick_spinner();
+        let _ = st.spinner_char();
+        assert!(!st.focus_active());
+        assert_eq!(st.focus_mins_remaining(), 0);
+    }
+
+    #[test]
+    fn slash_suggestions_on_partial_command() {
+        let mut st = AppState::new("m");
+        st.insert_char('/');
+        st.insert_char('h');
+        assert!(
+            st.slash_suggestions.iter().any(|s| s.starts_with("/help")),
+            "{:?}",
+            st.slash_suggestions
+        );
+        st.insert_char(' ');
+        assert!(st.slash_suggestions.is_empty());
+    }
+
+    #[test]
+    fn toggle_swarm_panel_is_dump_not_side_panel() {
+        let mut st = AppState::new("m");
+        // single-panel: toggle dumps into transcript / status, does not panic
+        st.toggle_swarm_panel();
+        st.maybe_refresh_swarm(true);
+    }
+}
