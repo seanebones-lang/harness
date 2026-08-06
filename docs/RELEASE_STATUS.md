@@ -4,6 +4,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-06 — Coverage climb (project_ops + TUI AppState)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** @ `100188c`+ |
+| `cargo test --bin harness` | **206** pass |
+| clippy `-D warnings` (bin harness) | clean |
+| llvm-cov workspace lines | **53.47%** (12770/23884); regions 54.89%; functions 60.35% |
+| Climb slice | `parse_porcelain_counts` + default/allow test cmds + collect_files; AppState input/history/status |
+| Residual | `tui/driver`, `tui/input`, `cli/wiring`, `server/collab_ws` still ~0% |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on full REL-01 matrix + billing prebuilts. CI 60% coverage still target (~53% measured).
+
+---
+
 **2026-08-05 — Swarm-50 complete (specialized agents)**
 
 | Item | Result |

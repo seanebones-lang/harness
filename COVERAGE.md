@@ -5,13 +5,14 @@
 | Field | Value |
 |-------|--------|
 | **Tool** | cargo-llvm-cov |
-| **Measured lines** | **51.98%** (12224 covered / 23516 lines) |
-| **Regions** | 53.37% · **Functions** 58.96% |
-| **Date** | 2026-08-05 (swarm-50) |
+| **Measured lines** | **53.47%** (12770 covered / 23884 lines) |
+| **Regions** | 54.89% · **Functions** 60.35% |
+| **Date** | 2026-08-06 (project_ops + TUI AppState pure climb) |
 | **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **not yet met** |
 | **Near-term target** | ≥ 40% workspace lines — **met** (this measure) |
 
 Prior measures:
+- llvm-cov 2026-08-05 swarm-50: **51.98%** lines (12224 / 23516)
 - llvm-cov 2026-08-05 earlier: **46.52%** lines (10459 / 22481)
 - llvm-cov 2026-08-03: **44.67%** lines (9723 / 21766)
 - llvm-cov 2026-07-30: **40.22%** lines (7814 / 19430)
@@ -19,7 +20,7 @@ Prior measures:
 
 Tooling differs across tools; treat llvm-cov as current SoT going forward.
 
-Note: Measured % is still below the 60% PR gate. Swarm-50 climb (2026-08-05): trust/projects/highlight/diff_review/rate_limit/auth + tools search/gh/test_runner/selfdev/computer/database/notebook + agent compact/naming/system. Residual low coverage: TUI driver/input, CLI wiring, server project_ops/collab_ws. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
+Note: Measured % is still below the 60% PR gate. Climb 2026-08-06: `server/project_ops` porcelain parse + default/allow test commands + collect_files; `tui/state` AppState input/history/status (~83% lines). Residual low coverage: `tui/driver`, `tui/input`, `cli/wiring`, `server/collab_ws`. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
 
 ## How to re-run
 

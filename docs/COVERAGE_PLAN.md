@@ -4,7 +4,7 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 
 | Field | Value |
 |-------|--------|
-| **Current measured** | **51.98%** lines (12224 / 23516; llvm-cov, 2026-08-05 swarm-50) — near-term ≥40% **met** |
+| **Current measured** | **53.47%** lines (12770 / 23884; llvm-cov, 2026-08-06) — near-term ≥40% **met** |
 | **CI gate (target)** | ≥ 60% lines via `cargo llvm-cov --fail-under-lines 60` — **not met** |
 | **Near-term goal** | Workspace **≥ 40%** ✓, then critical crates **≥ 60%** |
 | **Stretch** | Meet CI **≥ 60%** workspace |
@@ -39,7 +39,9 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 | `crates/harness-tools/src/tools/test_runner.rs` | **Next (swarm-50)** — validation edges |
 | `crates/harness-tools/src/tools/selfdev.rs` | **Next (swarm-50)** — validation edges |
 | `src/agent/*` | Pure message/tool-result + compact/token estimate helpers |
-| TUI driver / CLI wiring | Later — near 0%; extract pure helpers before heavy UI tests |
+| `src/server/project_ops.rs` | **Done 2026-08-06** — porcelain parse, default/allow test cmd, collect_files |
+| `src/tui/state.rs` | **Done 2026-08-06** — AppState input/history/status (~83% lines) |
+| TUI driver / input / CLI wiring | Still ~0% on driver/input; extract pure helpers before heavy UI tests |
 
 Prefer **unit tests in existing modules** over new integration binaries. No API keys, no live MCP servers, no real desktop notification asserts (disabled-config no-ops only).
 
