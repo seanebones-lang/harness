@@ -4,6 +4,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-07 — Coverage residual cont6 (memory_project + status/input titles)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| `cargo test --bin harness` | **264** pass (was 257) |
+| clippy `-D warnings` (bin harness) | clean |
+| llvm-cov workspace lines | **57.13%** (14212/24878); regions 58.60%; functions 63.80% |
+| Climb slice | memory path-inject + sanitize; input_bar_title / status_indicators / status bar pad |
+| Residual | draw_* · slash async I/O · build_tools_inner · tui/mod · target 60% open |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on full REL-01 matrix + billing prebuilts. CI 60% coverage still target (~57% measured).
+
+---
+
 **2026-08-07 — Coverage residual cont5 (slash parsers + event line kind)**
 
 | Item | Result |

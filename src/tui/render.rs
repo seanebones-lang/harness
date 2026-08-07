@@ -490,24 +490,18 @@ fn draw_input(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &Them
         format!("  {before}█{after}")
     };
 
-    let title = if !state.tab_completions.is_empty() {
-        let cur = state
+    let title = input_bar_title(
+        !state.tab_completions.is_empty(),
+        state
             .tab_completions
             .get(state.tab_completion_idx)
             .map(|s| s.as_str())
-            .unwrap_or("");
-        format!(" Message  [Tab→{cur}] ")
-    } else if state.search_mode {
-        format!(" Search: {} ", state.search_query)
-    } else if let Some(idx) = state.history_idx {
-        format!(
-            " History [{}/{}] — ↑↓ to navigate, Enter to send ",
-            idx + 1,
-            state.input_history.len()
-        )
-    } else {
-        " ›  Enter send · Shift+Enter newline · /help ".to_string()
-    };
+            .unwrap_or(""),
+        state.search_mode,
+        &state.search_query,
+        state.history_idx,
+        state.input_history.len(),
+    );
 
     let input_widget = Paragraph::new(input_with_cursor)
         .block(
@@ -542,37 +536,87 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
         Style::default().fg(theme.dim_color)
     };
 
-    let mut indicators = String::new();
-    if state.computer_use_active {
-        indicators.push_str("[⚠CU] ");
-    }
-    if state.plan_mode {
-        if let Some(label) = state.confirm_bar_label.as_deref() {
-            indicators.push_str(&format!("[{label}] "));
-        } else {
-            indicators.push_str("[PLAN] ");
-        }
-    }
-    if state.recording_voice {
-        indicators.push_str("[🎙REC] ");
-    }
-    if state.focus_active() {
-        indicators.push_str(&format!("[FOCUS {}m] ", state.focus_mins_remaining()));
-    }
-    if state.search_mode {
-        indicators.push_str("[SEARCH] ");
-    }
-    if state.swarm_active > 0 {
-        indicators.push_str(&format!("[swarm:{}] ", state.swarm_active));
-    }
+    let indicators = status_indicators(
+        state.computer_use_active,
+        state.plan_mode,
+        state.confirm_bar_label.as_deref(),
+        state.recording_voice,
+        state.focus_active().then(|| state.focus_mins_remaining()),
+        state.search_mode,
+        state.swarm_active,
+    );
 
     // Left side: indicators + status message
     let left = format!("{indicators}{}", state.status);
     // Right side: persistent cost/token/session info
     let right = &state.status_right;
+    let text = format_status_bar_line(&left, right, area.width as usize);
 
-    // Build the status line
-    let width = area.width as usize;
+    f.render_widget(Paragraph::new(text).style(style), area);
+}
+
+/// Input box title depending on tab-complete / search / history mode.
+pub(crate) fn input_bar_title(
+    has_tab_completions: bool,
+    tab_cur: &str,
+    search_mode: bool,
+    search_query: &str,
+    history_idx: Option<usize>,
+    history_len: usize,
+) -> String {
+    if has_tab_completions {
+        format!(" Message  [Tab→{tab_cur}] ")
+    } else if search_mode {
+        format!(" Search: {search_query} ")
+    } else if let Some(idx) = history_idx {
+        format!(
+            " History [{}/{}] — ↑↓ to navigate, Enter to send ",
+            idx + 1,
+            history_len
+        )
+    } else {
+        " ›  Enter send · Shift+Enter newline · /help ".to_string()
+    }
+}
+
+/// Left-side status indicators (CU/PLAN/REC/FOCUS/SEARCH/swarm).
+pub(crate) fn status_indicators(
+    computer_use_active: bool,
+    plan_mode: bool,
+    confirm_bar_label: Option<&str>,
+    recording_voice: bool,
+    focus_mins: Option<u64>,
+    search_mode: bool,
+    swarm_active: usize,
+) -> String {
+    let mut indicators = String::new();
+    if computer_use_active {
+        indicators.push_str("[⚠CU] ");
+    }
+    if plan_mode {
+        if let Some(label) = confirm_bar_label {
+            indicators.push_str(&format!("[{label}] "));
+        } else {
+            indicators.push_str("[PLAN] ");
+        }
+    }
+    if recording_voice {
+        indicators.push_str("[🎙REC] ");
+    }
+    if let Some(mins) = focus_mins {
+        indicators.push_str(&format!("[FOCUS {mins}m] "));
+    }
+    if search_mode {
+        indicators.push_str("[SEARCH] ");
+    }
+    if swarm_active > 0 {
+        indicators.push_str(&format!("[swarm:{swarm_active}] "));
+    }
+    indicators
+}
+
+/// Pad left/right status segments into a fixed terminal width line.
+pub(crate) fn format_status_bar_line(left: &str, right: &str, width: usize) -> String {
     let left_len = left.chars().count();
     let right_len = right.chars().count();
     let pad = if left_len + right_len + 2 < width {
@@ -580,9 +624,7 @@ fn draw_status(f: &mut ratatui::Frame, state: &AppState, area: Rect, theme: &The
     } else {
         String::new()
     };
-    let text = format!(" {left}{pad}{right} ");
-
-    f.render_widget(Paragraph::new(text).style(style), area);
+    format!(" {left}{pad}{right} ")
 }
 
 fn draw_slash_popup(f: &mut ratatui::Frame, state: &AppState, input_area: Rect, theme: &Theme) {
@@ -1071,5 +1113,37 @@ mod tests {
         assert_eq!(event_line_kind("cache write=1"), EventLineKind::Dim);
         assert_eq!(event_line_kind("swarm ↓ task"), EventLineKind::Swarm);
         assert_eq!(event_line_kind("[plan] ok"), EventLineKind::Default);
+    }
+
+    #[test]
+    fn input_bar_title_modes() {
+        assert!(input_bar_title(true, "src/m", false, "", None, 0).contains("Tab→src/m"));
+        assert_eq!(
+            input_bar_title(false, "", true, "foo", None, 0),
+            " Search: foo "
+        );
+        assert!(input_bar_title(false, "", false, "", Some(0), 3).contains("History [1/3]"));
+        assert!(input_bar_title(false, "", false, "", None, 0).contains("/help"));
+    }
+
+    #[test]
+    fn status_indicators_and_bar_pad() {
+        let s = status_indicators(true, true, Some("DIFF"), true, Some(12), true, 2);
+        assert!(s.contains("[⚠CU]"));
+        assert!(s.contains("[DIFF]"));
+        assert!(s.contains("[🎙REC]"));
+        assert!(s.contains("[FOCUS 12m]"));
+        assert!(s.contains("[SEARCH]"));
+        assert!(s.contains("[swarm:2]"));
+        assert_eq!(status_indicators(false, true, None, false, None, false, 0), "[PLAN] ");
+
+        let line = format_status_bar_line("left", "right", 20);
+        assert!(line.starts_with(' '));
+        assert!(line.ends_with(' '));
+        assert!(line.contains("left"));
+        assert!(line.contains("right"));
+        // too narrow → no pad, still wraps with spaces
+        let tight = format_status_bar_line("abcdefghij", "klmnop", 10);
+        assert!(tight.contains("abcdefghij"));
     }
 }
