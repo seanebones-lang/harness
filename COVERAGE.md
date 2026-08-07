@@ -5,13 +5,14 @@
 | Field | Value |
 |-------|--------|
 | **Tool** | cargo-llvm-cov |
-| **Measured lines** | **56.31%** (13877 covered / 24646 lines) |
-| **Regions** | 57.67% · **Functions** 62.90% |
-| **Date** | 2026-08-07 cont4 (notifications copy + cost format) |
+| **Measured lines** | **56.60%** (14010 covered / 24751 lines) |
+| **Regions** | 58.04% · **Functions** 63.19% |
+| **Date** | 2026-08-07 cont5 (slash parsers + event line kind) |
 | **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **not yet met** |
 | **Near-term target** | ≥ 40% workspace lines — **met** (this measure) |
 
 Prior measures:
+- llvm-cov 2026-08-07 cont4 notify+cost: **56.31%** lines (13877 / 24646)
 - llvm-cov 2026-08-07 cont3 theme+resume: **56.18%** lines (13820 / 24600)
 - llvm-cov 2026-08-07 cont2 slash/lightweight/input: **55.60%** lines (13603 / 24468)
 - llvm-cov 2026-08-07 cont wiring+render: **55.05%** lines (13405 / 24350)
@@ -21,7 +22,7 @@ Prior measures:
 
 Tooling differs across tools; treat llvm-cov as current SoT going forward.
 
-Note: Measured % is still below the 60% PR gate. Climb 2026-08-07 cont4: notification pure copy builders (background/PR/CI/subagent/swarm/update); cost `format_cost`/`format_tokens`. Residual: draw_* frames, handle_slash_command async, build_tools_inner, tui/mod. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
+Note: Measured % is still below the 60% PR gate. Climb 2026-08-07 cont5: pure slash arg parsers (`/think` `/focus` `/remember` `/swarm gc` `/schema` `/obsidian` title); `event_line_kind` for event log coloring. input ~24% lines. Residual: draw_* frames, slash async I/O bodies, build_tools_inner, tui/mod. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
 
 ## How to re-run
 

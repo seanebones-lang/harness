@@ -4,6 +4,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-07 — Coverage residual cont5 (slash parsers + event line kind)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| `cargo test --bin harness` | **257** pass (was 255) |
+| clippy `-D warnings` (bin harness) | clean |
+| llvm-cov workspace lines | **56.60%** (14010/24751); regions 58.04%; functions 63.19% |
+| Climb slice | think/focus/remember/swarm-gc/schema/obsidian parsers; event_line_kind |
+| Residual | draw_* · slash async I/O · build_tools_inner · tui/mod · target 60% open |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on full REL-01 matrix + billing prebuilts. CI 60% coverage still target (~57% measured).
+
+---
+
 **2026-08-07 — Coverage residual cont4 (notifications + cost format)**
 
 | Item | Result |

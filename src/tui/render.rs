@@ -332,25 +332,51 @@ fn prefix_line(line: Line<'static>, prefix: &'static str) -> Line<'static> {
     Line::from(spans)
 }
 
+/// Color class for event-log lines (tool in/out, error, memory, swarm, default).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EventLineKind {
+    ToolIn,
+    ToolOut,
+    Error,
+    Dim,
+    Swarm,
+    Default,
+}
+
+pub(crate) fn event_line_kind(line: &str) -> EventLineKind {
+    if line.starts_with('→') {
+        EventLineKind::ToolIn
+    } else if line.starts_with('←') {
+        EventLineKind::ToolOut
+    } else if line.starts_with('⚠') || line.starts_with("error") {
+        EventLineKind::Error
+    } else if line.starts_with("memory") || line.starts_with("cache") {
+        EventLineKind::Dim
+    } else if line.starts_with("swarm") {
+        EventLineKind::Swarm
+    } else {
+        EventLineKind::Default
+    }
+}
+
+fn event_line_color(line: &str, theme: &Theme) -> Color {
+    match event_line_kind(line) {
+        EventLineKind::ToolIn => theme.tool_in_color,
+        EventLineKind::ToolOut => theme.tool_out_color,
+        EventLineKind::Error => theme.error_color,
+        EventLineKind::Dim => theme.dim_color,
+        EventLineKind::Swarm => Color::LightCyan,
+        EventLineKind::Default => theme.border_color,
+    }
+}
+
 #[allow(dead_code)] // kept for optional debug dumps; layout is single-panel
 fn draw_event_log(f: &mut ratatui::Frame, state: &mut AppState, area: Rect, theme: &Theme) {
     let items: Vec<ListItem> = state
         .event_log
         .iter()
         .map(|line| {
-            let color = if line.starts_with('→') {
-                theme.tool_in_color
-            } else if line.starts_with('←') {
-                theme.tool_out_color
-            } else if line.starts_with('⚠') || line.starts_with("error") {
-                theme.error_color
-            } else if line.starts_with("memory") || line.starts_with("cache") {
-                theme.dim_color
-            } else if line.starts_with("swarm") {
-                Color::LightCyan
-            } else {
-                theme.border_color
-            };
+            let color = event_line_color(line, theme);
             ListItem::new(Line::from(Span::styled(
                 line.as_str(),
                 Style::default().fg(color),
@@ -1033,5 +1059,17 @@ mod tests {
         assert_eq!(prefixed.spans[0].content, "│ ");
         assert_eq!(prefixed.spans[1].content, "abc");
         assert_eq!(prefixed.spans[2].content, "def");
+    }
+
+    #[test]
+    fn event_line_kind_classifies_prefixes() {
+        assert_eq!(event_line_kind("→ shell"), EventLineKind::ToolIn);
+        assert_eq!(event_line_kind("← read_file: ok"), EventLineKind::ToolOut);
+        assert_eq!(event_line_kind("⚠ error: boom"), EventLineKind::Error);
+        assert_eq!(event_line_kind("error: x"), EventLineKind::Error);
+        assert_eq!(event_line_kind("memory: recalled 2"), EventLineKind::Dim);
+        assert_eq!(event_line_kind("cache write=1"), EventLineKind::Dim);
+        assert_eq!(event_line_kind("swarm ↓ task"), EventLineKind::Swarm);
+        assert_eq!(event_line_kind("[plan] ok"), EventLineKind::Default);
     }
 }

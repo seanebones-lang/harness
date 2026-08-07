@@ -272,6 +272,128 @@ pub(crate) fn is_search_exit_key(code: KeyCode, mods: KeyModifiers) -> bool {
     )
 }
 
+/// Parse `/think` arg: empty/off → clear budget; number → Some(n); else error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ThinkParse {
+    Off,
+    Budget(u32),
+    Usage,
+}
+
+pub(crate) fn parse_think_arg(arg: &str) -> ThinkParse {
+    let arg = arg.trim();
+    if arg.is_empty() || arg == "off" {
+        ThinkParse::Off
+    } else if let Ok(b) = arg.parse::<u32>() {
+        ThinkParse::Budget(b)
+    } else {
+        ThinkParse::Usage
+    }
+}
+
+/// Parse `/focus` arg: `off` → None minutes; number or default 25.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FocusParse {
+    Off,
+    Minutes(u64),
+}
+
+pub(crate) fn parse_focus_arg(arg: &str) -> FocusParse {
+    let arg = arg.trim();
+    if arg == "off" {
+        FocusParse::Off
+    } else {
+        FocusParse::Minutes(arg.parse().unwrap_or(25))
+    }
+}
+
+/// Parse `/remember topic: fact` body after the command head.
+pub(crate) fn parse_remember_body(rest: &str) -> Option<(&str, &str)> {
+    rest.split_once(':')
+        .map(|(t, f)| (t.trim(), f.trim()))
+        .filter(|(t, f)| !t.is_empty() && !f.is_empty())
+}
+
+/// Parse `/swarm gc …` options after the `gc` token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SwarmGcParse {
+    pub stale_secs: u64,
+    pub keep: Option<usize>,
+}
+
+pub(crate) fn parse_swarm_gc_args(s: &str) -> SwarmGcParse {
+    let mut stale_secs = 3600u64;
+    let mut keep: Option<usize> = None;
+    for tok in s.split_whitespace().skip(1) {
+        if let Some(v) = tok.strip_prefix("stale=") {
+            if let Ok(n) = v.parse() {
+                stale_secs = n;
+            }
+        } else if let Some(v) = tok.strip_prefix("keep=") {
+            if let Ok(n) = v.parse() {
+                keep = Some(n);
+            }
+        } else if let Ok(n) = tok.parse::<u64>() {
+            stale_secs = n;
+        }
+    }
+    SwarmGcParse { stale_secs, keep }
+}
+
+/// Title for Obsidian save from assistant content (path-safe, ≤60 chars).
+pub(crate) fn obsidian_title_from_content(content: &str, fallback: &str) -> String {
+    content
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(|l| {
+            let t = l.trim_start_matches('#').trim();
+            let t = if t.chars().count() > 60 {
+                format!("{}…", t.chars().take(57).collect::<String>())
+            } else {
+                t.to_string()
+            };
+            t.replace(['/', '\\', ':'], "-")
+        })
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+/// `/schema` rest body → clear or (name, json_str).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SchemaParse<'a> {
+    Clear,
+    Set { name: &'a str, json: &'a str },
+}
+
+pub(crate) fn parse_schema_rest(rest: &str) -> SchemaParse<'_> {
+    let rest = rest.trim();
+    if rest.is_empty() || rest == "clear" {
+        SchemaParse::Clear
+    } else {
+        let mut parts = rest.splitn(2, ' ');
+        let name = parts.next().unwrap_or("response");
+        let json = parts.next().unwrap_or("{}");
+        SchemaParse::Set { name, json }
+    }
+}
+
+/// Obsidian slash subcommand classification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ObsidianSub<'a> {
+    Help,
+    Save,
+    Unknown(&'a str),
+}
+
+pub(crate) fn parse_obsidian_sub(rest: &str) -> ObsidianSub<'_> {
+    match rest.trim() {
+        "" | "help" | "?" => ObsidianSub::Help,
+        "save" => ObsidianSub::Save,
+        other => ObsidianSub::Unknown(other),
+    }
+}
+
 pub(crate) fn show_help(state: &Arc<Mutex<AppState>>) {
     let mut st = state.lock();
     for line in &[
@@ -563,41 +685,47 @@ pub(crate) async fn handle_slash_command(
         "/think" => {
             let mut st = state.lock();
             let arg = parts.get(1).copied().unwrap_or("").trim();
-            if arg.is_empty() || arg == "off" {
-                st.thinking_budget = None;
-                st.push_event("[think] OFF — adaptive.");
-                st.status = "Thinking: adaptive".to_string();
-            } else if let Ok(b) = arg.parse::<u32>() {
-                st.thinking_budget = Some(b);
-                st.push_event(format!("[think] ON — budget: {b} tokens"));
-                st.status = format!("Thinking: {b} tokens");
-            } else {
-                st.push_event("[think] Usage: /think [N | off]");
+            match parse_think_arg(arg) {
+                ThinkParse::Off => {
+                    st.thinking_budget = None;
+                    st.push_event("[think] OFF — adaptive.");
+                    st.status = "Thinking: adaptive".to_string();
+                }
+                ThinkParse::Budget(b) => {
+                    st.thinking_budget = Some(b);
+                    st.push_event(format!("[think] ON — budget: {b} tokens"));
+                    st.status = format!("Thinking: {b} tokens");
+                }
+                ThinkParse::Usage => {
+                    st.push_event("[think] Usage: /think [N | off]");
+                }
             }
         }
 
         "/focus" => {
             let mut st = state.lock();
             let arg = parts.get(1).copied().unwrap_or("").trim();
-            if arg == "off" {
-                st.focus_until = None;
-                st.status = "Focus mode OFF.".to_string();
-            } else {
-                let mins: u64 = arg.parse().unwrap_or(25);
-                st.focus_until = Some(Instant::now() + Duration::from_secs(mins * 60));
-                st.push_event(format!("[focus] {mins}min focus — notifications silenced."));
-                st.status = format!("Focus: {mins}min");
+            match parse_focus_arg(arg) {
+                FocusParse::Off => {
+                    st.focus_until = None;
+                    st.status = "Focus mode OFF.".to_string();
+                }
+                FocusParse::Minutes(mins) => {
+                    st.focus_until = Some(Instant::now() + Duration::from_secs(mins * 60));
+                    st.push_event(format!("[focus] {mins}min focus — notifications silenced."));
+                    st.status = format!("Focus: {mins}min");
+                }
             }
         }
 
         "/remember" => {
             let rest = parts[1..].join(" ");
-            if let Some((topic, fact)) = rest.split_once(':') {
-                match memory_project::remember(topic.trim(), fact.trim()) {
+            if let Some((topic, fact)) = parse_remember_body(&rest) {
+                match memory_project::remember(topic, fact) {
                     Ok(path) => {
                         let mut st = state.lock();
                         st.push_event(format!("[memory] saved → {}", path.display()));
-                        st.status = format!("Remembered under '{}'", topic.trim());
+                        st.status = format!("Remembered under '{topic}'");
                     }
                     Err(e) => state.lock().push_event(format!("[memory] error: {e}")),
                 }
@@ -719,8 +847,8 @@ pub(crate) async fn handle_slash_command(
 
         "/obsidian" => {
             let rest = cmd.trim_start_matches("/obsidian").trim();
-            match rest {
-                "" | "help" | "?" => {
+            match parse_obsidian_sub(rest) {
+                ObsidianSub::Help => {
                     let mut st = state.lock();
                     st.push_event("[obsidian] usage:");
                     st.push_event("  /obsidian save   save last assistant reply to Obsidian");
@@ -737,7 +865,7 @@ pub(crate) async fn handle_slash_command(
                     );
                     st.status = "Obsidian help in event log →".into();
                 }
-                "save" => {
+                ObsidianSub::Save => {
                     let (content, obs_cfg) = {
                         let st = state.lock();
                         let content = st
@@ -769,27 +897,10 @@ pub(crate) async fn handle_slash_command(
                         st.status = "Obsidian disabled — see event log".into();
                         return;
                     }
-                    // Prefer a short title from the first non-empty line; fallback to timestamp.
-                    let title = content
-                        .lines()
-                        .map(str::trim)
-                        .find(|l| !l.is_empty())
-                        .map(|l| {
-                            let t = l.trim_start_matches('#').trim();
-                            let t = if t.chars().count() > 60 {
-                                format!("{}…", t.chars().take(57).collect::<String>())
-                            } else {
-                                t.to_string()
-                            };
-                            // Obsidian path-safe-ish title
-                            t.replace(['/', '\\', ':'], "-")
-                        })
-                        .filter(|t| !t.is_empty())
-                        .unwrap_or_else(|| {
-                            chrono::Local::now()
-                                .format("NextEleven Harness %Y-%m-%d %H%M")
-                                .to_string()
-                        });
+                    let fallback = chrono::Local::now()
+                        .format("NextEleven Harness %Y-%m-%d %H%M")
+                        .to_string();
+                    let title = obsidian_title_from_content(&content, &fallback);
                     let state2 = state.clone();
                     let title_log = title.clone();
                     tokio::spawn(async move {
@@ -807,7 +918,7 @@ pub(crate) async fn handle_slash_command(
                         }
                     });
                 }
-                other => {
+                ObsidianSub::Unknown(other) => {
                     state.lock().push_event(format!(
                         "[obsidian] unknown subcommand `{other}` — try /obsidian save or /obsidian help"
                     ));
@@ -952,29 +1063,29 @@ pub(crate) async fn handle_slash_command(
 
         "/schema" => {
             let rest = cmd.trim_start_matches("/schema").trim();
-            if rest == "clear" || rest.is_empty() {
-                state.lock().response_schema = None;
-                state
-                    .lock()
-                    .push_event("[schema] structured output cleared.");
-            } else {
-                let mut schema_parts = rest.splitn(2, ' ');
-                let name = schema_parts.next().unwrap_or("response");
-                let schema_str = schema_parts.next().unwrap_or("{}");
-                match serde_json::from_str::<serde_json::Value>(schema_str) {
-                    Ok(schema_val) => {
-                        let rs = harness_provider_core::ResponseSchema::new(name, schema_val);
-                        let msg = format!(
-                            "[schema] set to '{}' — responses will be strict JSON.",
-                            rs.name
-                        );
-                        state.lock().response_schema = Some(rs);
-                        state.lock().push_event(msg);
-                    }
-                    Err(e) => {
-                        state
-                            .lock()
-                            .push_event(format!("[schema] invalid JSON: {e}"));
+            match parse_schema_rest(rest) {
+                SchemaParse::Clear => {
+                    state.lock().response_schema = None;
+                    state
+                        .lock()
+                        .push_event("[schema] structured output cleared.");
+                }
+                SchemaParse::Set { name, json } => {
+                    match serde_json::from_str::<serde_json::Value>(json) {
+                        Ok(schema_val) => {
+                            let rs = harness_provider_core::ResponseSchema::new(name, schema_val);
+                            let msg = format!(
+                                "[schema] set to '{}' — responses will be strict JSON.",
+                                rs.name
+                            );
+                            state.lock().response_schema = Some(rs);
+                            state.lock().push_event(msg);
+                        }
+                        Err(e) => {
+                            state
+                                .lock()
+                                .push_event(format!("[schema] invalid JSON: {e}"));
+                        }
                     }
                 }
             }
@@ -990,24 +1101,10 @@ pub(crate) async fn handle_slash_command(
                             state.lock().toggle_swarm_panel();
                         }
                         s if s == "gc" || s.starts_with("gc ") => {
-                            let mut stale_secs = 3600u64;
-                            let mut keep: Option<usize> = None;
-                            for tok in s.split_whitespace().skip(1) {
-                                if let Some(v) = tok.strip_prefix("stale=") {
-                                    if let Ok(n) = v.parse() {
-                                        stale_secs = n;
-                                    }
-                                } else if let Some(v) = tok.strip_prefix("keep=") {
-                                    if let Ok(n) = v.parse() {
-                                        keep = Some(n);
-                                    }
-                                } else if let Ok(n) = tok.parse::<u64>() {
-                                    stale_secs = n;
-                                }
-                            }
+                            let parsed = parse_swarm_gc_args(s);
                             match crate::swarm::gc(&crate::swarm::GcOptions {
-                                stale_secs,
-                                keep_terminal: keep,
+                                stale_secs: parsed.stale_secs,
+                                keep_terminal: parsed.keep,
                                 older_than_secs: None,
                                 dry_run: false,
                             }) {
@@ -1113,6 +1210,60 @@ mod tests {
             format_plan_confirm_event("approved", "write_file"),
             "[plan] approved: write_file"
         );
+    }
+
+    #[test]
+    fn slash_arg_parsers() {
+        assert_eq!(parse_think_arg(""), ThinkParse::Off);
+        assert_eq!(parse_think_arg("off"), ThinkParse::Off);
+        assert_eq!(parse_think_arg(" 8000 "), ThinkParse::Budget(8000));
+        assert_eq!(parse_think_arg("nope"), ThinkParse::Usage);
+
+        assert_eq!(parse_focus_arg("off"), FocusParse::Off);
+        assert_eq!(parse_focus_arg("40"), FocusParse::Minutes(40));
+        assert_eq!(parse_focus_arg(""), FocusParse::Minutes(25));
+
+        assert_eq!(
+            parse_remember_body("arch: monorepo crates"),
+            Some(("arch", "monorepo crates"))
+        );
+        assert!(parse_remember_body("no colon").is_none());
+        assert!(parse_remember_body(": only fact").is_none());
+
+        let gc = parse_swarm_gc_args("gc stale=120 keep=5");
+        assert_eq!(gc.stale_secs, 120);
+        assert_eq!(gc.keep, Some(5));
+        let gc2 = parse_swarm_gc_args("gc 7200");
+        assert_eq!(gc2.stale_secs, 7200);
+        assert_eq!(gc2.keep, None);
+        assert_eq!(parse_swarm_gc_args("gc").stale_secs, 3600);
+
+        assert_eq!(parse_schema_rest(""), SchemaParse::Clear);
+        assert_eq!(parse_schema_rest("clear"), SchemaParse::Clear);
+        match parse_schema_rest("reply {\"type\":\"object\"}") {
+            SchemaParse::Set { name, json } => {
+                assert_eq!(name, "reply");
+                assert!(json.contains("object"));
+            }
+            other => panic!("{other:?}"),
+        }
+
+        assert!(matches!(parse_obsidian_sub(""), ObsidianSub::Help));
+        assert!(matches!(parse_obsidian_sub("help"), ObsidianSub::Help));
+        assert!(matches!(parse_obsidian_sub("save"), ObsidianSub::Save));
+        assert!(matches!(
+            parse_obsidian_sub("sync"),
+            ObsidianSub::Unknown("sync")
+        ));
+
+        assert_eq!(
+            obsidian_title_from_content("# Hello / world: ok", "fb"),
+            "Hello - world- ok"
+        );
+        let long = format!("# {}", "a".repeat(80));
+        let t = obsidian_title_from_content(&long, "fb");
+        assert!(t.chars().count() <= 58); // 57 + ellipsis
+        assert_eq!(obsidian_title_from_content("   \n\n", "fallback"), "fallback");
     }
 
     #[test]
