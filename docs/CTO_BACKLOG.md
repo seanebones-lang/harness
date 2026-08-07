@@ -3,7 +3,7 @@
 **Updated:** 2026-08-05  
 **Perspective:** CTO review + max-opt swarm execution + swarm-50 honesty pass  
 **Ship branch:** **`main`** only (dev folded; single branch)  
-**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed (incl. Gemini/Bedrock, remote swarm HTTP cutover). Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)** and coverage climb to 60% (measured **53.47%**).
+**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed (incl. Gemini/Bedrock, remote swarm HTTP cutover). Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)** and coverage climb to 60% (measured **54.51%**).
 
 **Pointers:** [`README.md`](../README.md) · [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) · [`docs/TEAM_UPDATE_2026-08-03.md`](TEAM_UPDATE_2026-08-03.md) · historical PR https://github.com/seanebones-lang/harness/pull/5
 
@@ -18,7 +18,7 @@
 |-----|----------|------|
 | Stable blocked | REL-01 incomplete; Linux/Windows smoke missing | Cannot claim production-ready |
 | Prebuilt matrix partial | macOS arm64 only; CI billing history (W1.4–1.5 📌) | Broken install story outside one arch |
-| Coverage lag | `COVERAGE.md` **53.47%** lines (llvm-cov 2026-08-06; 12770/23884); badge ~53%; CI 60% still target | OK if honest; not stable gate yet |
+| Coverage lag | `COVERAGE.md` **54.51%** lines (llvm-cov 2026-08-07; 13180/24179); badge ~55%; CI 60% still target | OK if honest; not stable gate yet |
 | Doc/status drift | Exec findings refreshed 2026-08-05 (swarm-50); vault Index → main | Keep checkboxes honest on ship days |
 | Vault | Index on `main`; Swarm-50 notes under `Vault/Swarm-50/` + `docs/swarm-50-2026-08-05/` | Maintain on each ship day |
 
@@ -180,7 +180,7 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 
 ---
 
-*Next action (2026-08-05): eng-owned open residuals via **swarm-50** — coverage climb toward 60% (now **53.47%** after 2026-08-06 pure climb), crates unwrap audit, REL offline when Docker available. Skip 📌 billing + keys-only smoke. See `docs/swarm-50-2026-08-05/`.*
+*Next action (2026-08-07): coverage residual toward 60% (now **54.51%** after confirm_flow/collab_ws/driver pure climb; bin **227**). Prefer `cli/wiring` pure extract or input/render helpers. REL offline when Docker available. Skip 📌 billing + keys-only smoke.*
 
 ### 2026-07-31 Wave continuation (cont)
 - W1.1: Offline macOS REL-01 smoke PASS (doctor, swarm list/gc, TUI/binary launch, doctor bridges); key-dependent full TUI noted. RELEASE_STATUS.md appended.

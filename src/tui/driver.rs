@@ -766,3 +766,64 @@ fn fork_session_at(original: &harness_memory::Session, turn_n: usize) -> harness
     }
     new_session
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harness_provider_core::Message;
+
+    #[test]
+    fn extract_swarm_task_id_parses_markers() {
+        assert_eq!(
+            extract_swarm_task_id("*swabcdef01 done prompt here"),
+            Some("swabcdef01".into())
+        );
+        assert_eq!(
+            extract_swarm_task_id("  !sw12 running x"),
+            Some("sw12".into())
+        );
+        assert_eq!(extract_swarm_task_id("swab"), Some("swab".into()));
+        assert_eq!(extract_swarm_task_id("sw"), None); // too short
+        assert_eq!(extract_swarm_task_id("*task01 done"), None);
+        assert_eq!(extract_swarm_task_id(""), None);
+    }
+
+    #[test]
+    fn count_user_turns_filters_roles() {
+        let msgs = vec![
+            Message::user("a"),
+            Message::assistant("b"),
+            Message::user("c"),
+            Message::assistant("d"),
+        ];
+        assert_eq!(count_user_turns(&msgs), 2);
+        assert_eq!(count_user_turns(&[]), 0);
+    }
+
+    #[test]
+    fn fork_session_at_stops_after_nth_user_turn() {
+        let mut original = harness_memory::Session::new("grok-4.5");
+        original.name = Some("main".into());
+        original.messages.push(Message::user("u1"));
+        original.messages.push(Message::assistant("a1"));
+        original.messages.push(Message::user("u2"));
+        original.messages.push(Message::assistant("a2"));
+        original.messages.push(Message::user("u3"));
+
+        let fork = fork_session_at(&original, 2);
+        assert_eq!(fork.name.as_deref(), Some("main (fork@2)"));
+        assert_eq!(fork.model, "grok-4.5");
+        assert_eq!(fork.messages.len(), 3); // u1, a1, u2
+        assert_eq!(count_user_turns(&fork.messages), 2);
+        assert_ne!(fork.id, original.id);
+
+        let early = fork_session_at(&original, 1);
+        assert_eq!(early.messages.len(), 1);
+        assert_eq!(count_user_turns(&early.messages), 1);
+
+        let unnamed = harness_memory::Session::new("m");
+        let f2 = fork_session_at(&unnamed, 1);
+        assert!(f2.name.is_none());
+        assert!(f2.messages.is_empty());
+    }
+}

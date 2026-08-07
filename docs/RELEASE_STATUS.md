@@ -4,6 +4,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-07 — Coverage residual (confirm_flow + collab_ws + driver)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| `cargo test --bin harness` | **227** pass (was 212) |
+| clippy `-D warnings` (bin harness) | clean |
+| llvm-cov workspace lines | **54.51%** (13180/24179); regions 55.87%; functions 61.40% |
+| Climb slice | confirm_flow hunk decide/move/finalize; collab `tool_result_preview` + `agent_event_to_collab` + user id; driver swarm id / user turns / fork_session |
+| Residual | `cli/wiring` ~0%; `tui/mod` ~0%; input/render loops still thin; target 60% open |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on full REL-01 matrix + billing prebuilts. CI 60% coverage still target (~55% measured).
+
+---
+
 **2026-08-06 — Coverage climb (project_ops + TUI AppState)**
 
 | Item | Result |
