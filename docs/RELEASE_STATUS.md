@@ -4,6 +4,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-07 — Coverage residual cont4 (notifications + cost format)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| `cargo test --bin harness` | **255** pass (was 252) |
+| clippy `-D warnings` (bin harness) | clean |
+| llvm-cov workspace lines | **56.31%** (13877/24646); regions 57.67%; functions 62.90% |
+| Climb slice | notify pure copy builders; format_cost / format_tokens / unknown model |
+| Residual | draw_* · slash async · build_tools_inner · tui/mod · target 60% open |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on full REL-01 matrix + billing prebuilts. CI 60% coverage still target (~56% measured).
+
+---
+
 **2026-08-07 — Coverage residual cont3 (theme + resume)**
 
 | Item | Result |

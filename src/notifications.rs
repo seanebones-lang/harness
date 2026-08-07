@@ -117,20 +117,22 @@ pub fn background_done(cfg: &NotificationsConfig, label: &str, success: bool) {
     if !cfg.on_background_done {
         return;
     }
+    let (summary, body) = background_done_copy(label, success);
+    notify_rich(cfg, NotificationKind::BackgroundDone, &summary, &body);
+}
+
+/// Summary + body for background-done notifications (pure).
+pub(crate) fn background_done_copy(label: &str, success: bool) -> (String, String) {
     if success {
-        notify_rich(
-            cfg,
-            NotificationKind::BackgroundDone,
-            &format!("{APP_NAME} — Done"),
-            &format!("Background run '{label}' completed."),
-        );
+        (
+            format!("{APP_NAME} — Done"),
+            format!("Background run '{label}' completed."),
+        )
     } else {
-        notify_rich(
-            cfg,
-            NotificationKind::BackgroundDone,
-            &format!("{APP_NAME} — Failed"),
-            &format!("Background run '{label}' failed."),
-        );
+        (
+            format!("{APP_NAME} — Failed"),
+            format!("Background run '{label}' failed."),
+        )
     }
 }
 
@@ -169,8 +171,12 @@ pub fn pr_opened(cfg: &NotificationsConfig, title: &str, url: &str) {
         cfg,
         NotificationKind::PrOpened,
         &format!("{APP_NAME} — PR Opened"),
-        &format!("{title}\n{url}"),
+        &pr_opened_body(title, url),
     );
+}
+
+pub(crate) fn pr_opened_body(title: &str, url: &str) -> String {
+    format!("{title}\n{url}")
 }
 
 /// Notify that a CI run failed.
@@ -182,8 +188,12 @@ pub fn ci_failed(cfg: &NotificationsConfig, job: &str, url: &str) {
         cfg,
         NotificationKind::CiFailed,
         &format!("{APP_NAME} — CI Failed"),
-        &format!("Job '{job}' failed\n{url}"),
+        &ci_failed_body(job, url),
     );
+}
+
+pub(crate) fn ci_failed_body(job: &str, url: &str) -> String {
+    format!("Job '{job}' failed\n{url}")
 }
 
 /// Notify that a long-running sub-agent finished.
@@ -195,8 +205,12 @@ pub fn subagent_done(cfg: &NotificationsConfig, task_id: &str, result: &str) {
         cfg,
         NotificationKind::LongSubagentDone,
         &format!("{APP_NAME} — Sub-agent Done"),
-        &format!("Task {task_id}: {result}"),
+        &subagent_done_body(task_id, result),
     );
+}
+
+pub(crate) fn subagent_done_body(task_id: &str, result: &str) -> String {
+    format!("Task {task_id}: {result}")
 }
 
 /// Notify that a voice response finished.
@@ -217,17 +231,21 @@ pub fn swarm_complete(cfg: &NotificationsConfig, total: usize, failed: usize) {
     if !cfg.enabled {
         return;
     }
-    let body = if failed == 0 {
-        format!("All {total} tasks completed successfully.")
-    } else {
-        format!("{total} tasks done, {failed} failed.")
-    };
     notify_rich(
         cfg,
         NotificationKind::SwarmComplete,
         &format!("{APP_NAME} — Swarm Complete"),
-        &body,
+        &swarm_complete_body(total, failed),
     );
+}
+
+/// Body text for swarm-complete notifications (pure).
+pub(crate) fn swarm_complete_body(total: usize, failed: usize) -> String {
+    if failed == 0 {
+        format!("All {total} tasks completed successfully.")
+    } else {
+        format!("{total} tasks done, {failed} failed.")
+    }
 }
 
 /// Notify that the harness daemon crashed/restarted.
@@ -252,8 +270,12 @@ pub fn update_available(cfg: &NotificationsConfig, version: &str) {
         cfg,
         NotificationKind::UpdateAvailable,
         &format!("{APP_NAME} — Update Available"),
-        &format!("Version {version} is available. Run `harness update` to upgrade."),
+        &update_available_body(version),
     );
+}
+
+pub(crate) fn update_available_body(version: &str) -> String {
+    format!("Version {version} is available. Run `harness update` to upgrade.")
 }
 
 /// Notify with a custom summary and body (used by `/notify test`).
@@ -366,6 +388,36 @@ mod tests {
         let k = NotificationKind::SwarmComplete.clone();
         assert_eq!(k.group_id(), "harness.agent");
         assert_eq!(k.subtitle(), "Swarm");
+    }
+
+    #[test]
+    fn pure_copy_builders() {
+        let (ok_s, ok_b) = background_done_copy("ship", true);
+        assert!(ok_s.contains("Done"));
+        assert!(ok_b.contains("'ship' completed"));
+        let (fail_s, fail_b) = background_done_copy("ship", false);
+        assert!(fail_s.contains("Failed"));
+        assert!(fail_b.contains("'ship' failed"));
+
+        assert_eq!(
+            pr_opened_body("Add X", "https://gh/pr/1"),
+            "Add X\nhttps://gh/pr/1"
+        );
+        assert_eq!(
+            ci_failed_body("test", "https://ci/1"),
+            "Job 'test' failed\nhttps://ci/1"
+        );
+        assert_eq!(
+            subagent_done_body("t1", "ok"),
+            "Task t1: ok"
+        );
+        assert_eq!(
+            swarm_complete_body(4, 0),
+            "All 4 tasks completed successfully."
+        );
+        assert_eq!(swarm_complete_body(4, 2), "4 tasks done, 2 failed.");
+        assert!(update_available_body("0.2.0").contains("0.2.0"));
+        assert!(update_available_body("0.2.0").contains("harness update"));
     }
 
     #[test]

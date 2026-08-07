@@ -230,4 +230,24 @@ mod tests {
         let cached = p.cost_with_cache(2_000, 8_000, 2_000);
         assert!(cached < standard);
     }
+
+    #[test]
+    fn format_cost_and_tokens() {
+        assert_eq!(format_cost(0.0), "$0.00");
+        assert_eq!(format_cost(0.0005), "$0.00");
+        assert_eq!(format_cost(0.005), "$0.005");
+        assert_eq!(format_cost(0.18), "$0.18");
+        assert_eq!(format_cost(1.2), "$1.20");
+
+        assert_eq!(format_tokens(850), "850");
+        assert_eq!(format_tokens(1_000), "1.0k");
+        assert_eq!(format_tokens(12_300), "12.3k");
+        assert_eq!(format_tokens(1_000_000), "1.0M");
+        assert_eq!(format_tokens(2_500_000), "2.5M");
+    }
+
+    #[test]
+    fn price_for_model_unknown_is_none() {
+        assert!(price_for_model("totally-unknown-model-xyz").is_none());
+    }
 }
