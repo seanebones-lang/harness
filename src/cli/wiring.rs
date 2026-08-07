@@ -30,6 +30,119 @@ pub async fn graceful_ambient_shutdown(
     }
 }
 
+/// Map plan-mode gate + approval mode string → executor confirm policy.
+pub(crate) fn confirm_policy_for_gate(
+    has_gate: bool,
+    approval_mode: &str,
+) -> harness_tools::ConfirmPolicy {
+    if !has_gate {
+        harness_tools::ConfirmPolicy::Off
+    } else if approval_mode == "smart" {
+        harness_tools::ConfirmPolicy::Smart
+    } else {
+        harness_tools::ConfirmPolicy::Plan
+    }
+}
+
+/// Models allowed to register computer-use when config enables it.
+pub(crate) fn computer_use_model_supported(model: &str) -> bool {
+    let m = model.to_lowercase();
+    m.contains("claude-opus-4-7")
+        || m.contains("claude-opus-4")
+        || m.contains("claude-sonnet-4")
+}
+
+/// LSP tools only when cwd looks like a supported project tree.
+pub(crate) fn has_supported_lsp_project(root: &std::path::Path) -> bool {
+    root.join("Cargo.toml").exists()
+        || root.join("tsconfig.json").exists()
+        || root.join("package.json").exists()
+        || root.join("pyproject.toml").exists()
+        || root.join("setup.py").exists()
+        || root.join("go.mod").exists()
+}
+
+/// Label for a swarm worker registration (`prompt [swarm i/n]` when n>1).
+pub(crate) fn format_swarm_worker_label(prompt: &str, index_1based: usize, n: usize) -> String {
+    if n > 1 {
+        format!("{prompt} [swarm {index_1based}/{n}]")
+    } else {
+        prompt.to_string()
+    }
+}
+
+/// Tool names present after MCP load that were not in the builtin set.
+pub(crate) fn mcp_names_added(
+    before: &HashSet<String>,
+    after_names: impl IntoIterator<Item = String>,
+) -> HashSet<String> {
+    after_names
+        .into_iter()
+        .filter(|n| !before.contains(n))
+        .collect()
+}
+
+/// JSON body for `POST /api/chat` used by `connect_to_server`.
+pub(crate) fn connect_chat_json_body(prompt: &str, session_id: Option<&str>) -> serde_json::Value {
+    let mut body = serde_json::json!({ "prompt": prompt });
+    if let Some(id) = session_id {
+        body["session_id"] = serde_json::Value::String(id.to_string());
+    }
+    body
+}
+
+/// One SSE `data:` line → display action for the connect client.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SseConnectAction {
+    Text(String),
+    ToolStart(String),
+    ToolResult(String),
+    Done,
+    Error(String),
+    Ignore,
+}
+
+pub(crate) fn parse_sse_connect_line(line: &str) -> SseConnectAction {
+    let Some(data) = line.strip_prefix("data: ") else {
+        return SseConnectAction::Ignore;
+    };
+    let Ok(event) = serde_json::from_str::<serde_json::Value>(data) else {
+        return SseConnectAction::Ignore;
+    };
+    match event.get("type").and_then(|t| t.as_str()) {
+        Some("text_chunk") => SseConnectAction::Text(
+            event
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .to_string(),
+        ),
+        Some("tool_start") => SseConnectAction::ToolStart(
+            event
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string(),
+        ),
+        Some("tool_result") => SseConnectAction::ToolResult(
+            event
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string(),
+        ),
+        Some("done") => SseConnectAction::Done,
+        Some("error") => SseConnectAction::Error(
+            event
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+        ),
+        _ => SseConnectAction::Ignore,
+    }
+}
+
 pub fn tool_workspace(cfg: &crate::config::Config) -> Result<Arc<WorkspaceRoot>> {
     let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mode = SandboxMode::from_config(cfg.tools.sandbox.as_deref());
@@ -89,11 +202,7 @@ pub async fn build_tools(
                 let wall = cfg_clone.swarm.worker_wall_timeout();
                 let mut ids = Vec::new();
                 for i in 0..n {
-                    let label = if n > 1 {
-                        format!("{prompt} [swarm {}/{n}]", i + 1)
-                    } else {
-                        prompt.clone()
-                    };
+                    let label = format_swarm_worker_label(&prompt, i + 1, n);
                     let id = swarm::register_task_with_model(&label, Some(worker_model.as_str()))?;
                     ids.push(id.clone());
                     let p = worker_provider.clone();
@@ -211,15 +320,8 @@ pub async fn build_tools_inner(
     let sub_shell_cfg = shell_cfg.clone();
     let sub_workspace = workspace.clone();
     let sub_confirm = confirm_gate.clone();
-    let sub_confirm_policy = if confirm_gate.is_some() {
-        if cfg.approval.effective_mode() == "smart" {
-            harness_tools::ConfirmPolicy::Smart
-        } else {
-            harness_tools::ConfirmPolicy::Plan
-        }
-    } else {
-        harness_tools::ConfirmPolicy::Off
-    };
+    let sub_confirm_policy =
+        confirm_policy_for_gate(confirm_gate.is_some(), cfg.approval.effective_mode());
     let sub_notifications = cfg.notifications.clone();
     let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |task: String| {
         let p: ArcProvider = sub_provider.clone();
@@ -331,11 +433,7 @@ pub async fn build_tools_inner(
 
     // Computer use: gated, only enable if explicitly configured
     if cfg.computer_use.is_enabled() {
-        let model_lower = model.to_lowercase();
-        if model_lower.contains("claude-opus-4-7")
-            || model_lower.contains("claude-opus-4")
-            || model_lower.contains("claude-sonnet-4")
-        {
+        if computer_use_model_supported(&model) {
             registry.register(ComputerUseTool);
             tracing::warn!("⚠️  COMPUTER USE ENABLED — agent can control mouse/keyboard");
         } else {
@@ -378,12 +476,7 @@ pub async fn build_tools_inner(
 
     // Lazy LSP: only spawn if a supported project type is detected in the cwd.
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let has_supported_project = cwd.join("Cargo.toml").exists()
-        || cwd.join("tsconfig.json").exists()
-        || cwd.join("package.json").exists()
-        || cwd.join("pyproject.toml").exists()
-        || cwd.join("setup.py").exists()
-        || cwd.join("go.mod").exists();
+    let has_supported_project = has_supported_lsp_project(&cwd);
 
     if has_supported_project {
         let lsp = LazyLspClient::new(cwd);
@@ -435,21 +528,10 @@ pub async fn build_tools_inner(
             }
         }
     }
-    let mcp_tool_names: HashSet<String> = registry
-        .names()
-        .into_iter()
-        .filter(|n| !builtin_before.contains(n))
-        .collect();
+    let mcp_tool_names: HashSet<String> = mcp_names_added(&builtin_before, registry.names());
 
-    let confirm_policy = if confirm_gate.is_some() {
-        if cfg.approval.effective_mode() == "smart" {
-            harness_tools::ConfirmPolicy::Smart
-        } else {
-            harness_tools::ConfirmPolicy::Plan
-        }
-    } else {
-        harness_tools::ConfirmPolicy::Off
-    };
+    let confirm_policy =
+        confirm_policy_for_gate(confirm_gate.is_some(), cfg.approval.effective_mode());
 
     let executor = ToolExecutor::new(registry);
     let executor = if let Some(gate) = confirm_gate {
@@ -510,10 +592,7 @@ pub async fn connect_to_server(
     let token = crate::auth_token::read_token_file("server.token")
         .or_else(|_| std::env::var("HARNESS_SERVER_TOKEN").map_err(anyhow::Error::msg))?;
     let client = reqwest::Client::new();
-    let mut body = serde_json::json!({ "prompt": prompt });
-    if let Some(id) = session_id {
-        body["session_id"] = serde_json::Value::String(id.to_string());
-    }
+    let body = connect_chat_json_body(prompt, session_id);
 
     let resp = client
         .post(format!("{base_url}/api/chat"))
@@ -541,33 +620,151 @@ pub async fn connect_to_server(
             let line = buf[..pos].trim_end_matches('\r').to_string();
             buf = buf[pos + 1..].to_string();
 
-            if let Some(data) = line.strip_prefix("data: ") {
-                if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
-                    match event["type"].as_str() {
-                        Some("text_chunk") => {
-                            print!("{}", event["content"].as_str().unwrap_or(""));
-                            use std::io::Write;
-                            std::io::stdout().flush().ok();
-                        }
-                        Some("tool_start") => {
-                            eprintln!("\n[→ {}]", event["name"].as_str().unwrap_or(""))
-                        }
-                        Some("tool_result") => {
-                            eprintln!("[← {}]", event["name"].as_str().unwrap_or(""))
-                        }
-                        Some("done") => {
-                            println!();
-                            break;
-                        }
-                        Some("error") => {
-                            eprintln!("error: {}", event["message"].as_str().unwrap_or("unknown"));
-                        }
-                        _ => {}
-                    }
+            match parse_sse_connect_line(&line) {
+                SseConnectAction::Text(content) => {
+                    print!("{content}");
+                    use std::io::Write;
+                    std::io::stdout().flush().ok();
                 }
+                SseConnectAction::ToolStart(name) => {
+                    eprintln!("\n[→ {name}]");
+                }
+                SseConnectAction::ToolResult(name) => {
+                    eprintln!("[← {name}]");
+                }
+                SseConnectAction::Done => {
+                    println!();
+                    break;
+                }
+                SseConnectAction::Error(msg) => {
+                    eprintln!("error: {msg}");
+                }
+                SseConnectAction::Ignore => {}
             }
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use harness_tools::ConfirmPolicy;
+    use std::collections::HashSet;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn confirm_policy_for_gate_matrix() {
+        assert_eq!(
+            confirm_policy_for_gate(false, "smart"),
+            ConfirmPolicy::Off
+        );
+        assert_eq!(
+            confirm_policy_for_gate(true, "smart"),
+            ConfirmPolicy::Smart
+        );
+        assert_eq!(confirm_policy_for_gate(true, "plan"), ConfirmPolicy::Plan);
+        assert_eq!(confirm_policy_for_gate(true, "auto"), ConfirmPolicy::Plan);
+        assert_eq!(confirm_policy_for_gate(true, ""), ConfirmPolicy::Plan);
+    }
+
+    #[test]
+    fn computer_use_model_gate() {
+        assert!(computer_use_model_supported("claude-sonnet-4-6"));
+        assert!(computer_use_model_supported("Claude-Opus-4-7"));
+        assert!(computer_use_model_supported("claude-opus-4"));
+        assert!(!computer_use_model_supported("grok-4.5"));
+        assert!(!computer_use_model_supported("gpt-5.5"));
+        assert!(!computer_use_model_supported("claude-3-5-sonnet"));
+    }
+
+    #[test]
+    fn lsp_project_markers() {
+        let d = tempdir().unwrap();
+        assert!(!has_supported_lsp_project(d.path()));
+        fs::write(d.path().join("go.mod"), "module x\n").unwrap();
+        assert!(has_supported_lsp_project(d.path()));
+
+        let d2 = tempdir().unwrap();
+        fs::write(d2.path().join("package.json"), "{}").unwrap();
+        assert!(has_supported_lsp_project(d2.path()));
+    }
+
+    #[test]
+    fn swarm_worker_label_formats() {
+        assert_eq!(format_swarm_worker_label("fix foo", 1, 1), "fix foo");
+        assert_eq!(
+            format_swarm_worker_label("fix foo", 2, 3),
+            "fix foo [swarm 2/3]"
+        );
+    }
+
+    #[test]
+    fn mcp_names_added_diff() {
+        let before: HashSet<_> = ["read_file", "shell"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let after = vec![
+            "read_file".into(),
+            "shell".into(),
+            "mcp_weather".into(),
+            "mcp_docs".into(),
+        ];
+        let added = mcp_names_added(&before, after);
+        assert_eq!(added.len(), 2);
+        assert!(added.contains("mcp_weather"));
+        assert!(added.contains("mcp_docs"));
+    }
+
+    #[test]
+    fn connect_chat_json_body_optional_session() {
+        let b = connect_chat_json_body("hi", None);
+        assert_eq!(b["prompt"], "hi");
+        assert!(b.get("session_id").is_none());
+        let b2 = connect_chat_json_body("hi", Some("abc"));
+        assert_eq!(b2["session_id"], "abc");
+    }
+
+    #[test]
+    fn parse_sse_connect_line_variants() {
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"text_chunk","content":"yo"}"#),
+            SseConnectAction::Text("yo".into())
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"tool_start","name":"shell"}"#),
+            SseConnectAction::ToolStart("shell".into())
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"tool_result","name":"read_file"}"#),
+            SseConnectAction::ToolResult("read_file".into())
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"done"}"#),
+            SseConnectAction::Done
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"error","message":"boom"}"#),
+            SseConnectAction::Error("boom".into())
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"error"}"#),
+            SseConnectAction::Error("unknown".into())
+        );
+        assert_eq!(
+            parse_sse_connect_line(": comment"),
+            SseConnectAction::Ignore
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: not-json"#),
+            SseConnectAction::Ignore
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"other"}"#),
+            SseConnectAction::Ignore
+        );
+    }
 }

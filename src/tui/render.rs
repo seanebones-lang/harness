@@ -50,6 +50,36 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
+/// Estimate list rows for transcript + optional streaming/busy spinner line.
+fn compute_chat_items(state: &AppState) -> usize {
+    compute_chat_items_from(
+        state.chat.iter().map(|m| (m.role.as_str(), m.content.as_str())),
+        &state.streaming,
+        state.busy,
+    )
+}
+
+fn compute_chat_items_from<'a>(
+    chat: impl IntoIterator<Item = (&'a str, &'a str)>,
+    streaming: &str,
+    busy: bool,
+) -> usize {
+    chat.into_iter()
+        .map(|(role, content)| {
+            if role == "event" {
+                content.lines().count().max(1)
+            } else {
+                1 + content.lines().count().max(1) + 1
+            }
+        })
+        .sum::<usize>()
+        + if !streaming.is_empty() || busy {
+            1 + streaming.lines().count().max(if busy { 1 } else { 0 })
+        } else {
+            0
+        }
+}
+
 pub(crate) fn draw_all(
     f: &mut ratatui::Frame,
     state: &mut AppState,
@@ -98,26 +128,6 @@ pub(crate) fn draw_all(
     if let Some(ps) = &state.pending_sampling {
         draw_sampling_overlay(f, ps, theme);
     }
-}
-
-fn compute_chat_items(state: &AppState) -> usize {
-    // Estimate: event = 1 line; chat = label + content lines + blank
-    state
-        .chat
-        .iter()
-        .map(|m| {
-            if m.role == "event" {
-                m.content.lines().count().max(1)
-            } else {
-                1 + m.content.lines().count().max(1) + 1
-            }
-        })
-        .sum::<usize>()
-        + if !state.streaming.is_empty() || state.busy {
-            1 + state.streaming.lines().count().max(if state.busy { 1 } else { 0 })
-        } else {
-            0
-        }
 }
 
 fn draw_chat(
@@ -973,6 +983,46 @@ mod tests {
         st.streaming = "stream-line-a\nstream-line-b".into();
         // 1 (header) + 2 (lines) = 3
         assert_eq!(compute_chat_items(&st), 3);
+    }
+
+    #[test]
+    fn compute_chat_items_event_role_and_busy_only() {
+        let mut st = empty_state();
+        st.chat.push(super::super::ChatMessage {
+            role: "event".into(),
+            content: "→ shell".into(),
+            ts: Instant::now(),
+        });
+        assert_eq!(compute_chat_items(&st), 1);
+
+        st.busy = true;
+        st.streaming.clear();
+        // event 1 + busy streaming row (1 header + max(0 lines, 1) = 2) => 3
+        assert_eq!(compute_chat_items(&st), 3);
+    }
+
+    #[test]
+    fn compute_chat_items_from_direct() {
+        assert_eq!(compute_chat_items_from([], "", false), 0);
+        assert_eq!(
+            compute_chat_items_from([("user", "a\nb")], "", false),
+            1 + 2 + 1
+        );
+        assert_eq!(compute_chat_items_from([("event", "x")], "y", false), 1 + 2);
+    }
+
+    #[test]
+    fn wrap_text_width_and_wrapping() {
+        assert_eq!(wrap_text("hello", 0), vec!["hello".to_string()]);
+        assert_eq!(wrap_text("hello world", 20), vec!["hello world".to_string()]);
+        assert_eq!(
+            wrap_text("one two three four", 8),
+            vec!["one two".to_string(), "three".to_string(), "four".to_string()]
+        );
+        assert_eq!(
+            wrap_text("line1\nline2", 80),
+            vec!["line1".to_string(), "line2".to_string()]
+        );
     }
 
     #[test]

@@ -219,7 +219,7 @@ cargo fmt --all -- --check
 
 # Coverage SoT (do not claim CI 60% until measured green)
 cargo llvm-cov --workspace --all-features --summary-only
-# Last measured: **54.51%** lines (2026-08-07) — see COVERAGE.md
+# Last measured: **55.05%** lines (2026-08-07 cont) — see COVERAGE.md
 
 # Offline microbench pack
 ./target/debug/harness bench
