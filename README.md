@@ -3,7 +3,7 @@
 [![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.76%2B-orange)](rust-toolchain.toml)
 [![Toolchain](https://img.shields.io/badge/pinned-1.95.0-blue)](rust-toolchain.toml)
-[![Coverage](https://img.shields.io/badge/coverage-~55%25%20(target%2060%25)-orange)](COVERAGE.md)
+[![Coverage](https://img.shields.io/badge/coverage-~56%25%20(target%2060%25)-orange)](COVERAGE.md)
 [![Version](https://img.shields.io/badge/version-0.1.2--beta-informational)](Cargo.toml)
 
 **NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
@@ -219,7 +219,7 @@ cargo fmt --all -- --check
 
 # Coverage SoT (do not claim CI 60% until measured green)
 cargo llvm-cov --workspace --all-features --summary-only
-# Last measured: **55.05%** lines (2026-08-07 cont) — see COVERAGE.md
+# Last measured: **55.60%** lines (2026-08-07 cont2) — see COVERAGE.md
 
 # Offline microbench pack
 ./target/debug/harness bench
@@ -276,7 +276,7 @@ Developer narrative: [`CLAUDE.md`](CLAUDE.md) · architecture: [`ARCHITECTURE.md
 |------|--------|
 | Public beta | **GO** |
 | Stable 0.2.0 | Blocked — REL-01 full OS smoke + prebuilt matrix |
-| Coverage CI gate | Target **60%**; measured **~55%** |
+| Coverage CI gate | Target **60%**; measured **~56%** |
 | Billing / full Release matrix | 📌 pinned (maintainer) |
 | Branch | **`main`** |
 

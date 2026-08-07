@@ -89,12 +89,10 @@ pub(crate) fn finish_confirm(
     let key = (tool.clone(), first_arg.clone());
     let count = st.approval_counts.entry(key).or_insert(0);
     *count += 1;
-    if *count == 3 {
-        st.push_event(format!(
-            "[trust] Approved 3x. Run: harness trust {tool} \"{first_arg}\""
-        ));
+    if let Some(hint) = trust_hint_after_approvals(&tool, &first_arg, *count) {
+        st.push_event(hint);
     }
-    st.push_event(format!("[plan] {label}: {tool}"));
+    st.push_event(format_plan_confirm_event(label, &tool));
     st.status = "Approved — continuing…".to_string();
 }
 
@@ -120,11 +118,10 @@ pub(crate) fn handle_search_key(
                 st.search_match_pos = search_pos_next(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format!(
-                    "Search: \"{}\" ({}/{})",
-                    st.search_query,
-                    st.search_match_pos + 1,
-                    nmatches
+                st.status = format_search_nav_status(
+                    &st.search_query,
+                    st.search_match_pos,
+                    nmatches,
                 );
             }
             true
@@ -136,11 +133,10 @@ pub(crate) fn handle_search_key(
                 st.search_match_pos = search_pos_next(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format!(
-                    "Search: \"{}\" ({}/{})",
-                    st.search_query,
-                    st.search_match_pos + 1,
-                    nmatches
+                st.status = format_search_nav_status(
+                    &st.search_query,
+                    st.search_match_pos,
+                    nmatches,
                 );
             }
             true
@@ -152,11 +148,10 @@ pub(crate) fn handle_search_key(
                 st.search_match_pos = search_pos_prev(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format!(
-                    "Search: \"{}\" ({}/{})",
-                    st.search_query,
-                    st.search_match_pos + 1,
-                    nmatches
+                st.status = format_search_nav_status(
+                    &st.search_query,
+                    st.search_match_pos,
+                    nmatches,
                 );
             }
             true
@@ -238,6 +233,30 @@ pub(crate) fn format_search_status(query_lower: &str, nmatches: usize) -> String
             if nmatches == 1 { "" } else { "es" }
         )
     }
+}
+
+/// Status while jumping between search hits (`pos` is 0-based).
+pub(crate) fn format_search_nav_status(query: &str, pos: usize, nmatches: usize) -> String {
+    format!("Search: \"{query}\" ({}/{})", pos + 1, nmatches)
+}
+
+/// After N approvals of the same tool+arg, surface a trust CLI hint.
+pub(crate) fn trust_hint_after_approvals(
+    tool: &str,
+    first_arg: &str,
+    count: usize,
+) -> Option<String> {
+    if count == 3 {
+        Some(format!(
+            "[trust] Approved 3x. Run: harness trust {tool} \"{first_arg}\""
+        ))
+    } else {
+        None
+    }
+}
+
+pub(crate) fn format_plan_confirm_event(label: &str, tool: &str) -> String {
+    format!("[plan] {label}: {tool}")
 }
 
 /// First token of a slash command line (e.g. `/swarm gc` → `/swarm`).
@@ -1073,6 +1092,27 @@ mod tests {
         assert!(is_search_exit_key(KeyCode::Char('f'), KeyModifiers::CONTROL));
         assert!(!is_search_exit_key(KeyCode::Char('f'), KeyModifiers::NONE));
         assert!(!is_search_exit_key(KeyCode::Enter, KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn search_nav_and_trust_helpers() {
+        assert_eq!(
+            format_search_nav_status("foo", 0, 3),
+            "Search: \"foo\" (1/3)"
+        );
+        assert_eq!(
+            format_search_nav_status("foo", 2, 3),
+            "Search: \"foo\" (3/3)"
+        );
+        assert!(trust_hint_after_approvals("shell", "ls", 2).is_none());
+        assert_eq!(
+            trust_hint_after_approvals("shell", "ls", 3).as_deref(),
+            Some("[trust] Approved 3x. Run: harness trust shell \"ls\"")
+        );
+        assert_eq!(
+            format_plan_confirm_event("approved", "write_file"),
+            "[plan] approved: write_file"
+        );
     }
 
     #[test]

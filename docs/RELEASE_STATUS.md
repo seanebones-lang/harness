@@ -4,6 +4,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-07 — Coverage residual cont2 (slash + lightweight + input)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| `cargo test --bin harness` | **245** pass (was 237) |
+| clippy `-D warnings` (bin harness) | clean |
+| llvm-cov workspace lines | **55.60%** (13603/24468); regions 57.03%; functions 62.40% |
+| Climb slice | slash `@file` expand_in + completions + pytest/go detect; lightweight MCP allowlist + config path; input search-nav + trust hint |
+| Residual | handle_slash_command body · draw_* · build_tools_inner · target 60% open |
+
+**Go / no-go:** **GO** public beta. **Stable** still blocked on full REL-01 matrix + billing prebuilts. CI 60% coverage still target (~56% measured).
+
+---
+
 **2026-08-07 — Coverage residual cont (wiring + render)**
 
 | Item | Result |

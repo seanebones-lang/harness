@@ -1,15 +1,23 @@
 //! Slash-related helpers: `@file` expansion/completion and auto-detected test commands.
 
+use std::path::{Path, PathBuf};
+
 pub(crate) fn expand_at_files(prompt: &str) -> String {
+    expand_at_files_in(prompt, Path::new("."))
+}
+
+/// Expand `@path` tokens relative to `root` (tests inject a tempdir).
+pub(crate) fn expand_at_files_in(prompt: &str, root: &Path) -> String {
     let mut result = String::new();
     let mut pinned = String::new();
     let mut text_parts = Vec::new();
 
     for part in prompt.split_whitespace() {
         if let Some(path) = part.strip_prefix('@') {
-            match std::fs::read_to_string(path) {
+            let full = resolve_at_path(root, path);
+            match std::fs::read_to_string(&full) {
                 Ok(contents) => {
-                    let ext = std::path::Path::new(path)
+                    let ext = full
                         .extension()
                         .and_then(|e| e.to_str())
                         .unwrap_or("");
@@ -34,17 +42,26 @@ pub(crate) fn expand_at_files(prompt: &str) -> String {
     result
 }
 
+fn resolve_at_path(root: &Path, path: &str) -> PathBuf {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        root.join(p)
+    }
+}
+
+/// Split `@` completion partial into directory prefix (with trailing `/`) + file prefix.
+pub(crate) fn at_completion_dir_and_prefix(partial: &str) -> (String, String) {
+    if let Some(slash) = partial.rfind('/') {
+        (partial[..=slash].to_string(), partial[slash + 1..].to_string())
+    } else {
+        (String::new(), partial.to_string())
+    }
+}
+
 pub(crate) fn at_file_completions(partial: &str) -> Vec<String> {
-    let dir = if let Some(slash) = partial.rfind('/') {
-        partial[..=slash].to_string()
-    } else {
-        String::new()
-    };
-    let file_prefix = if let Some(slash) = partial.rfind('/') {
-        partial[slash + 1..].to_string()
-    } else {
-        partial.to_string()
-    };
+    let (dir, file_prefix) = at_completion_dir_and_prefix(partial);
 
     let search_dir = if dir.is_empty() {
         ".".to_string()
@@ -119,8 +136,70 @@ mod tests {
     }
 
     #[test]
+    fn detect_test_command_pytest_and_go() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(dir.path().join("pyproject.toml"), "[project]\nname=\"t\"\n").unwrap();
+        assert!(detect_test_command_in(dir.path()).contains("pytest"));
+
+        let dir2 = tempfile::tempdir().expect("tempdir");
+        fs::write(dir2.path().join("go.mod"), "module x\n").unwrap();
+        assert!(detect_test_command_in(dir2.path()).starts_with("go test"));
+    }
+
+    #[test]
     fn detect_test_command_falls_back_to_make() {
         let dir = tempfile::tempdir().expect("tempdir");
         assert!(detect_test_command_in(dir.path()).starts_with("make test"));
+    }
+
+    #[test]
+    fn at_completion_dir_and_prefix_splits() {
+        assert_eq!(
+            at_completion_dir_and_prefix("src/mai"),
+            ("src/".into(), "mai".into())
+        );
+        assert_eq!(
+            at_completion_dir_and_prefix("readme"),
+            ("".into(), "readme".into())
+        );
+        assert_eq!(
+            at_completion_dir_and_prefix("a/b/c"),
+            ("a/b/".into(), "c".into())
+        );
+    }
+
+    #[test]
+    fn expand_at_files_in_pins_contents_and_keeps_text() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(dir.path().join("note.rs"), "fn main() {}\n").unwrap();
+        let out = expand_at_files_in("please review @note.rs carefully", dir.path());
+        assert!(out.starts_with("please review carefully"));
+        assert!(out.contains("<file path=\"note.rs\">"));
+        assert!(out.contains("```rs"));
+        assert!(out.contains("fn main() {}"));
+    }
+
+    #[test]
+    fn expand_at_files_in_missing_path_notes_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = expand_at_files_in("see @missing.txt", dir.path());
+        assert!(out.contains("[could not read missing.txt:"));
+    }
+
+    #[test]
+    fn at_file_completions_lists_prefix_matches() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(dir.path().join("alpha.txt"), "a").unwrap();
+        fs::write(dir.path().join("alpine.md"), "b").unwrap();
+        fs::write(dir.path().join("beta.txt"), "c").unwrap();
+        fs::create_dir(dir.path().join("alga")).unwrap();
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+        let hits = at_file_completions("al");
+        std::env::set_current_dir(prev).unwrap();
+        assert!(hits.iter().any(|h| h == "alpha.txt"));
+        assert!(hits.iter().any(|h| h == "alpine.md"));
+        assert!(hits.iter().any(|h| h == "alga/"));
+        assert!(!hits.iter().any(|h| h == "beta.txt"));
     }
 }

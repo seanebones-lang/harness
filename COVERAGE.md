@@ -5,14 +5,15 @@
 | Field | Value |
 |-------|--------|
 | **Tool** | cargo-llvm-cov |
-| **Measured lines** | **55.05%** (13405 covered / 24350 lines) |
-| **Regions** | 56.43% · **Functions** 61.83% |
-| **Date** | 2026-08-07 cont (wiring + render pure climb) |
+| **Measured lines** | **55.60%** (13603 covered / 24468 lines) |
+| **Regions** | 57.03% · **Functions** 62.40% |
+| **Date** | 2026-08-07 cont2 (slash + lightweight + input pure) |
 | **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **not yet met** |
 | **Near-term target** | ≥ 40% workspace lines — **met** (this measure) |
 
 Prior measures:
-- llvm-cov 2026-08-07 morning confirm_flow/collab/driver: **54.51%** lines (13180 / 24179)
+- llvm-cov 2026-08-07 cont wiring+render: **55.05%** lines (13405 / 24350)
+- llvm-cov 2026-08-07 morning confirm/collab/driver: **54.51%** lines (13180 / 24179)
 - llvm-cov 2026-08-06 project_ops+AppState: **53.47%** lines (12770 / 23884)
 - llvm-cov 2026-08-05 swarm-50: **51.98%** lines (12224 / 23516)
 - llvm-cov 2026-08-05 earlier: **46.52%** lines (10459 / 22481)
@@ -22,7 +23,7 @@ Prior measures:
 
 Tooling differs across tools; treat llvm-cov as current SoT going forward.
 
-Note: Measured % is still below the 60% PR gate. Climb 2026-08-07 cont: `cli/wiring` pure helpers (confirm policy, computer-use gate, LSP markers, swarm label, MCP name diff, SSE connect parse) ~26.5% lines; `tui/render` wrap_text + chat item estimate ~15.5%. Residual: most of `build_tools_inner` async body, draw_* frames, `tui/mod`/`input` loops. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
+Note: Measured % is still below the 60% PR gate. Climb 2026-08-07 cont2: `tui/slash` @file expand/complete + detect (~94% lines); `cli/lightweight` MCP allowlist + path resolve (~12%); `tui/input` search nav + trust hint pure. Residual: slash-command async body, draw_* frames, build_tools_inner. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
 
 ## How to re-run
 

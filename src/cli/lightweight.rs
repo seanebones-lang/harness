@@ -553,15 +553,6 @@ fn print_mcp_config_missing() {
     );
 }
 
-fn resolve_mcp_config_path(cfg: &Config) -> Option<std::path::PathBuf> {
-    if let Some(p) = &cfg.mcp.config_path {
-        if p.exists() {
-            return Some(p.clone());
-        }
-    }
-    harness_mcp::find_config()
-}
-
 /// Load servers from mcp.json, applying command allowlist and optional name filter.
 fn load_mcp_servers(
     path: &std::path::Path,
@@ -592,7 +583,7 @@ fn load_mcp_servers(
 }
 
 /// Mirror harness-mcp default allowlist when config leave it unset.
-fn mcp_command_allowed(command: &str, allowlist: Option<&[String]>) -> bool {
+pub(crate) fn mcp_command_allowed(command: &str, allowlist: Option<&[String]>) -> bool {
     const DEFAULT: &[&str] = &["npx", "node", "python3", "uvx"];
     let effective: Vec<&str> = match allowlist {
         None => DEFAULT.to_vec(),
@@ -606,6 +597,23 @@ fn mcp_command_allowed(command: &str, allowlist: Option<&[String]>) -> bool {
     effective
         .iter()
         .any(|allowed| *allowed == command || *allowed == cmd)
+}
+
+/// Prefer explicit config path when it exists; else discover default mcp.json.
+pub(crate) fn resolve_mcp_config_path_in(
+    config_path: Option<&std::path::Path>,
+    discovered: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    if let Some(p) = config_path {
+        if p.exists() {
+            return Some(p.to_path_buf());
+        }
+    }
+    discovered
+}
+
+fn resolve_mcp_config_path(cfg: &Config) -> Option<std::path::PathBuf> {
+    resolve_mcp_config_path_in(cfg.mcp.config_path.as_deref(), harness_mcp::find_config())
 }
 
 async fn spawn_mcp_client(
@@ -732,4 +740,48 @@ async fn dispatch_cost(action: &CostAction) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn mcp_command_allowed_defaults_and_empty_allow_all() {
+        assert!(mcp_command_allowed("npx", None));
+        assert!(mcp_command_allowed("/usr/bin/node", None));
+        assert!(mcp_command_allowed("python3", None));
+        assert!(mcp_command_allowed("uvx", None));
+        assert!(!mcp_command_allowed("bash", None));
+        assert!(!mcp_command_allowed("curl", None));
+
+        let empty: &[String] = &[];
+        assert!(mcp_command_allowed("anything", Some(empty)));
+
+        let custom = vec!["docker".into(), "cargo".into()];
+        assert!(mcp_command_allowed("docker", Some(&custom)));
+        assert!(mcp_command_allowed("/bin/cargo", Some(&custom)));
+        assert!(!mcp_command_allowed("npx", Some(&custom)));
+    }
+
+    #[test]
+    fn resolve_mcp_config_path_in_prefers_existing_explicit() {
+        let dir = tempfile::tempdir().unwrap();
+        let explicit = dir.path().join("mcp.json");
+        fs::write(&explicit, "{}").unwrap();
+        let discovered = Some(PathBuf::from("/tmp/discovered.json"));
+        assert_eq!(
+            resolve_mcp_config_path_in(Some(&explicit), discovered.clone()),
+            Some(explicit)
+        );
+
+        let missing = dir.path().join("nope.json");
+        assert_eq!(
+            resolve_mcp_config_path_in(Some(&missing), discovered.clone()),
+            discovered
+        );
+        assert_eq!(resolve_mcp_config_path_in(None, None), None);
+    }
 }
