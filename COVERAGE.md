@@ -5,25 +5,24 @@
 | Field | Value |
 |-------|--------|
 | **Tool** | cargo-llvm-cov |
-| **Measured lines** | **55.60%** (13603 covered / 24468 lines) |
-| **Regions** | 57.03% · **Functions** 62.40% |
-| **Date** | 2026-08-07 cont2 (slash + lightweight + input pure) |
+| **Measured lines** | **56.18%** (13820 covered / 24600 lines) |
+| **Regions** | 57.55% · **Functions** 62.74% |
+| **Date** | 2026-08-07 cont3 (theme + resume pure) |
 | **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **not yet met** |
 | **Near-term target** | ≥ 40% workspace lines — **met** (this measure) |
 
 Prior measures:
+- llvm-cov 2026-08-07 cont2 slash/lightweight/input: **55.60%** lines (13603 / 24468)
 - llvm-cov 2026-08-07 cont wiring+render: **55.05%** lines (13405 / 24350)
 - llvm-cov 2026-08-07 morning confirm/collab/driver: **54.51%** lines (13180 / 24179)
 - llvm-cov 2026-08-06 project_ops+AppState: **53.47%** lines (12770 / 23884)
 - llvm-cov 2026-08-05 swarm-50: **51.98%** lines (12224 / 23516)
-- llvm-cov 2026-08-05 earlier: **46.52%** lines (10459 / 22481)
 - llvm-cov 2026-08-03: **44.67%** lines (9723 / 21766)
 - llvm-cov 2026-07-30: **40.22%** lines (7814 / 19430)
-- tarpaulin 2026-05-25: **23.33%** lines (2407 / 10317)
 
 Tooling differs across tools; treat llvm-cov as current SoT going forward.
 
-Note: Measured % is still below the 60% PR gate. Climb 2026-08-07 cont2: `tui/slash` @file expand/complete + detect (~94% lines); `cli/lightweight` MCP allowlist + path resolve (~12%); `tui/input` search nav + trust hint pure. Residual: slash-command async body, draw_* frames, build_tools_inner. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
+Note: Measured % is still below the 60% PR gate. Climb 2026-08-07 cont3: `tui/theme` parse_color + load_from_str/path + assistant_label (~98% lines); `tui/resume` full role formatting + turn counts (~99%). Residual: draw_* frames, handle_slash_command async, build_tools_inner, tui/mod. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
 
 ## How to re-run
 

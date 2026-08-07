@@ -1,5 +1,7 @@
 //! TUI color theme loaded from `~/.harness/theme.toml`.
 
+use std::path::Path;
+
 use ratatui::style::Color;
 
 #[derive(Clone)]
@@ -38,12 +40,22 @@ impl Theme {
         let path = dirs::home_dir()
             .unwrap_or_default()
             .join(".harness/theme.toml");
+        Self::load_from_path(&path)
+    }
+
+    /// Load theme from an explicit path (missing/invalid → defaults).
+    pub(crate) fn load_from_path(path: &Path) -> Self {
         if !path.exists() {
             return Self::default();
         }
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        let Ok(text) = std::fs::read_to_string(path) else {
             return Self::default();
         };
+        Self::load_from_str(&text)
+    }
+
+    /// Parse theme TOML body (invalid → defaults).
+    pub(crate) fn load_from_str(text: &str) -> Self {
         let Ok(val) = text.parse::<toml::Value>() else {
             return Self::default();
         };
@@ -68,17 +80,22 @@ impl Theme {
     }
 
     pub(crate) fn assistant_label<'a>(&self, model: &str) -> &'a str {
-        if model.contains("claude") {
-            "claude"
-        } else if model.contains("grok") {
-            "grok"
-        } else if model.contains("gpt") {
-            "gpt"
-        } else if model.contains("qwen") {
-            "qwen"
-        } else {
-            "ai"
-        }
+        assistant_label_for_model(model)
+    }
+}
+
+/// Map model id substring → short transcript label.
+pub(crate) fn assistant_label_for_model(model: &str) -> &'static str {
+    if model.contains("claude") {
+        "claude"
+    } else if model.contains("grok") {
+        "grok"
+    } else if model.contains("gpt") {
+        "gpt"
+    } else if model.contains("qwen") {
+        "qwen"
+    } else {
+        "ai"
     }
 }
 
@@ -98,5 +115,76 @@ pub(crate) fn parse_color(s: &str) -> Option<Color> {
         "lightcyan" => Some(Color::LightCyan),
         "lightgreen" => Some(Color::LightGreen),
         _ => None,
+    }
+}
+
+/// Truncate tool result previews for resume chat rows.
+pub(crate) fn tool_result_preview(result: &str, max_chars: usize) -> String {
+    if result.len() > max_chars {
+        format!("{}… ({} bytes)", &result[..max_chars], result.len())
+    } else {
+        result.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn parse_color_named_and_unknown() {
+        assert_eq!(parse_color("RED"), Some(Color::Red));
+        assert_eq!(parse_color("grey"), Some(Color::Gray));
+        assert_eq!(parse_color("darkgrey"), Some(Color::DarkGray));
+        assert_eq!(parse_color("lightyellow"), Some(Color::LightYellow));
+        assert_eq!(parse_color("not-a-color"), None);
+        assert_eq!(parse_color(""), None);
+    }
+
+    #[test]
+    fn assistant_label_for_model_matrix() {
+        assert_eq!(assistant_label_for_model("claude-sonnet-4-6"), "claude");
+        assert_eq!(assistant_label_for_model("grok-4.5"), "grok");
+        assert_eq!(assistant_label_for_model("gpt-5.5"), "gpt");
+        assert_eq!(assistant_label_for_model("qwen2.5-coder"), "qwen");
+        assert_eq!(assistant_label_for_model("mistral-large"), "ai");
+        let t = Theme::default();
+        assert_eq!(t.assistant_label("grok-4.5"), "grok");
+    }
+
+    #[test]
+    fn load_from_str_overrides_and_invalid_defaults() {
+        let t = Theme::load_from_str(
+            r#"
+user = "red"
+assistant = "blue"
+unknown_key = "green"
+streaming = "not-a-color"
+"#,
+        );
+        assert_eq!(t.user_color, Color::Red);
+        assert_eq!(t.assistant_color, Color::Blue);
+        // invalid color falls back to default yellow
+        assert_eq!(t.streaming_color, Color::Yellow);
+
+        let bad = Theme::load_from_str("{{{not toml");
+        assert_eq!(bad.user_color, Theme::default().user_color);
+    }
+
+    #[test]
+    fn load_from_path_missing_and_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope.toml");
+        assert_eq!(
+            Theme::load_from_path(&missing).user_color,
+            Theme::default().user_color
+        );
+
+        let path = dir.path().join("theme.toml");
+        fs::write(&path, "error = \"magenta\"\n").unwrap();
+        let t = Theme::load_from_path(&path);
+        assert_eq!(t.error_color, Color::Magenta);
+        assert_eq!(t.user_color, Color::Cyan); // default
     }
 }
