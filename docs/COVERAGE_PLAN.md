@@ -32,16 +32,17 @@ Short uplift plan for workspace line coverage. **Measured baseline** comes from 
 | `crates/harness-tools/src/tools/git.rs` | **Done climb 2026-08-05** — readonly vs mutating + force-push/missing action/status/stash |
 | `crates/harness-tools/src/executor.rs` | **Done climb 2026-08-05** — confirm deny/approve + preview/trust/always_ask pure helpers |
 | `src/auth_token.rs` | **Done climb 2026-08-05** — token shape/expiry + `load_or_create_in` / `read_token_file_in` tempdir |
-| `src/trust.rs` | **Next (swarm-50)** — path-isolated pure tests (no CWD asserts) |
-| `src/projects.rs` | **Next (swarm-50)** — path-isolated pure tests |
-| `crates/harness-tools/src/tools/gh.rs` | **Next (swarm-50)** — arg validation + def name |
-| `crates/harness-tools/src/tools/search.rs` | **Next (swarm-50)** — validation + def |
-| `crates/harness-tools/src/tools/test_runner.rs` | **Next (swarm-50)** — validation edges |
-| `crates/harness-tools/src/tools/selfdev.rs` | **Next (swarm-50)** — validation edges |
+| `src/trust.rs` | **Done cont 2026-08-09** — path-inject load/save + wildcard/empty/roundtrip |
+| `src/projects.rs` | **Done Swarm-51** — path-isolated pure tests |
+| `crates/harness-tools/src/tools/gh.rs` | **Done Swarm-51** — arg validation + def name |
+| `crates/harness-tools/src/tools/search.rs` | **Done Swarm-51** — validation + def |
+| `crates/harness-tools/src/tools/test_runner.rs` | **Done Swarm-51** — validation edges |
+| `crates/harness-tools/src/tools/selfdev.rs` | **Done Swarm-51** — validation edges |
+| `src/cli/wiring.rs` | **Done climb + cont 2026-08-09** — SSE/connect/LSP/swarm pure edges |
 | `src/agent/*` | Pure message/tool-result + compact/token estimate helpers |
 | `src/server/project_ops.rs` | **Done 2026-08-06** — porcelain parse, default/allow test cmd, collect_files |
 | `src/tui/state.rs` | **Done 2026-08-06** — AppState input/history/status (~83% lines) |
-| TUI driver / input / CLI wiring | Still ~0% on driver/input; extract pure helpers before heavy UI tests |
+| TUI driver / input / CLI wiring I/O | Residual: `tui/mod` entry + driver/input loops — optional polish |
 
 Prefer **unit tests in existing modules** over new integration binaries. No API keys, no live MCP servers, no real desktop notification asserts (disabled-config no-ops only).
 

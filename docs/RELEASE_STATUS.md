@@ -4,6 +4,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-09 — Cont residual (trust path-inject + wiring edges + docs honesty)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| Slice | `TrustStore::load_from_path` / `save_to_path` + pure trust edges; wiring SSE/LSP/mcp/swarm labels; TODO/CTO/COVERAGE_PLAN honesty post Swarm-51 |
+| `cargo test --bin harness` | **363** pass (was 354 Swarm-51) |
+| clippy `-D warnings` (bin harness) | clean |
+| Residual | tui/mod entry · driver/input I/O loops · REL-01 Linux (Docker down on host) |
+| Note | Discarded dirty accidental workspace version bump `0.1.2-beta`→`1.3.0-beta` (not shipped) |
+
+**Go / no-go:** **GO** public beta. CI 60% still **met** (prior measure 61.65%). **Stable** still blocked on REL-01 + billing 📌.
+
+---
+
 **2026-08-09 — Swarm-51 residual coverage climb (specialized agents ×50 + orch)**
 
 | Item | Result |

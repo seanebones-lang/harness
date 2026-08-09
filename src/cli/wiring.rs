@@ -758,5 +758,57 @@ mod tests {
             parse_sse_connect_line(r#"data: {"type":"other"}"#),
             SseConnectAction::Ignore
         );
+        // missing fields degrade to empty strings / ignore non-data lines
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"text_chunk"}"#),
+            SseConnectAction::Text(String::new())
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"tool_start"}"#),
+            SseConnectAction::ToolStart(String::new())
+        );
+        assert_eq!(
+            parse_sse_connect_line(r#"data: {"type":"tool_result"}"#),
+            SseConnectAction::ToolResult(String::new())
+        );
+        assert_eq!(
+            parse_sse_connect_line("data: {\"type\":null}"),
+            SseConnectAction::Ignore
+        );
+        assert_eq!(parse_sse_connect_line(""), SseConnectAction::Ignore);
+        assert_eq!(parse_sse_connect_line("event: ping"), SseConnectAction::Ignore);
+    }
+
+    #[test]
+    fn mcp_names_added_empty_and_no_new() {
+        let before: HashSet<_> = ["a"].into_iter().map(str::to_string).collect();
+        assert!(mcp_names_added(&before, Vec::<String>::new()).is_empty());
+        assert!(mcp_names_added(&before, vec!["a".into()]).is_empty());
+    }
+
+    #[test]
+    fn computer_use_model_gate_edges() {
+        assert!(!computer_use_model_supported(""));
+        assert!(!computer_use_model_supported("claude-haiku-4"));
+        assert!(computer_use_model_supported("prefix-claude-sonnet-4-suffix"));
+    }
+
+    #[test]
+    fn lsp_project_markers_more_languages() {
+        for name in ["Cargo.toml", "tsconfig.json", "pyproject.toml", "setup.py"] {
+            let d = tempdir().unwrap();
+            fs::write(d.path().join(name), "x\n").unwrap();
+            assert!(
+                has_supported_lsp_project(d.path()),
+                "expected LSP support for {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn swarm_worker_label_single_and_bounds() {
+        assert_eq!(format_swarm_worker_label("", 1, 1), "");
+        assert_eq!(format_swarm_worker_label("p", 1, 2), "p [swarm 1/2]");
+        assert_eq!(format_swarm_worker_label("p", 2, 2), "p [swarm 2/2]");
     }
 }

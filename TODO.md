@@ -18,9 +18,10 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 
 | Gate | Status |
 |------|--------|
-| `cargo test --bin harness` | **190** pass (2026-08-05 swarm-50) |
+| `cargo test --bin harness` | **354+** pass (Swarm-51 2026-08-09 baseline; remeasure on ship) |
+| `cargo test -p harness-tools` | **179** pass (Swarm-51) |
 | Clippy `-D warnings` (bin) | green on ship commits |
-| Coverage measured | **51.98%** lines — [`COVERAGE.md`](COVERAGE.md); CI target 60% open |
+| Coverage measured | **61.65%** lines — [`COVERAGE.md`](COVERAGE.md); CI ≥60% **met** |
 | License | Proprietary NextEleven LLC ([`LICENSE`](LICENSE)) |
 
 ### Tier 0 — Beta shipped
@@ -29,7 +30,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 |------|--------|
 | Public repo, threat model, install docs | [x] |
 | CI (Ubuntu, macOS, Windows) | [x] |
-| README + CTO backlog | [x] 2026-08-03 docs refresh |
+| README + CTO backlog | [x] 2026-08-03 docs refresh · Swarm-51 honesty 2026-08-09 |
 | Public announcement | [ ] maintainer |
 
 ### Tier 1 — Before “stable”
@@ -48,7 +49,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 |------|--------|
 | Swarm CLI + TUI + GC + worker gates | [x] |
 | MCP sampling TUI + resources CLI | [x] |
-| Coverage honesty + climb ~45% | [x] measured |
+| Coverage honesty + climb | [x] **61.65%** Swarm-51; CI 60% met |
 | Gemini + Bedrock providers | [x] W5.2 |
 | Database / Notebook / Docker tools | [x] W5.4–W5.6 config-gated |
 | Computer-use docs | [x] W5.7 |
@@ -62,7 +63,8 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 | Task | Status |
 |------|--------|
 | Remote swarm HTTP client + public cutover | [x] W7.1 client 2026-08-04 · cutover 2026-08-05 |
-| Coverage → 60% CI gate | [ ] |
+| Coverage → 60% CI gate | [x] measured **61.65%** 2026-08-09 Swarm-51 |
+| Residual coverage polish | [~] tui/mod · wiring/driver/input I/O — optional |
 | Live provider cost/latency bench | [ ] optional |
 | Community channel / announce | [ ] maintainer |
 
@@ -71,6 +73,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 ## Release checklist
 
 - [x] test / clippy on ship commits (re-run before tag)
+- [x] CI coverage gate measured met (60%)
 - [ ] REL-01 full matrix — CTO W1.1–W1.3
 - [ ] Un-pin billing for multi-arch prebuilts
 

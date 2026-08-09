@@ -75,7 +75,7 @@ Goal: stable path unblocked on paper and machine.
 ### WAVE 2 — Quality floor (3–7 days)
 Goal: CI gate means something; panic surface shrinks.
 
-- [x] **W2.1** Coverage plan + climb: critical crates tests; llvm-cov **40.22%** lines (2026-07-30) — ≥40% met; ≥60% CI gate still open. See `COVERAGE.md` / `docs/COVERAGE_PLAN.md`.
+- [x] **W2.1** Coverage plan + climb: critical crates tests; llvm-cov **40.22%** (2026-07-30) → **61.65%** (2026-08-09 Swarm-51) — ≥40% met; ≥60% CI gate **met**. See `COVERAGE.md` / `docs/COVERAGE_PLAN.md`.
 - [x] **W2.2** Add integration tests: swarm gc dry-run (+ cancel-all); MCP pure helpers / tools tests expanded. *(2026-07-30)*
 - [~] **W2.3** Unwrap burn-down — production paths in checkpoint/ambient/server/cost already 0; agent lock + crates remain. *(audit 2026-07-30)*
 - [x] **W2.4** Clippy workspace clean + `cargo deny check` green locally (2026-07-30): crate licenses, advisories (anyhow/crossbeam/notify-rust bumps; proc-macro-error2 ignored via age).
