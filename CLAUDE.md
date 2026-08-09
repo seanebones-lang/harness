@@ -2,9 +2,9 @@
 
 NextEleven Harness — Rust multi-provider coding agent (binary/crate still `harness`). Anthropic / xAI / OpenAI / Mistral / Gemini / Bedrock / Ollama / MLX. Swarm, MCP, serve, TUI.
 
-**Release:** Public **beta** GO — **`cargo test --bin harness` → 116 tests** (no API keys), P0 security closed. **Stable** blocked on REL-01 smoke matrix ([`TODO.md`](TODO.md)).  
+**Release:** Public **beta / POC** GO — version **1.3.0** · **`cargo test --bin harness` → 363 tests** (no API keys), P0 security closed. **Stable** blocked on REL-01 smoke matrix ([`TODO.md`](TODO.md)).  
 **Ship branch:** **`main`** only.  
-**License:** proprietary NextEleven LLC ([`LICENSE`](LICENSE)).
+**License:** proprietary NextEleven LLC ([`LICENSE`](LICENSE)). Public repo = proof-of-concept visibility only — **not MIT / not open source**.
 
 ## Build & Test
 
@@ -19,8 +19,8 @@ cargo test --all                      # full workspace
 cargo clippy -p harness --bin harness -- -D warnings
 cargo fmt --all
 
-# Coverage SoT: COVERAGE.md — last measured **44.67%** lines (llvm-cov 2026-08-03)
-# CI target still ≥ 60% (not yet met)
+# Coverage SoT: COVERAGE.md — last measured **61.65%** lines (llvm-cov 2026-08-09 Swarm-51)
+# CI ≥ 60% lines — **met (measured)**
 cargo llvm-cov --workspace --all-features --summary-only
 
 # Smoke CLI with tree binary (PATH installs go stale)
@@ -29,7 +29,6 @@ cargo llvm-cov --workspace --all-features --summary-only
 
 git config core.hooksPath .githooks
 ```
-
 Root package is a **binary** — `cargo test --lib` fails. One TESTNAME filter per `cargo test --bin harness` invocation.
 
 ## Running

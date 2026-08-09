@@ -4,6 +4,23 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-09 — v1.3.0 public POC cut (proprietary)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** · visibility **PUBLIC** (POC only) |
+| Version | **1.3.0** workspace (was 0.1.2-beta) — Cargo, desktop, VS Code, Docker, Homebrew |
+| Tag | **`v1.3.0`** (this cut) |
+| Notes | [`RELEASE_NOTES_v1.3.0.md`](RELEASE_NOTES_v1.3.0.md) · [`CHANGELOG.md`](../CHANGELOG.md) |
+| License | **Proprietary** NextEleven LLC — **not MIT**; `deny.toml` MIT allow = third-party deps only |
+| `cargo test --bin harness` | **363** (prior cont) — re-run on tag commit |
+| Coverage | **61.65%** · CI 60% **met** |
+| CLAUDE.md | refreshed (363 / 61.65% / 1.3.0) |
+
+**Go / no-go:** **GO** public POC. **Stable** still blocked on REL-01 + billing 📌. Prebuilt multi-arch may still need Actions billing.
+
+---
+
 **2026-08-09 — Cont residual (trust path-inject + wiring edges + docs honesty)**
 
 | Item | Result |

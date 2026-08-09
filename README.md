@@ -4,15 +4,15 @@
 [![MSRV](https://img.shields.io/badge/MSRV-1.76%2B-orange)](rust-toolchain.toml)
 [![Toolchain](https://img.shields.io/badge/pinned-1.95.0-blue)](rust-toolchain.toml)
 [![Coverage](https://img.shields.io/badge/coverage-~62%25%20(gate%2060%25%20met)-brightgreen)](COVERAGE.md)
-[![Version](https://img.shields.io/badge/version-0.1.2--beta-informational)](Cargo.toml)
+[![Version](https://img.shields.io/badge/version-1.3.0-informational)](Cargo.toml)
 
 **NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
 
 Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls through **Anthropic → xAI → OpenAI → Mistral → Gemini → Bedrock → Ollama/MLX** based on configured keys and `[providers]` tables.
 
-**Status:** public **beta** (daily-driver capable). **Stable** is blocked on full REL-01 smoke matrix + release artifact billing (see [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md)).  
+**Status:** public **beta / POC** (daily-driver capable). Version **1.3.0**. **Stable** is blocked on full REL-01 smoke matrix + release artifact billing (see [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md)).  
 **Branch:** ship on **`main`** only.  
-**License:** proprietary — NextEleven LLC ([`LICENSE`](LICENSE)). Not open source.
+**License:** proprietary — NextEleven LLC ([`LICENSE`](LICENSE)). **Not MIT. Not open source.** Public repo = proof-of-concept visibility only.
 
 | Doc | Purpose |
 |-----|---------|
@@ -308,10 +308,12 @@ Competition / submission notes: [`docs/SUBMISSION_MANIFEST.md`](docs/SUBMISSION_
 
 **Proprietary — NextEleven LLC.** See [`LICENSE`](LICENSE). Unauthorized use, copying, distribution, or derivative works are prohibited.
 
+Public GitHub hosting is for **proof-of-concept evaluation only**. This is **not** an MIT or open-source grant.
+
 ---
 
 ## Links
 
 - Issues / PRs: https://github.com/seanebones-lang/harness  
-- Releases: https://github.com/seanebones-lang/harness/releases  
+- Releases: https://github.com/seanebones-lang/harness/releases · notes [`docs/RELEASE_NOTES_v1.3.0.md`](docs/RELEASE_NOTES_v1.3.0.md)  
 - Comparison notes: [`docs/COMPARISON.md`](docs/COMPARISON.md)

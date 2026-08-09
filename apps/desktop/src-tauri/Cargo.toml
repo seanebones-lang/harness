@@ -1,6 +1,6 @@
 [package]
 name = "harness-desktop"
-version = "0.1.2-beta"
+version = "1.3.0"
 edition = "2021"
 
 [lib]

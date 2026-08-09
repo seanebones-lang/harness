@@ -2,7 +2,7 @@ class Harness < Formula
   desc "Fast, private, terminal-first Rust coding agent"
   homepage "https://github.com/seanebones-lang/harness"
   # Refresh SHA256s after tagging: bash scripts/update-homebrew-sha.sh vX.Y.Z
-  version "0.1.2-beta"
+  version "1.3.0"
   license "LicenseRef-NextEleven-Proprietary"
 
   on_macos do

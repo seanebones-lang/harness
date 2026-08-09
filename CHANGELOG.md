@@ -7,20 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Notes
+- Working tree tracks **1.3.0** on `main`. See below for the cut.
+
+## [1.3.0] - 2026-08-09
+
+Public **proof-of-concept** cut. Repository is visible on GitHub for evaluation only.
+
+**License: proprietary NextEleven LLC — NOT MIT, NOT open source.**
+
 ### Added
 - Gemini + Bedrock providers; Database/Notebook/Docker tools (config-gated)
 - `harness bench` offline pack; swarm worker allowlist + wall timeout; model on swarm JSON
 - `src/agent/*` and `src/server/*` module splits
-- Threat model v2; full README / docs refresh (2026-08-03)
-- Swarm-51 residual coverage climb past 60% CI gate (2026-08-09)
-- Trust path-inject + wiring pure edges cont (2026-08-09)
+- Threat model v2; docs refresh waves
+- Swarm-50 / Swarm-51 coverage climbs; CI line gate ≥60% **met** (measured **61.65%**)
+- Trust path-inject (`load_from_path` / `save_to_path`) + wiring pure edges
+- Connect CLI `--url` clap fix; single-panel Hermes-style TUI
+- Public-repo hardening: path scrub, secret hygiene docs, proprietary packaging labels
 
 ### Changed
+- Workspace version **0.1.2-beta → 1.3.0** (binary, desktop, VS Code, Docker, Homebrew formula)
 - Ship branch **main** only (`dev` folded and removed)
-- LICENSE: proprietary NextEleven LLC notice
-- Honest coverage messaging — measured **61.65%** (Swarm-51); CI ≥60% **met**
-- Public-repo hardening: license label fixes, path scrub, docs gate honesty (2026-08-09)
-- Bin tests **363**; tools package **179** (remeasure on ship days)
+- LICENSE: proprietary NextEleven LLC notice (public = POC visibility only)
+- Honest gates: bin tests **363**; tools **179**; coverage badge ~62%
+- Dockerfile / Homebrew / VS Code / CONTRIBUTING / SUBMISSION\* — proprietary / UNLICENSED (not MIT)
+- `deny.toml`: product = `LicenseRef-NextEleven-Proprietary`; MIT only as third-party dep allowance (not a product grant)
+
+### Security
+- No API keys in tracked tree; `.env` / `.envrc` gitignored
+- Report vulns via SECURITY.md (private advisory)
+
 ## [0.1.2-beta] - 2026-05-25
 
 ### Added

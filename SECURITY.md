@@ -4,8 +4,9 @@
 
 | Version     | Supported |
 | ----------- | --------- |
-| 0.1.2-beta  | Yes       |
-| main branch | Yes       |
+| **1.3.0**   | Yes (current POC) |
+| main branch | Yes |
+| 0.1.x-beta  | Best-effort only |
 
 ## Reporting a Vulnerability
 

@@ -35,7 +35,7 @@
 | God files | **Closed W7.4** — `src/agent/*`, `src/server/*` modular | Residual TUI size OK |
 | Unwrap surface | `src/` production mostly clean; crates residual | Panic paths under poison/IO |
 | MCP sampling UX | **Closed** — TUI y/n + auto | — |
-| Version drift | **Closed** — desktop 0.1.2-beta aligned | — |
+| Version drift | **Closed** — desktop/VS Code/Docker/Homebrew aligned to **1.3.0** (2026-08-09) | — |
 | Toolchain pin | **Closed** — `1.95.0` | — |
 | Swarm next | cancel-all / auto-gc / --json / model-on-task / HttpRegistry public cutover **done** | Ops unblocked; residual coverage/tests |
 
@@ -70,7 +70,7 @@ Goal: stable path unblocked on paper and machine.
 - [ ] **W1.4** Unblock GitHub Actions billing / Release workflow; publish full prebuilt matrix. 📌 **PINNED** — user holding billing questions
 - [ ] **W1.5** Homebrew SHA update all platforms (`scripts/update-homebrew-sha.sh`). 📌 **PINNED** (depends on W1.4)
 - [x] **W1.6** Pin toolchain channel in `rust-toolchain.toml` (`1.95.0` known-good). *(2026-07-30)*
-- [x] **W1.7** Align versions: desktop `package.json` / `tauri.conf.json` / lock → `0.1.2-beta`. *(2026-07-30)*
+- [x] **W1.7** Align versions: desktop `package.json` / `tauri.conf.json` / lock → current workspace version. *(0.1.2-beta 2026-07-30; **1.3.0** 2026-08-09)*
 
 ### WAVE 2 — Quality floor (3–7 days)
 Goal: CI gate means something; panic surface shrinks.

@@ -2,7 +2,7 @@
   "name": "harness",
   "displayName": "NextEleven Harness — AI Coding Agent",
   "description": "NextEleven Harness — AI coding agent with Claude 4.x, GPT-5, Grok 4, and Qwen3 in VS Code",
-  "version": "0.1.2-beta",
+  "version": "1.3.0",
   "license": "UNLICENSED",
   "publisher": "harness-ai",
   "engines": {

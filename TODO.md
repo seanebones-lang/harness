@@ -8,21 +8,24 @@ Canonical user docs: [`README.md`](README.md). Developer detail: [`CLAUDE.md`](C
 
 Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest verdict: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md) · team: [`docs/TEAM_UPDATE_2026-08-03.md`](docs/TEAM_UPDATE_2026-08-03.md)
 
-**Ship branch:** `main` only.
+**Ship branch:** `main` only.  
+**Version:** **1.3.0** (public POC).  
+**License:** Proprietary NextEleven LLC — **not MIT / not open source**.
 
 ---
 
-## Public beta (current)
+## Public beta / POC (current)
 
-**Verdict:** **GO** for public beta. **Stable** blocked on REL-01 full OS matrix + prebuilt billing (W1.4–W1.5 📌).
+**Verdict:** **GO** for public POC visibility. **Stable** blocked on REL-01 full OS matrix + prebuilt billing (W1.4–W1.5 📌).
 
 | Gate | Status |
 |------|--------|
-| `cargo test --bin harness` | **354+** pass (Swarm-51 2026-08-09 baseline; remeasure on ship) |
+| Version | **1.3.0** |
+| `cargo test --bin harness` | **363** pass (2026-08-09 cont) |
 | `cargo test -p harness-tools` | **179** pass (Swarm-51) |
 | Clippy `-D warnings` (bin) | green on ship commits |
 | Coverage measured | **61.65%** lines — [`COVERAGE.md`](COVERAGE.md); CI ≥60% **met** |
-| License | Proprietary NextEleven LLC ([`LICENSE`](LICENSE)) |
+| License | Proprietary NextEleven LLC ([`LICENSE`](LICENSE)) — public = POC only |
 
 ### Tier 0 — Beta shipped
 
