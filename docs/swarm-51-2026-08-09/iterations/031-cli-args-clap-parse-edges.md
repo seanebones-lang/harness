@@ -23,7 +23,7 @@ New `#[cfg(test)] mod tests` using `Cli::try_parse_from` — no runtime, no file
 ## Gate
 
 ```bash
-cd "/Users/nexteleven/Desktop/harness rework"
+cd "<repo-root>"
 cargo test --bin harness args
 # 7 passed
 ```

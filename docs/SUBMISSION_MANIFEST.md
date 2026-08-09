@@ -1,57 +1,58 @@
 # Submission Manifest
 
-This document answers the competition's § 0 constraints. Fields marked
-`[TO BE FILLED BY TEAM]` must be completed before final submission.
+Historical competition / evaluation checklist. **License and gates below match the public `main` tree (2026-08-09).** Older MIT / 218-test language is retired.
 
-## § 0 Competition Constraints
+## § 0 Constraints (current product)
 
-### Artifact Format
-- **Required format**: Git repository URL (or archive of source + Docker)
-- **Submitted as**: Git repository on branch `claude/trusting-brahmagupta-5qnqc`
-- **Binary produced by**: `cargo build --profile release-lto` → `target/release-lto/harness`
-- **Docker image**: Built via `docker compose up` or `make docker-build`
+### Artifact format
+- **Format:** Git repository URL (source + Docker)
+- **Branch:** `main`
+- **Binary:** `cargo build --profile release-lto` → `target/release-lto/harness`
+- **Docker:** `docker compose up` or `make docker-build`
 
-### Size Limit
-- **Competition size limit**: No hard limit specified; repo <5MB source
-- **Estimated repo size (source)**: < 5 MB (no large binaries committed)
-- **Estimated Docker image size**: ~120 MB runtime layer (Debian bookworm-slim + runtime libs)
-- **Compiled binary size**: ~15–25 MB (stripped, LTO)
+### Size
+- Source tree stays lean (no large binaries committed)
+- Runtime image ~Debian slim + deps; binary ~15–25 MB stripped LTO
 
-### API Key Policy
-- **Competition API key policy**: Project must support offline/local-only demo (Ollama); cloud keys optional/env-driven
-- **Our stance**: The demo mode (`docker compose up`) uses local Ollama — **no API key required**.
-  Optional cloud providers (Anthropic, xAI, OpenAI) are activated by setting the corresponding
-  env var (`ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY`). All 218 tests pass without
-  any API key.
+### API key policy
+- Offline/local demo path: Ollama (no cloud key required)
+- Cloud providers optional via env: `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, AWS keys for Bedrock
+- Unit/integration gates pass **without** API keys
 
-### Reproducible Build Method
-- **Build command**: `cargo build --profile release-lto`
-- **Rust toolchain**: pinned in `rust-toolchain.toml` (stable channel, edition 2021)
-- **Dependency lock**: `Cargo.lock` is committed — builds are fully reproducible via
-  `cargo build --locked --profile release-lto`
-- **Docker reproducible build**: `docker build -t harness:latest .` uses the same locked deps
-- **CI**: GitHub Actions workflow runs on every push; see `.github/workflows/`
+### Reproducible build
+```bash
+cargo build --locked --profile release-lto
+docker build -t harness:latest .
+```
+- Toolchain: `rust-toolchain.toml`
+- Lockfile: `Cargo.lock` committed
+- CI: `.github/workflows/`
 
-### Paper / Technical Report Requirement
-- **Competition paper requirement**: Technical report required (docs/TECHNICAL_REPORT.md)
-- **Our report**: `docs/TECHNICAL_REPORT.md` — confirmed exists; PDF render available if required by venue
+### Paper / report
+- `docs/TECHNICAL_REPORT.md`
 
 ### License
-- **Required license**: MIT acceptable
-- **Our license**: MIT — see `LICENSE` file in repository root
+- **Proprietary — NextEleven LLC** ([`LICENSE`](../LICENSE))
+- **Not MIT / not open source**
+- Licensing contact: `legal@nexteleven.com`
 
-### Deadline
-- **Submission deadline**: 2026-05-25 (locked branch)
-- **Our submission date**: 2026-05-25
-- **Branch**: `claude/trusting-brahmagupta-5qnqc`
-- **Contact**: nextelevenstudios@gmail.com
+### Contact
+- Legal / licensing: `legal@nexteleven.com`
+- Product issues: GitHub Issues on this repository (no secrets in issues)
 
-## Quick Verification Checklist
+## Quick verification
 
-- [x] `cargo build --profile release-lto` succeeds from a clean checkout
-- [x] `cargo test --all` passes (218 tests, no API keys needed)
-- [x] `cargo clippy --all-targets --all-features -- -D warnings` clean
-- [x] `docker compose up` starts Ollama + Harness successfully
-- [x] Artifact format confirmed: Git + Docker
-- [x] Paper/report submitted via docs/TECHNICAL_REPORT.md
-- [x] Final submission portal entry completed (branch + manifest)
+- [x] `cargo build --profile release-lto`
+- [x] `cargo test --bin harness` (live count — see [`TODO.md`](../TODO.md) / [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md); **363** as of 2026-08-09 cont)
+- [x] `cargo test -p harness-tools` (**179** Swarm-51)
+- [x] `cargo clippy -p harness --bin harness -- -D warnings`
+- [x] Coverage measured **61.65%**; CI ≥60% **met** ([`COVERAGE.md`](../COVERAGE.md))
+- [x] License proprietary notice present
+- [ ] REL-01 full multi-OS live smoke (offline helpers exist)
+- [ ] Multi-arch prebuilts (billing 📌)
+
+## Do not commit
+
+- API keys, `.env`, `.envrc`, tokens, private keys
+- Local `~/.harness/` state, swarm DB, session DBs
+- Machine-absolute home paths in new notes (use `<repo-root>`)

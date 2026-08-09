@@ -37,3 +37,10 @@ Full detail: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) (v2, 2026-08-03).
 ## License
 
 **Proprietary — NextEleven LLC.** See [`LICENSE`](LICENSE). Unauthorized use or redistribution is prohibited.
+
+## Public repository hygiene
+
+- Never commit API keys, `.env` / `.envrc`, tokens, or private keys
+- Report secrets found in git history privately (rotate the key first)
+- Redact keys from bug reports and screenshots
+- Local state lives under `~/.harness/` (not the git tree)

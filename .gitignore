@@ -1,8 +1,22 @@
 # Rust
 /target
 
-# Environment files
+# Environment / secrets (never commit)
 .env
+.env.*
+.envrc
+*.pem
+*.key
+*.p12
+id_rsa*
+id_ed25519*
+*.keystore
+
+# Local runtime state
+.harness/
+*.db
+*.db-wal
+*.db-shm
 
 # macOS
 .DS_Store
@@ -18,12 +32,8 @@
 # Claude Code agent worktrees (runtime, not source)
 .claude/
 
-# Session data
-*.db
-*.db-wal
-*.db-shm
+# Local Obsidian / private notes (not product docs)
 .obsidian/
 Vault/
 IMPROVEMENTS_TODO.md
 IMPROVEMENTS_TODO.md.bak
-.envrc

@@ -1,7 +1,7 @@
 # Iteration 021 · tui · render compute_chat_items
 
 **Time:** 2026-08-09 swarm-51  
-**Root:** `/Users/nexteleven/Desktop/harness rework`  
+**Root:** `<repo-root>`  
 **Branch:** main · **no commit**
 
 ## Work

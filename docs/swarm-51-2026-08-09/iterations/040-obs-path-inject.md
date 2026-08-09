@@ -1,7 +1,7 @@
 # 040 · obs · path-inject helpers
 
 **Time:** 2026-08-09 swarm-51  
-**Root:** `/Users/nexteleven/Desktop/harness rework`  
+**Root:** `<repo-root>`  
 **Branch:** main · **NO COMMIT** (child lane)
 
 ## Work

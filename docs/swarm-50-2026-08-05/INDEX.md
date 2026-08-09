@@ -1,6 +1,6 @@
 # Swarm-50 — NextEleven Harness (2026-08-05)
 
-**Root:** `/Users/nexteleven/Desktop/harness rework`  
+**Root:** `<repo-root>`  
 **Branch:** `main` @ start `b29993f`  
 **Orchestrator:** Hermes + specialized `delegate_task` agents  
 **Goal:** 50 focused eng iterations on open residuals (skip 📌 billing + keys-only)  
@@ -34,7 +34,7 @@
 
 ## Rules
 
-1. Quote path: `cd "/Users/nexteleven/Desktop/harness rework"`
+1. Quote path: `cd "<repo-root>"`
 2. Children **do not commit**
 3. One cargo test filter per invocation
 4. Skip 📌 billing + live API keys

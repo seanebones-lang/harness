@@ -19,7 +19,7 @@ Expand pure unit tests in existing `mod tests` for MCP path/allowlist helpers.
 ## Gate
 
 ```bash
-cd "/Users/nexteleven/Desktop/harness rework"
+cd "<repo-root>"
 cargo test --bin harness lightweight
 # 6 passed (was 2)
 ```

@@ -1,7 +1,7 @@
 # Iteration 016 · quality
 
 **Time:** 2026-08-05 swarm-50  
-**Root:** `/Users/nexteleven/Desktop/harness rework`  
+**Root:** `<repo-root>`  
 **Branch:** main
 
 ## Work

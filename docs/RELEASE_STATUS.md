@@ -19,6 +19,21 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ---
 
+**2026-08-09 — Public repo hardening (docs + scrub)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** (visibility **PUBLIC**) |
+| Secret scan | No real API keys / private keys in **tracked** tree or recent objects; local `.envrc` gitignored + never committed |
+| Scrub | Machine home paths → `<repo-root>` in swarm notes / BENCHMARKS |
+| License labels | Dockerfile, Homebrew, VS Code ext, CONTRIBUTING, SUBMISSION\* → proprietary / UNLICENSED (not MIT) |
+| Docs honesty | README gates 363 / 61.65%; TEAM_UPDATE snapshot header; CHANGELOG Unreleased |
+| Residual | `CLAUDE.md` edit blocked by agent protection this session — still shows stale 116/44.67% until maintainer patch |
+
+**Go / no-go:** **GO** public beta. Rotate any local keys that lived only in untracked `.envrc` as defense-in-depth.
+
+---
+
 **2026-08-09 — Swarm-51 residual coverage climb (specialized agents ×50 + orch)**
 
 | Item | Result |

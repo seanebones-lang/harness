@@ -186,7 +186,7 @@ max_concurrency = 4
 # registry_url = ""    # optional remote registry hook (see docs/WAVE7_SCALE.md)
 ```
 
-TUI: **F2** or `/swarm` toggles the swarm panel; Enter peeks a task result into Events.
+TUI: **F2** or `/swarm` dumps swarm registry lines into the single-panel transcript (Hermes-style layout; no side panel).
 
 ---
 
@@ -211,15 +211,15 @@ TUI: **F2** or `/swarm` toggles the swarm panel; Enter peeks a task result into 
 ```bash
 cargo build
 cargo build --profile release-lto
-cargo test --bin harness          # 116 tests (no API keys)
-cargo test -p harness-tools
+cargo test --bin harness          # 363 tests (2026-08-09 cont; no API keys)
+cargo test -p harness-tools       # 179 tests (Swarm-51)
 cargo test -p harness-provider-router
 cargo clippy -p harness --bin harness -- -D warnings
 cargo fmt --all -- --check
 
-# Coverage SoT (do not claim CI 60% until measured green)
+# Coverage SoT (badge = measured; CI fail-under 60% met)
 cargo llvm-cov --workspace --all-features --summary-only
-# Last measured: **57.13%** lines (2026-08-07 cont6) — see COVERAGE.md
+# Last measured: **61.65%** lines (2026-08-09 Swarm-51) — see COVERAGE.md
 
 # Offline microbench pack
 ./target/debug/harness bench
@@ -229,7 +229,6 @@ cargo bench                       # criterion (memory search, JSON-RPC)
 bash scripts/smoke_rel01.sh
 # bash scripts/smoke_linux_docker.sh   # needs Docker
 ```
-
 Root package is a **binary** — use `cargo test --bin harness <filter>`, not `--lib`. One test filter only per invocation.
 
 ---
@@ -276,7 +275,7 @@ Developer narrative: [`CLAUDE.md`](CLAUDE.md) · architecture: [`ARCHITECTURE.md
 |------|--------|
 | Public beta | **GO** |
 | Stable 0.2.0 | Blocked — REL-01 full OS smoke + prebuilt matrix |
-| Coverage CI gate | Target **60%**; measured **~62%** (61.65% llvm-cov 2026-08-09 Swarm-51) |
+| Coverage CI gate | **Met** — measured **61.65%** lines (llvm-cov 2026-08-09 Swarm-51); badge ~62% |
 | Billing / full Release matrix | 📌 pinned (maintainer) |
 | Branch | **`main`** |
 

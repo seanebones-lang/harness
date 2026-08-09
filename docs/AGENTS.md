@@ -1,7 +1,7 @@
 # Specialized Agents — harness docs + eng
 
 **Orchestrator:** Hermes  
-**Project:** `/Users/nexteleven/Desktop/harness rework` (or clone root)  
+**Project:** `<repo-root>` (or clone root)  
 **Backlog:** `docs/CTO_BACKLOG.md`  
 **Branch:** **`main`**  
 **Concurrency:** max 3 implementers

@@ -10,7 +10,7 @@
    Compiling idna v1.1.0
    Compiling tantivy-stacker v0.7.0
    Compiling memoffset v0.9.1
-   Compiling harness-provider-core v0.1.2-beta (/Users/nexteleven/harness/crates/harness-provider-core)
+   Compiling harness-provider-core v0.1.2-beta (<repo-root>/crates/harness-provider-core)
    Compiling zstd v0.13.3
    Compiling h2 v0.4.13
    Compiling url v2.5.8
@@ -69,7 +69,7 @@
    Compiling dashmap v6.1.0
    Compiling fluent-bundle v0.15.3
    Compiling keyring-core v1.0.0
-   Compiling harness-tools v0.1.2-beta (/Users/nexteleven/harness/crates/harness-tools)
+   Compiling harness-tools v0.1.2-beta (<repo-root>/crates/harness-tools)
    Compiling mimalloc v0.1.50
    Compiling tokio-tungstenite v0.24.0
    Compiling mac-notification-sys v0.6.12
@@ -78,7 +78,7 @@
    Compiling i18n-embed v0.15.4
    Compiling signal-hook-mio v0.2.5
    Compiling fluent v0.16.1
-   Compiling harness-provider-openai v0.1.2-beta (/Users/nexteleven/harness/crates/harness-provider-openai)
+   Compiling harness-provider-openai v0.1.2-beta (<repo-root>/crates/harness-provider-openai)
    Compiling itertools v0.13.0
    Compiling pin-project-internal v1.1.11
    Compiling winnow v1.0.2
@@ -87,14 +87,14 @@
    Compiling image v0.25.10
    Compiling toml_parser v1.1.2+spec-1.1.0
    Compiling pin-project v1.1.11
-   Compiling harness-provider-mlx v0.1.2-beta (/Users/nexteleven/harness/crates/harness-provider-mlx)
+   Compiling harness-provider-mlx v0.1.2-beta (<repo-root>/crates/harness-provider-mlx)
    Compiling i18n-embed-fl v0.9.4
    Compiling crossterm v0.28.1
    Compiling rpassword v7.5.1
    Compiling apple-native-keyring-store v1.0.0
-   Compiling harness-provider-xai v0.1.2-beta (/Users/nexteleven/harness/crates/harness-provider-xai)
-   Compiling harness-provider-anthropic v0.1.2-beta (/Users/nexteleven/harness/crates/harness-provider-anthropic)
-   Compiling harness-provider-ollama v0.1.2-beta (/Users/nexteleven/harness/crates/harness-provider-ollama)
+   Compiling harness-provider-xai v0.1.2-beta (<repo-root>/crates/harness-provider-xai)
+   Compiling harness-provider-anthropic v0.1.2-beta (<repo-root>/crates/harness-provider-anthropic)
+   Compiling harness-provider-ollama v0.1.2-beta (<repo-root>/crates/harness-provider-ollama)
    Compiling axum-core v0.4.5
    Compiling filetime v0.2.27
    Compiling age v0.11.3
@@ -102,17 +102,17 @@
    Compiling toml_edit v0.25.11+spec-1.1.0
    Compiling ratatui v0.28.1
    Compiling rusqlite v0.31.0
-   Compiling harness-memory v0.1.2-beta (/Users/nexteleven/harness/crates/harness-memory)
+   Compiling harness-memory v0.1.2-beta (<repo-root>/crates/harness-memory)
    Compiling tar v0.4.45
    Compiling turso_sync_engine v0.6.0-pre.24
-   Compiling harness-provider-router v0.1.2-beta (/Users/nexteleven/harness/crates/harness-provider-router)
+   Compiling harness-provider-router v0.1.2-beta (<repo-root>/crates/harness-provider-router)
    Compiling notify-rust v4.16.0
    Compiling arboard v3.6.1
    Compiling toml v0.8.23
-   Compiling harness-lsp v0.1.0 (/Users/nexteleven/harness/crates/harness-lsp)
-   Compiling harness-mcp v0.1.2-beta (/Users/nexteleven/harness/crates/harness-mcp)
-   Compiling harness-browser v0.1.2-beta (/Users/nexteleven/harness/crates/harness-browser)
-   Compiling harness-voice v0.1.2-beta (/Users/nexteleven/harness/crates/harness-voice)
+   Compiling harness-lsp v0.1.0 (<repo-root>/crates/harness-lsp)
+   Compiling harness-mcp v0.1.2-beta (<repo-root>/crates/harness-mcp)
+   Compiling harness-browser v0.1.2-beta (<repo-root>/crates/harness-browser)
+   Compiling harness-voice v0.1.2-beta (<repo-root>/crates/harness-voice)
    Compiling clap_complete v4.6.3
    Compiling lru v0.18.0
    Compiling turso_sdk_kit v0.6.0-pre.24
@@ -120,7 +120,7 @@
    Compiling turso v0.6.0-pre.24
    Compiling db-keystore v0.4.2-pre.2
    Compiling keyring v4.0.0
-   Compiling harness v0.1.2-beta (/Users/nexteleven/harness)
+   Compiling harness v0.1.2-beta (<repo-root>)
     Finished `bench` profile [optimized] target(s) in 1m 46s
      Running unittests src/main.rs (target/release/deps/harness-14f127809fed58c6)
 

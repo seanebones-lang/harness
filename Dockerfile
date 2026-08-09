@@ -1,5 +1,5 @@
 LABEL version="0.1.2-beta"
-LABEL license="MIT"
+LABEL license="LicenseRef-NextEleven-Proprietary"
 LABEL description="Harness — Multi-Provider Rust Coding Agent"
 
 # ── Stage 1: builder ────────────────────────────────────────────────────────
@@ -28,7 +28,7 @@ RUN cargo build --release
 FROM debian:bookworm-slim AS runtime
 
 LABEL version="0.1.2-beta"
-LABEL license="MIT"
+LABEL license="LicenseRef-NextEleven-Proprietary"
 LABEL description="Harness — Multi-Provider Rust Coding Agent"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

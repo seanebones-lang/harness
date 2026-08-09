@@ -1,18 +1,21 @@
-Competition Submission
-======================
+Competition / evaluation note
+=============================
 Project:    NextEleven Harness — Multi-Provider Rust Coding Agent
-Team:       Harness Core Team
-Date:       2026-05-25
-Branch:     claude/trusting-brahmagupta-5qnqc
+Org:        NextEleven LLC
+Branch:     main
+License:    Proprietary NextEleven LLC (see LICENSE) — NOT MIT / NOT open source
 
-NextEleven Harness is a fast, low-memory, multi-agent coding assistant written in Rust by NextEleven LLC.
-It supports Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, and local
-Ollama models. It features MCP 2025-03-26 protocol support, age-encrypted
-cross-machine sync, adaptive thinking budgets, ambient memory consolidation,
-a parallel sub-agent swarm, and a plan-mode diff review TUI.
+NextEleven Harness is a fast, low-memory, multi-agent coding assistant written in Rust.
+Providers: Anthropic, xAI, OpenAI, Mistral, Gemini, Bedrock, Ollama, MLX.
+Features: MCP, age-encrypted sync, ambient memory, parallel swarm, plan-mode TUI,
+config-gated database/notebook/docker tools, offline harness bench pack.
 
 Build:   cargo build --profile release-lto
-Test:    cargo test --all
-Demo:    docker compose up   (requires Docker; uses Ollama, no API key needed)
-Docs:    cargo doc --workspace --open
+Test:    cargo test --bin harness
+Demo:    docker compose up   (Ollama path; no API key required)
+Docs:    README.md · docs/ · CLAUDE.md
 Report:  docs/TECHNICAL_REPORT.md
+Status:  Public beta GO · coverage CI 60% met (see COVERAGE.md) · stable blocked on REL-01
+
+Contact: legal@nexteleven.com (licensing)
+Do not put API keys in issues, PRs, or commits.

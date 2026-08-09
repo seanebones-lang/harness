@@ -1,7 +1,7 @@
 # Iteration 020 · tui · render wrap_text
 
 **Time:** 2026-08-09 swarm-51  
-**Root:** `/Users/nexteleven/Desktop/harness rework`  
+**Root:** `<repo-root>`  
 **Branch:** main · **no commit**
 
 ## Work

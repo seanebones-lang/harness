@@ -1,6 +1,6 @@
 # Swarm-51 — NextEleven Harness (2026-08-09)
 
-**Root:** `/Users/nexteleven/Desktop/harness rework`  
+**Root:** `<repo-root>`  
 **Branch:** `main` @ start `cd9c5bd`  
 **Orchestrator:** Hermes + specialized `delegate_task` agents  
 **Durable swarm id:** `swe184ad90`  
@@ -34,7 +34,7 @@
 
 ## Rules
 
-1. Quote path: `cd "/Users/nexteleven/Desktop/harness rework"`
+1. Quote path: `cd "<repo-root>"`
 2. Children **do not commit**
 3. One cargo test filter per invocation
 4. Skip 📌 billing + live API keys

@@ -1,7 +1,7 @@
 # Iteration 023 · tui · render input_bar_title
 
 **Time:** 2026-08-09 swarm-51  
-**Root:** `/Users/nexteleven/Desktop/harness rework`  
+**Root:** `<repo-root>`  
 **Branch:** main · **no commit**
 
 ## Work

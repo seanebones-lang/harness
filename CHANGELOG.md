@@ -12,12 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `harness bench` offline pack; swarm worker allowlist + wall timeout; model on swarm JSON
 - `src/agent/*` and `src/server/*` module splits
 - Threat model v2; full README / docs refresh (2026-08-03)
+- Swarm-51 residual coverage climb past 60% CI gate (2026-08-09)
+- Trust path-inject + wiring pure edges cont (2026-08-09)
 
 ### Changed
 - Ship branch **main** only (`dev` folded and removed)
 - LICENSE: proprietary NextEleven LLC notice
-- Honest coverage messaging (~45% measured; 60% CI target)
-
+- Honest coverage messaging — measured **61.65%** (Swarm-51); CI ≥60% **met**
+- Public-repo hardening: license label fixes, path scrub, docs gate honesty (2026-08-09)
+- Bin tests **363**; tools package **179** (remeasure on ship days)
 ## [0.1.2-beta] - 2026-05-25
 
 ### Added

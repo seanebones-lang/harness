@@ -161,7 +161,7 @@ Open an issue with:
 
 ## License
 
-By contributing you agree your code is released under the project's [MIT License](LICENSE).
+By contributing, you agree that your contributions are assigned to **NextEleven LLC** and are governed by the project's proprietary [`LICENSE`](LICENSE). This is **not** an open-source / MIT project.
 
 ---
 

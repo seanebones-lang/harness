@@ -5,7 +5,7 @@
 
 ## Commands
 ```bash
-cd "/Users/nexteleven/Desktop/harness rework"
+cd "<repo-root>"
 cargo test --bin harness observability
 cargo test --bin harness projects
 cargo test --bin harness diff_review
