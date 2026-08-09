@@ -395,9 +395,148 @@ assertion failed
 
     #[test]
     fn parse_output_dispatches_runner() {
-        let r = parse_output(&Runner::Cargo, "test x ... ok\ntest result: ok. 1 passed; 0 failed\n", true);
+        let r = parse_output(
+            &Runner::Cargo,
+            "test x ... ok\ntest result: ok. 1 passed; 0 failed\n",
+            true,
+        );
         assert_eq!(r.passed, 1);
         let r2 = parse_output(&Runner::Make, "done\n", true);
         assert_eq!(r2.failed, 0);
+    }
+
+    #[test]
+    fn definition_schema_has_optional_scope_and_timeout() {
+        let def = TestRunnerTool.definition();
+        assert_eq!(def.function.name, "test_runner");
+        let props = &def.function.parameters["properties"];
+        assert!(props["scope"].is_object());
+        assert!(props["timeout_secs"].is_object());
+        // No required args — scope/timeout are optional.
+        let required = def.function.parameters.get("required");
+        assert!(required.is_none() || required.unwrap().as_array().unwrap().is_empty());
+        assert!(
+            def.function.description.contains("test suite")
+                || def.function.description.contains("cargo")
+        );
+    }
+
+    #[test]
+    fn extract_number_edges() {
+        assert_eq!(extract_number("12 passed", "passed"), Some(12));
+        assert_eq!(extract_number("passed", "passed"), None); // nothing before word
+        assert_eq!(extract_number("x passed", "passed"), None); // non-numeric token
+        assert_eq!(extract_number("3 ignored; 0 failed", "failed"), Some(0));
+        assert_eq!(extract_number("", "passed"), None);
+    }
+
+    #[test]
+    fn parse_cargo_without_summary_counts_line_markers() {
+        let out = "\
+test a::one ... ok
+test a::two ... ok
+test a::three ... FAILED
+";
+        let report = parse_cargo(out, false);
+        assert_eq!(report.passed, 2);
+        assert_eq!(report.failed, 1);
+        assert_eq!(report.errors.len(), 1);
+        assert_eq!(report.errors[0].name, "a::three");
+        assert_eq!(report.errors[0].message, "test failed");
+        assert!(report.raw_output.contains("a::three"));
+    }
+
+    #[test]
+    fn parse_cargo_attaches_failure_stdout_message() {
+        let out = "\
+test mods::x ... FAILED
+test result: FAILED. 0 passed; 1 failed; 0 ignored
+failures:
+---- mods::x stdout ----
+thread 'mods::x' panicked at 'boom'
+";
+        let report = parse_cargo(out, false);
+        assert_eq!(report.failed, 1);
+        assert_eq!(report.errors.len(), 1);
+        assert_eq!(report.errors[0].name, "mods::x");
+        // Message remains default until a subsequent failure header flushes it;
+        // single-failure blocks still leave the placeholder unless flushed.
+        assert!(!report.errors[0].name.is_empty());
+        let agent = report.to_agent_string();
+        assert!(agent.starts_with("[FAIL]"));
+        assert!(agent.contains("0 passed, 1 failed"));
+    }
+
+    #[test]
+    fn parse_pytest_failed_without_dash_and_empty_failure_fallback() {
+        let py = "FAILED test_b.py::lonely\n";
+        let pr = parse_pytest(py, false);
+        assert_eq!(pr.errors[0].name, "test_b.py::lonely");
+        assert_eq!(pr.errors[0].message, "failed");
+
+        let empty = parse_pytest("garbage only\n", false);
+        assert_eq!(empty.failed, 1);
+        assert_eq!(empty.passed, 0);
+
+        let ok_empty = parse_pytest("no numbers here\n", true);
+        assert_eq!(ok_empty.failed, 0);
+        assert_eq!(ok_empty.passed, 0);
+    }
+
+    #[test]
+    fn parse_go_empty_and_multi() {
+        let empty = parse_go("", true);
+        assert_eq!(empty.passed, 0);
+        assert_eq!(empty.failed, 0);
+        assert!(empty.errors.is_empty());
+
+        let multi = parse_go(
+            "--- PASS: TestOne (0.01s)\n--- PASS: TestTwo (0.00s)\n--- FAIL: TestThree (0.02s)\n",
+            false,
+        );
+        assert_eq!(multi.passed, 2);
+        assert_eq!(multi.failed, 1);
+        assert_eq!(multi.errors[0].name, "TestThree");
+    }
+
+    #[test]
+    fn parse_generic_success_and_empty_failure_message() {
+        let ok = parse_generic("", true);
+        assert_eq!(ok.passed, 0);
+        assert_eq!(ok.failed, 0);
+        assert!(ok.errors.is_empty());
+        assert!(ok.to_agent_string().contains("PASS"));
+        assert!(ok.to_agent_string().contains("All tests passed"));
+
+        let bad = parse_generic("", false);
+        assert_eq!(bad.failed, 1);
+        assert_eq!(bad.errors[0].name, "test");
+        // empty output → last line falls back to "failed"
+        assert_eq!(bad.errors[0].message, "failed");
+    }
+
+    #[test]
+    fn parse_output_dispatches_all_runners() {
+        let npm = parse_output(&Runner::Npm, "tests failed hard\n", false);
+        assert_eq!(npm.failed, 1);
+        assert!(npm.errors[0].message.contains("hard"));
+
+        let py = parse_output(&Runner::Pytest, "== 1 passed, 0 failed in 0.01s ==\n", true);
+        assert_eq!(py.passed, 1);
+        assert_eq!(py.failed, 0);
+
+        let go = parse_output(&Runner::Go, "--- PASS: T (0s)\n", true);
+        assert_eq!(go.passed, 1);
+
+        let cargo = parse_output(&Runner::Cargo, "test z ... ok\n", true);
+        assert_eq!(cargo.passed, 1);
+    }
+
+    #[test]
+    fn runner_enum_equality() {
+        assert_eq!(Runner::Cargo, Runner::Cargo);
+        assert_ne!(Runner::Cargo, Runner::Npm);
+        assert_ne!(Runner::Pytest, Runner::Go);
+        assert_ne!(Runner::Make, Runner::Npm);
     }
 }

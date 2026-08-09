@@ -306,4 +306,85 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("Unknown gh action"));
     }
+
+    #[test]
+    fn definition_requires_action_and_lists_enums() {
+        let def = GhTool.definition();
+        let params = &def.function.parameters;
+        let required = params["required"].as_array().expect("required");
+        assert!(required.iter().any(|v| v.as_str() == Some("action")));
+        let actions = params["properties"]["action"]["enum"]
+            .as_array()
+            .expect("action enum");
+        for expected in [
+            "pr_list",
+            "pr_view",
+            "pr_diff",
+            "pr_checks",
+            "pr_comment",
+            "pr_create",
+            "issue_list",
+            "issue_view",
+            "run_view",
+            "run_logs",
+        ] {
+            assert!(
+                actions.iter().any(|v| v.as_str() == Some(expected)),
+                "missing enum action {expected}"
+            );
+        }
+        assert!(def.function.description.contains("GitHub CLI"));
+    }
+
+    #[test]
+    fn require_number_formats_zero_and_large() {
+        assert_eq!(require_number(Some(0)).unwrap(), "0");
+        assert_eq!(
+            require_number(Some(u64::MAX)).unwrap(),
+            u64::MAX.to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn number_required_actions_reject_missing_number() {
+        for action in ["pr_diff", "pr_checks", "issue_view", "run_view", "run_logs"] {
+            let err = GhTool.execute(json!({"action": action})).await.unwrap_err();
+            assert!(
+                err.to_string().contains("number"),
+                "action {action} should require number, got: {err}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pr_comment_rejects_whitespace_only_message_and_body() {
+        let err = GhTool
+            .execute(json!({
+                "action": "pr_comment",
+                "number": 7,
+                "message": "   \t  "
+            }))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("message"));
+
+        let err_body = GhTool
+            .execute(json!({
+                "action": "pr_comment",
+                "number": 7,
+                "body": "\n\n"
+            }))
+            .await
+            .unwrap_err();
+        assert!(err_body.to_string().contains("message"));
+    }
+
+    #[tokio::test]
+    async fn pr_create_rejects_whitespace_only_title() {
+        let err = GhTool
+            .execute(json!({"action": "pr_create", "title": "  \t "}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("title"));
+    }
 }

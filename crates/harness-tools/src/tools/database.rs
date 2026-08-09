@@ -119,7 +119,14 @@ impl Tool for DatabaseTool {
         let action = action.to_string();
 
         tokio::task::spawn_blocking(move || {
-            run_database_action(&action, &db_path, sql.as_deref(), table.as_deref(), readonly, max_rows)
+            run_database_action(
+                &action,
+                &db_path,
+                sql.as_deref(),
+                table.as_deref(),
+                readonly,
+                max_rows,
+            )
         })
         .await
         .map_err(|e| anyhow::anyhow!("database task join error: {e}"))?
@@ -175,7 +182,12 @@ fn run_database_action(
                 anyhow::bail!(
                     "readonly mode: only SELECT / WITH / PRAGMA / EXPLAIN statements are allowed \
                      (got: {})",
-                    sql.lines().next().unwrap_or(sql).chars().take(80).collect::<String>()
+                    sql.lines()
+                        .next()
+                        .unwrap_or(sql)
+                        .chars()
+                        .take(80)
+                        .collect::<String>()
                 );
             }
             execute_query(&conn, sql, max_rows)
@@ -210,7 +222,11 @@ fn strip_sql_leading(sql: &str) -> &str {
     let mut s = sql.trim_start();
     loop {
         if s.starts_with("--") {
-            s = s.split_once('\n').map(|(_, rest)| rest).unwrap_or("").trim_start();
+            s = s
+                .split_once('\n')
+                .map(|(_, rest)| rest)
+                .unwrap_or("")
+                .trim_start();
             continue;
         }
         if s.starts_with("/*") {
@@ -227,11 +243,7 @@ fn strip_sql_leading(sql: &str) -> &str {
 }
 
 fn validate_ident(name: &str) -> anyhow::Result<()> {
-    if name.is_empty()
-        || !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
-    {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         anyhow::bail!("invalid identifier: {name:?} (use letters, digits, underscore only)");
     }
     Ok(())
@@ -254,10 +266,7 @@ fn execute_query(conn: &Connection, sql: &str, max_rows: usize) -> anyhow::Resul
         let mut rows = stmt
             .query([])
             .map_err(|e| anyhow::anyhow!("query failed: {e}"))?;
-        while let Some(row) = rows
-            .next()
-            .map_err(|e| anyhow::anyhow!("row error: {e}"))?
-        {
+        while let Some(row) = rows.next().map_err(|e| anyhow::anyhow!("row error: {e}"))? {
             if rows_out.len() >= max_rows {
                 truncated = true;
                 break;
@@ -356,7 +365,9 @@ mod tests {
     #[test]
     fn readonly_sql_allows_select_with_pragma_explain() {
         assert!(is_readonly_sql("SELECT 1"));
-        assert!(is_readonly_sql("  with cte as (select 1) select * from cte"));
+        assert!(is_readonly_sql(
+            "  with cte as (select 1) select * from cte"
+        ));
         assert!(is_readonly_sql("PRAGMA table_info(items)"));
         assert!(is_readonly_sql("EXPLAIN QUERY PLAN SELECT 1"));
         assert!(is_readonly_sql("-- comment\nSELECT 1"));

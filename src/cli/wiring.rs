@@ -47,9 +47,7 @@ pub(crate) fn confirm_policy_for_gate(
 /// Models allowed to register computer-use when config enables it.
 pub(crate) fn computer_use_model_supported(model: &str) -> bool {
     let m = model.to_lowercase();
-    m.contains("claude-opus-4-7")
-        || m.contains("claude-opus-4")
-        || m.contains("claude-sonnet-4")
+    m.contains("claude-opus-4-7") || m.contains("claude-opus-4") || m.contains("claude-sonnet-4")
 }
 
 /// LSP tools only when cwd looks like a supported project tree.
@@ -305,18 +303,18 @@ pub async fn build_tools_inner(
 
     // Sub-agent runner: slaves use [swarm].worker_model when set (else orchestrator).
     let worker_spec = cfg.swarm.effective_worker_model(&model);
-    let (sub_provider, sub_model) = match crate::provider_build::build_worker_provider(cfg, &worker_spec)
-    {
-        Ok(pair) => pair,
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                worker = %worker_spec,
-                "worker provider build failed — spawn_agent falls back to orchestrator"
-            );
-            (provider.clone(), model.clone())
-        }
-    };
+    let (sub_provider, sub_model) =
+        match crate::provider_build::build_worker_provider(cfg, &worker_spec) {
+            Ok(pair) => pair,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    worker = %worker_spec,
+                    "worker provider build failed — spawn_agent falls back to orchestrator"
+                );
+                (provider.clone(), model.clone())
+            }
+        };
     let sub_shell_cfg = shell_cfg.clone();
     let sub_workspace = workspace.clone();
     let sub_confirm = confirm_gate.clone();
@@ -657,14 +655,8 @@ mod tests {
 
     #[test]
     fn confirm_policy_for_gate_matrix() {
-        assert_eq!(
-            confirm_policy_for_gate(false, "smart"),
-            ConfirmPolicy::Off
-        );
-        assert_eq!(
-            confirm_policy_for_gate(true, "smart"),
-            ConfirmPolicy::Smart
-        );
+        assert_eq!(confirm_policy_for_gate(false, "smart"), ConfirmPolicy::Off);
+        assert_eq!(confirm_policy_for_gate(true, "smart"), ConfirmPolicy::Smart);
         assert_eq!(confirm_policy_for_gate(true, "plan"), ConfirmPolicy::Plan);
         assert_eq!(confirm_policy_for_gate(true, "auto"), ConfirmPolicy::Plan);
         assert_eq!(confirm_policy_for_gate(true, ""), ConfirmPolicy::Plan);

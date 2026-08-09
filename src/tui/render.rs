@@ -53,7 +53,10 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
 /// Estimate list rows for transcript + optional streaming/busy spinner line.
 fn compute_chat_items(state: &AppState) -> usize {
     compute_chat_items_from(
-        state.chat.iter().map(|m| (m.role.as_str(), m.content.as_str())),
+        state
+            .chat
+            .iter()
+            .map(|m| (m.role.as_str(), m.content.as_str())),
         &state.streaming,
         state.busy,
     )
@@ -279,11 +282,7 @@ fn draw_chat(
             .tool_start
             .map(|t| format!(" {:.0}s", t.elapsed().as_secs_f32()))
             .unwrap_or_default();
-        format!(
-            " NextEleven Harness · {}{} ",
-            state.spinner_char(),
-            elapsed
-        )
+        format!(" NextEleven Harness · {}{} ", state.spinner_char(), elapsed)
     } else {
         format!(
             " NextEleven Harness · {} turns · {} ",
@@ -1082,14 +1081,99 @@ mod tests {
     #[test]
     fn wrap_text_width_and_wrapping() {
         assert_eq!(wrap_text("hello", 0), vec!["hello".to_string()]);
-        assert_eq!(wrap_text("hello world", 20), vec!["hello world".to_string()]);
+        assert_eq!(
+            wrap_text("hello world", 20),
+            vec!["hello world".to_string()]
+        );
         assert_eq!(
             wrap_text("one two three four", 8),
-            vec!["one two".to_string(), "three".to_string(), "four".to_string()]
+            vec![
+                "one two".to_string(),
+                "three".to_string(),
+                "four".to_string()
+            ]
         );
         assert_eq!(
             wrap_text("line1\nline2", 80),
             vec!["line1".to_string(), "line2".to_string()]
+        );
+    }
+
+    #[test]
+    fn wrap_text_empty_blank_and_long_word() {
+        assert!(wrap_text("", 10).is_empty());
+        // blank line is shorter than width → kept as empty string row
+        assert_eq!(wrap_text("\n", 10), vec!["".to_string()]);
+        assert_eq!(
+            wrap_text("a\n\nb", 10),
+            vec!["a".to_string(), "".to_string(), "b".to_string()]
+        );
+        // single oversize word is not split mid-token
+        assert_eq!(
+            wrap_text("supercalifragilistic", 5),
+            vec!["supercalifragilistic".to_string()]
+        );
+        // exact-fit single line
+        assert_eq!(wrap_text("abcd", 4), vec!["abcd".to_string()]);
+        // first word alone, then wrap remainder
+        assert_eq!(
+            wrap_text("hi there friend", 5),
+            vec!["hi".to_string(), "there".to_string(), "friend".to_string()]
+        );
+    }
+
+    #[test]
+    fn compute_chat_items_empty_content_and_multiline_event() {
+        let mut st = empty_state();
+        st.chat.push(super::super::ChatMessage {
+            role: "user".into(),
+            content: String::new(), // max(1) content row
+            ts: Instant::now(),
+        });
+        // 1 header + 1 empty-content + 1 blank
+        assert_eq!(compute_chat_items(&st), 3);
+
+        st.chat.clear();
+        st.chat.push(super::super::ChatMessage {
+            role: "event".into(),
+            content: "a\nb\nc".into(),
+            ts: Instant::now(),
+        });
+        assert_eq!(compute_chat_items(&st), 3);
+
+        st.chat.push(super::super::ChatMessage {
+            role: "event".into(),
+            content: String::new(),
+            ts: Instant::now(),
+        });
+        // prev 3 + max(0,1) = 4
+        assert_eq!(compute_chat_items(&st), 4);
+    }
+
+    #[test]
+    fn compute_chat_items_streaming_empty_with_busy_and_both() {
+        let mut st = empty_state();
+        st.busy = true;
+        st.streaming.clear();
+        // header + max(0 lines, 1 busy) = 2
+        assert_eq!(compute_chat_items(&st), 2);
+
+        st.streaming = "x".into();
+        // header + 1 line = 2 (busy does not double-count when streaming non-empty)
+        assert_eq!(compute_chat_items(&st), 2);
+
+        st.busy = false;
+        st.streaming = "a\n\nb".into(); // 3 lines including blank
+        assert_eq!(compute_chat_items(&st), 1 + 3);
+    }
+
+    #[test]
+    fn compute_chat_items_from_busy_without_stream() {
+        assert_eq!(compute_chat_items_from([], "", true), 2);
+        assert_eq!(compute_chat_items_from([("event", "")], "", false), 1);
+        assert_eq!(
+            compute_chat_items_from([("assistant", "")], "s\nt", true),
+            1 + 1 + 1 + 1 + 2
         );
     }
 
@@ -1101,6 +1185,20 @@ mod tests {
         assert_eq!(prefixed.spans[0].content, "│ ");
         assert_eq!(prefixed.spans[1].content, "abc");
         assert_eq!(prefixed.spans[2].content, "def");
+    }
+
+    #[test]
+    fn prefix_line_empty_line_still_gets_prefix() {
+        // Line::from("") has no spans; prefix is the sole span
+        let prefixed = prefix_line(Line::from(""), ">>");
+        assert_eq!(prefixed.spans.len(), 1);
+        assert_eq!(prefixed.spans[0].content, ">>");
+
+        // empty-content span is preserved after prefix
+        let with_empty = prefix_line(Line::from(Span::raw("")), ">>");
+        assert_eq!(with_empty.spans.len(), 2);
+        assert_eq!(with_empty.spans[0].content, ">>");
+        assert_eq!(with_empty.spans[1].content, "");
     }
 
     #[test]
@@ -1116,6 +1214,36 @@ mod tests {
     }
 
     #[test]
+    fn event_line_kind_edge_prefixes() {
+        assert_eq!(event_line_kind(""), EventLineKind::Default);
+        assert_eq!(event_line_kind("→"), EventLineKind::ToolIn);
+        assert_eq!(event_line_kind("←"), EventLineKind::ToolOut);
+        assert_eq!(event_line_kind("⚠"), EventLineKind::Error);
+        // prefix match is starts_with, not whole-token
+        assert_eq!(event_line_kind("errors galore"), EventLineKind::Error);
+        assert_eq!(event_line_kind("memory"), EventLineKind::Dim);
+        assert_eq!(event_line_kind("cache"), EventLineKind::Dim);
+        assert_eq!(event_line_kind("swarm"), EventLineKind::Swarm);
+        // mid-string markers do not count
+        assert_eq!(event_line_kind("x→y"), EventLineKind::Default);
+        assert_eq!(event_line_kind(" Error"), EventLineKind::Default);
+        assert_eq!(event_line_kind("SWARM upper"), EventLineKind::Default);
+        // tool-in wins over later keywords if present first
+        assert_eq!(event_line_kind("→ error later"), EventLineKind::ToolIn);
+    }
+
+    #[test]
+    fn event_line_color_maps_kind_via_theme() {
+        let theme = Theme::default();
+        assert_eq!(event_line_color("→ in", &theme), theme.tool_in_color);
+        assert_eq!(event_line_color("← out", &theme), theme.tool_out_color);
+        assert_eq!(event_line_color("error x", &theme), theme.error_color);
+        assert_eq!(event_line_color("memory x", &theme), theme.dim_color);
+        assert_eq!(event_line_color("swarm x", &theme), Color::LightCyan);
+        assert_eq!(event_line_color("plain", &theme), theme.border_color);
+    }
+
+    #[test]
     fn input_bar_title_modes() {
         assert!(input_bar_title(true, "src/m", false, "", None, 0).contains("Tab→src/m"));
         assert_eq!(
@@ -1127,6 +1255,29 @@ mod tests {
     }
 
     #[test]
+    fn input_bar_title_precedence_and_history_index() {
+        // tab completions beat search + history
+        let tab = input_bar_title(true, "path", true, "q", Some(2), 9);
+        assert!(tab.contains("Tab→path"));
+        assert!(!tab.contains("Search"));
+        assert!(!tab.contains("History"));
+
+        // search beats history when no tab
+        let search = input_bar_title(false, "", true, "needle", Some(0), 5);
+        assert_eq!(search, " Search: needle ");
+
+        // history is 1-based display of 0-based idx
+        let hist = input_bar_title(false, "", false, "", Some(4), 5);
+        assert!(hist.contains("History [5/5]"));
+        assert!(hist.contains("↑↓"));
+
+        // empty tab token still shows Tab→
+        assert!(input_bar_title(true, "", false, "", None, 0).contains("Tab→"));
+        // empty search query still in search mode
+        assert_eq!(input_bar_title(false, "", true, "", None, 0), " Search:  ");
+    }
+
+    #[test]
     fn status_indicators_and_bar_pad() {
         let s = status_indicators(true, true, Some("DIFF"), true, Some(12), true, 2);
         assert!(s.contains("[⚠CU]"));
@@ -1135,7 +1286,10 @@ mod tests {
         assert!(s.contains("[FOCUS 12m]"));
         assert!(s.contains("[SEARCH]"));
         assert!(s.contains("[swarm:2]"));
-        assert_eq!(status_indicators(false, true, None, false, None, false, 0), "[PLAN] ");
+        assert_eq!(
+            status_indicators(false, true, None, false, None, false, 0),
+            "[PLAN] "
+        );
 
         let line = format_status_bar_line("left", "right", 20);
         assert!(line.starts_with(' '));
@@ -1145,5 +1299,69 @@ mod tests {
         // too narrow → no pad, still wraps with spaces
         let tight = format_status_bar_line("abcdefghij", "klmnop", 10);
         assert!(tight.contains("abcdefghij"));
+    }
+
+    #[test]
+    fn status_indicators_individual_flags() {
+        assert_eq!(
+            status_indicators(false, false, None, false, None, false, 0),
+            ""
+        );
+        assert_eq!(
+            status_indicators(true, false, None, false, None, false, 0),
+            "[⚠CU] "
+        );
+        assert_eq!(
+            status_indicators(false, false, Some("IGNORED"), false, None, false, 0),
+            ""
+        ); // confirm label only when plan_mode
+        assert_eq!(
+            status_indicators(false, true, Some("ASK"), false, None, false, 0),
+            "[ASK] "
+        );
+        assert_eq!(
+            status_indicators(false, false, None, true, None, false, 0),
+            "[🎙REC] "
+        );
+        assert_eq!(
+            status_indicators(false, false, None, false, Some(0), false, 0),
+            "[FOCUS 0m] "
+        );
+        assert_eq!(
+            status_indicators(false, false, None, false, None, true, 0),
+            "[SEARCH] "
+        );
+        assert_eq!(
+            status_indicators(false, false, None, false, None, false, 1),
+            "[swarm:1] "
+        );
+        // swarm_active == 0 never renders swarm badge
+        let no_swarm = status_indicators(true, true, None, true, Some(1), true, 0);
+        assert!(!no_swarm.contains("swarm"));
+        assert!(no_swarm.starts_with("[⚠CU] "));
+        assert!(no_swarm.contains("[PLAN] "));
+    }
+
+    #[test]
+    fn format_status_bar_line_padding_and_unicode() {
+        let wide = format_status_bar_line("L", "R", 10);
+        // " " + L + pad + R + " " ; left_len+right_len+2 = 4 → pad 6 → total chars 2+1+6+1=10
+        assert_eq!(wide.chars().count(), 10);
+        assert!(wide.contains("L") && wide.contains("R"));
+
+        // boundary: left+right+2 == width → pad empty (condition is strict <)
+        let exact = format_status_bar_line("ab", "cd", 6);
+        assert_eq!(exact, " abcd ");
+        assert_eq!(exact.chars().count(), 6);
+
+        // unicode width counted by chars, not bytes
+        let uni = format_status_bar_line("✓", "右", 8);
+        assert_eq!(uni.chars().count(), 8);
+        assert!(uni.contains('✓'));
+        assert!(uni.contains('右'));
+
+        // width 0 still prefixes/suffixes spaces
+        let zero = format_status_bar_line("x", "y", 0);
+        assert_eq!(zero, " xy ");
     }
 }

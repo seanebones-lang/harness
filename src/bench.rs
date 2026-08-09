@@ -280,4 +280,29 @@ mod tests {
         assert!(s.contains("cases"));
         assert!(s.contains("total_ms"));
     }
+
+    #[test]
+    fn load_pack_names_missing_and_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(load_pack_names(dir.path()).unwrap().is_none());
+
+        std::fs::write(
+            dir.path().join("pack.json"),
+            r#"{"cases":["json_roundtrip","policy_gate",123]}"#,
+        )
+        .unwrap();
+        let names = load_pack_names(dir.path()).unwrap().expect("some");
+        assert_eq!(names, vec!["json_roundtrip", "policy_gate"]);
+
+        std::fs::write(dir.path().join("pack.json"), r#"{"other":true}"#).unwrap();
+        let empty = load_pack_names(dir.path()).unwrap().expect("some");
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn elapsed_ms_non_negative() {
+        let start = Instant::now();
+        let ms = elapsed_ms(start);
+        assert!(ms >= 0.0);
+    }
 }

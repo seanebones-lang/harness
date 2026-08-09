@@ -573,4 +573,49 @@ mod tests {
         let decoded: DaemonRequest = serde_json::from_value(val).unwrap();
         assert_eq!(decoded.method, "status");
     }
+
+    #[test]
+    fn daemon_transport_parse_aliases() {
+        assert_eq!(DaemonTransport::parse("unix"), DaemonTransport::Unix);
+        assert_eq!(DaemonTransport::parse("UNIX"), DaemonTransport::Unix);
+        assert_eq!(DaemonTransport::parse("  tcp  "), DaemonTransport::Tcp);
+        assert_eq!(DaemonTransport::parse("Tcp"), DaemonTransport::Tcp);
+        assert_eq!(DaemonTransport::parse("auto"), DaemonTransport::Auto);
+        assert_eq!(DaemonTransport::parse("weird"), DaemonTransport::Auto);
+        assert_eq!(DaemonTransport::parse(""), DaemonTransport::Auto);
+    }
+
+    #[test]
+    fn daemon_config_effective_transport() {
+        let auto = DaemonConfig { transport: None };
+        assert_eq!(auto.effective_transport(), DaemonTransport::Auto);
+        let unix = DaemonConfig {
+            transport: Some("unix".into()),
+        };
+        assert_eq!(unix.effective_transport(), DaemonTransport::Unix);
+        let tcp = DaemonConfig {
+            transport: Some("TCP".into()),
+        };
+        assert_eq!(tcp.effective_transport(), DaemonTransport::Tcp);
+    }
+
+    #[test]
+    fn socket_and_port_paths_end_with_expected_names() {
+        let sock = socket_path();
+        assert!(sock.ends_with("daemon.sock"));
+        assert!(sock.to_string_lossy().contains(".harness"));
+        let port = tcp_port_path();
+        assert!(port.ends_with("daemon.port"));
+        assert!(port.to_string_lossy().contains(".harness"));
+    }
+
+    #[tokio::test]
+    async fn write_read_frame_json_object() {
+        let (mut a, mut b) = duplex(4096);
+        let payload = serde_json::json!({"hello": "world", "n": 7});
+        write_frame(&mut a, &payload).await.unwrap();
+        let got = read_frame(&mut b).await.unwrap();
+        assert_eq!(got["hello"], "world");
+        assert_eq!(got["n"], 7);
+    }
 }

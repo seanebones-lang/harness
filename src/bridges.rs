@@ -283,4 +283,21 @@ mod tests {
         assert!(query.contains("$login"));
         assert!(!query.contains("acme-corp"));
     }
+
+    #[test]
+    fn escape_applescript_empty_and_plain() {
+        assert_eq!(escape_applescript(""), "");
+        assert_eq!(escape_applescript("plain"), "plain");
+        // single backslash doubles
+        assert_eq!(escape_applescript(r"\"), r"\\");
+        // quote alone becomes escaped quote
+        assert_eq!(escape_applescript(r#"""#), r#"\""#);
+    }
+
+    #[test]
+    fn github_projects_graphql_zero_project_number() {
+        let body = github_projects_graphql_body("o", 0);
+        assert_eq!(body["variables"]["num"], 0);
+        assert_eq!(body["variables"]["login"], "o");
+    }
 }

@@ -118,11 +118,8 @@ pub(crate) fn handle_search_key(
                 st.search_match_pos = search_pos_next(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format_search_nav_status(
-                    &st.search_query,
-                    st.search_match_pos,
-                    nmatches,
-                );
+                st.status =
+                    format_search_nav_status(&st.search_query, st.search_match_pos, nmatches);
             }
             true
         }
@@ -133,11 +130,8 @@ pub(crate) fn handle_search_key(
                 st.search_match_pos = search_pos_next(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format_search_nav_status(
-                    &st.search_query,
-                    st.search_match_pos,
-                    nmatches,
-                );
+                st.status =
+                    format_search_nav_status(&st.search_query, st.search_match_pos, nmatches);
             }
             true
         }
@@ -148,11 +142,8 @@ pub(crate) fn handle_search_key(
                 st.search_match_pos = search_pos_prev(st.search_match_pos, nmatches);
                 let msg_idx = st.search_matches[st.search_match_pos];
                 st.chat_scroll.select(Some(msg_idx));
-                st.status = format_search_nav_status(
-                    &st.search_query,
-                    st.search_match_pos,
-                    nmatches,
-                );
+                st.status =
+                    format_search_nav_status(&st.search_query, st.search_match_pos, nmatches);
             }
             true
         }
@@ -174,10 +165,7 @@ pub(crate) fn handle_search_key(
 
 fn run_search(st: &mut AppState) {
     let q = st.search_query.to_lowercase();
-    st.search_matches = search_match_indices(
-        st.chat.iter().map(|m| m.content.as_str()),
-        &q,
-    );
+    st.search_matches = search_match_indices(st.chat.iter().map(|m| m.content.as_str()), &q);
     st.search_match_pos = 0;
     let nmatches = st.search_matches.len();
     if let Some(&first) = st.search_matches.first() {
@@ -192,11 +180,7 @@ where
     I: IntoIterator<Item = &'a str>,
 {
     if query_lower.is_empty() {
-        return messages
-            .into_iter()
-            .enumerate()
-            .map(|(i, _)| i)
-            .collect();
+        return messages.into_iter().enumerate().map(|(i, _)| i).collect();
     }
     messages
         .into_iter()
@@ -1092,43 +1076,43 @@ pub(crate) async fn handle_slash_command(
         }
 
         "/swarm" => {
-                    let rest = cmd.trim_start_matches("/swarm").trim();
-                    match rest {
-                        "" | "toggle" | "panel" => {
-                            state.lock().toggle_swarm_panel();
-                        }
-                        "refresh" => {
-                            state.lock().toggle_swarm_panel();
-                        }
-                        s if s == "gc" || s.starts_with("gc ") => {
-                            let parsed = parse_swarm_gc_args(s);
-                            match crate::swarm::gc(&crate::swarm::GcOptions {
-                                stale_secs: parsed.stale_secs,
-                                keep_terminal: parsed.keep,
-                                older_than_secs: None,
-                                dry_run: false,
-                            }) {
-                                Ok(report) => {
-                                    let mut st = state.lock();
-                                    st.push_event(format!("[swarm] {}", report.summary()));
-                                    for (id, reason) in report.reaped.iter().take(8) {
-                                        st.push_event(format!("[swarm] reaped {id}: {reason}"));
-                                    }
-                                    st.refresh_swarm();
-                                    st.status = format!("[swarm] {}", report.summary());
-                                }
-                                Err(e) => {
-                                    state.lock().push_event(format!("[swarm] gc failed: {e}"));
-                                }
+            let rest = cmd.trim_start_matches("/swarm").trim();
+            match rest {
+                "" | "toggle" | "panel" => {
+                    state.lock().toggle_swarm_panel();
+                }
+                "refresh" => {
+                    state.lock().toggle_swarm_panel();
+                }
+                s if s == "gc" || s.starts_with("gc ") => {
+                    let parsed = parse_swarm_gc_args(s);
+                    match crate::swarm::gc(&crate::swarm::GcOptions {
+                        stale_secs: parsed.stale_secs,
+                        keep_terminal: parsed.keep,
+                        older_than_secs: None,
+                        dry_run: false,
+                    }) {
+                        Ok(report) => {
+                            let mut st = state.lock();
+                            st.push_event(format!("[swarm] {}", report.summary()));
+                            for (id, reason) in report.reaped.iter().take(8) {
+                                st.push_event(format!("[swarm] reaped {id}: {reason}"));
                             }
+                            st.refresh_swarm();
+                            st.status = format!("[swarm] {}", report.summary());
                         }
-                        other => {
-                            state.lock().push_event(format!(
-                                "[swarm] unknown subcommand `{other}` — try /swarm, /swarm refresh, /swarm gc"
-                            ));
+                        Err(e) => {
+                            state.lock().push_event(format!("[swarm] gc failed: {e}"));
                         }
                     }
                 }
+                other => {
+                    state.lock().push_event(format!(
+                                "[swarm] unknown subcommand `{other}` — try /swarm, /swarm refresh, /swarm gc"
+                            ));
+                }
+            }
+        }
 
         "/help" | "/?" => {
             show_help(state);
@@ -1171,8 +1155,14 @@ mod tests {
     fn format_search_status_pluralization() {
         assert_eq!(format_search_status("", 0), "Search: ");
         assert_eq!(format_search_status("foo", 1), "Search: \"foo\" — 1 match");
-        assert_eq!(format_search_status("foo", 2), "Search: \"foo\" — 2 matches");
-        assert_eq!(format_search_status("foo", 0), "Search: \"foo\" — 0 matches");
+        assert_eq!(
+            format_search_status("foo", 2),
+            "Search: \"foo\" — 2 matches"
+        );
+        assert_eq!(
+            format_search_status("foo", 0),
+            "Search: \"foo\" — 0 matches"
+        );
     }
 
     #[test]
@@ -1186,7 +1176,10 @@ mod tests {
     #[test]
     fn is_search_exit_key_esc_and_ctrl_f() {
         assert!(is_search_exit_key(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(is_search_exit_key(KeyCode::Char('f'), KeyModifiers::CONTROL));
+        assert!(is_search_exit_key(
+            KeyCode::Char('f'),
+            KeyModifiers::CONTROL
+        ));
         assert!(!is_search_exit_key(KeyCode::Char('f'), KeyModifiers::NONE));
         assert!(!is_search_exit_key(KeyCode::Enter, KeyModifiers::NONE));
     }
@@ -1263,7 +1256,10 @@ mod tests {
         let long = format!("# {}", "a".repeat(80));
         let t = obsidian_title_from_content(&long, "fb");
         assert!(t.chars().count() <= 58); // 57 + ellipsis
-        assert_eq!(obsidian_title_from_content("   \n\n", "fallback"), "fallback");
+        assert_eq!(
+            obsidian_title_from_content("   \n\n", "fallback"),
+            "fallback"
+        );
     }
 
     #[test]

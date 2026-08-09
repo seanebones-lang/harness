@@ -451,4 +451,30 @@ mod tests {
         untar_dir(&tar_bytes, dest.path()).unwrap();
         assert!(dest.path().join("memory").join("fact.md").exists());
     }
+
+    #[test]
+    fn validate_tar_entry_path_accepts_relative() {
+        validate_tar_entry_path(std::path::Path::new("memory/fact.md")).unwrap();
+        validate_tar_entry_path(std::path::Path::new("a/b/c.txt")).unwrap();
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let plain = b"harness-sync-secret-payload";
+        let pass = "test-passphrase-not-for-prod";
+        let cipher = encrypt_bytes(plain, pass).expect("encrypt");
+        assert_ne!(cipher, plain);
+        let out = decrypt_bytes(&cipher, pass).expect("decrypt");
+        assert_eq!(out, plain);
+        assert!(decrypt_bytes(&cipher, "wrong-pass").is_err());
+    }
+
+    #[test]
+    fn generate_passphrase_is_uuid_shaped() {
+        let a = generate_passphrase();
+        let b = generate_passphrase();
+        assert_ne!(a, b);
+        assert_eq!(a.len(), 36);
+        assert_eq!(a.chars().filter(|c| *c == '-').count(), 4);
+    }
 }

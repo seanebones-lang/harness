@@ -407,10 +407,7 @@ mod tests {
             ci_failed_body("test", "https://ci/1"),
             "Job 'test' failed\nhttps://ci/1"
         );
-        assert_eq!(
-            subagent_done_body("t1", "ok"),
-            "Task t1: ok"
-        );
+        assert_eq!(subagent_done_body("t1", "ok"), "Task t1: ok");
         assert_eq!(
             swarm_complete_body(4, 0),
             "All 4 tasks completed successfully."

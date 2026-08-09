@@ -169,3 +169,50 @@ pub fn command_needs_agent_runtime(cli: &crate::cli::Cli) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::Cli;
+    use crate::config::Config;
+    use clap::Parser;
+
+    #[test]
+    fn needs_setup_false_when_provider_api_key_set() {
+        let mut cfg = Config::default();
+        cfg.provider.api_key = Some("xai-test-key".into());
+        assert!(!needs_setup(&cfg));
+    }
+
+    #[test]
+    fn needs_setup_false_when_ollama_provider_entry() {
+        let mut cfg = Config::default();
+        cfg.providers.entry("ollama".into()).or_default();
+        assert!(!needs_setup(&cfg));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_matrix() {
+        let tui = Cli::try_parse_from(["harness"]).expect("tui");
+        assert!(command_needs_agent_runtime(&tui));
+
+        let oneshot = Cli::try_parse_from(["harness", "hello world"]).expect("prompt");
+        assert!(command_needs_agent_runtime(&oneshot));
+
+        let run = Cli::try_parse_from(["harness", "run", "do it"]).expect("run");
+        assert!(command_needs_agent_runtime(&run));
+
+        let sessions = Cli::try_parse_from(["harness", "sessions"]).expect("sessions");
+        assert!(!command_needs_agent_runtime(&sessions));
+
+        let swarm_list = Cli::try_parse_from(["harness", "swarm", "list"]).expect("swarm list");
+        assert!(!command_needs_agent_runtime(&swarm_list));
+
+        let swarm_run =
+            Cli::try_parse_from(["harness", "swarm", "run", "task"]).expect("swarm run");
+        assert!(command_needs_agent_runtime(&swarm_run));
+
+        let bench = Cli::try_parse_from(["harness", "bench"]).expect("bench");
+        assert!(!command_needs_agent_runtime(&bench));
+    }
+}

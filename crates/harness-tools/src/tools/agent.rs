@@ -91,4 +91,104 @@ mod tests {
         assert!(out.contains("summarize"));
         assert!(out.contains("file foo.rs"));
     }
+
+    #[test]
+    fn definition_name_and_required_task() {
+        let runner: SubAgentRunner =
+            Arc::new(move |_prompt| Box::pin(async move { Ok(String::new()) }));
+        let tool = SpawnAgentTool::new(runner);
+        let def = tool.definition();
+        assert_eq!(def.function.name, "spawn_agent");
+        assert!(def.function.description.contains("sub-agent"));
+        let required = def.function.parameters["required"]
+            .as_array()
+            .expect("required");
+        assert!(required.iter().any(|v| v.as_str() == Some("task")));
+        assert!(def.function.parameters["properties"]["task"].is_object());
+        assert!(def.function.parameters["properties"]["context"].is_object());
+    }
+
+    #[tokio::test]
+    async fn missing_task_errors() {
+        let runner: SubAgentRunner =
+            Arc::new(move |_prompt| Box::pin(async move { Ok("should not run".into()) }));
+        let tool = SpawnAgentTool::new(runner);
+        let err = tool.execute(json!({})).await.unwrap_err();
+        assert!(err.to_string().contains("missing task"));
+    }
+
+    #[tokio::test]
+    async fn non_string_task_errors() {
+        let runner: SubAgentRunner =
+            Arc::new(move |_prompt| Box::pin(async move { Ok("should not run".into()) }));
+        let tool = SpawnAgentTool::new(runner);
+        let err = tool
+            .execute(json!({"task": 42, "context": "x"}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("missing task"));
+    }
+
+    #[tokio::test]
+    async fn empty_context_uses_task_only() {
+        let runner: SubAgentRunner = Arc::new(move |prompt| {
+            Box::pin(async move {
+                assert_eq!(prompt, "solo-task");
+                assert!(!prompt.contains("Additional context"));
+                Ok(format!("ok:{prompt}"))
+            })
+        });
+        let tool = SpawnAgentTool::new(runner);
+        let out = tool
+            .execute(json!({"task": "solo-task"}))
+            .await
+            .expect("spawn");
+        assert_eq!(out, "ok:solo-task");
+
+        // Explicit empty context string is treated the same as absent.
+        let runner2: SubAgentRunner = Arc::new(move |prompt| {
+            Box::pin(async move {
+                assert_eq!(prompt, "solo-task");
+                Ok("ok2".into())
+            })
+        });
+        let tool2 = SpawnAgentTool::new(runner2);
+        let out2 = tool2
+            .execute(json!({"task": "solo-task", "context": ""}))
+            .await
+            .unwrap();
+        assert_eq!(out2, "ok2");
+    }
+
+    #[tokio::test]
+    async fn context_is_appended_with_header() {
+        let runner: SubAgentRunner = Arc::new(move |prompt| {
+            Box::pin(async move {
+                assert!(prompt.starts_with("do work"));
+                assert!(prompt.contains("Additional context:\nconstraints"));
+                Ok(prompt)
+            })
+        });
+        let tool = SpawnAgentTool::new(runner);
+        let out = tool
+            .execute(json!({
+                "task": "do work",
+                "context": "constraints"
+            }))
+            .await
+            .unwrap();
+        assert_eq!(out, "do work\n\nAdditional context:\nconstraints");
+    }
+
+    #[tokio::test]
+    async fn runner_error_propagates() {
+        let runner: SubAgentRunner =
+            Arc::new(move |_prompt| Box::pin(async move { anyhow::bail!("sub-agent exploded") }));
+        let tool = SpawnAgentTool::new(runner);
+        let err = tool
+            .execute(json!({"task": "x"}))
+            .await
+            .expect_err("runner failure");
+        assert!(err.to_string().contains("sub-agent exploded"));
+    }
 }

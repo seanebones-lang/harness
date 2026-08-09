@@ -3,7 +3,7 @@
 **Updated:** 2026-08-05  
 **Perspective:** CTO review + max-opt swarm execution + swarm-50 honesty pass  
 **Ship branch:** **`main`** only (dev folded; single branch)  
-**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed (incl. Gemini/Bedrock, remote swarm HTTP cutover). Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)** and coverage climb to 60% (measured **57.13%**).
+**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed (incl. Gemini/Bedrock, remote swarm HTTP cutover). Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)**. Coverage climb to 60% **met** (measured **61.65%** Swarm-51 2026-08-09).
 
 **Pointers:** [`README.md`](../README.md) · [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) · [`docs/TEAM_UPDATE_2026-08-03.md`](TEAM_UPDATE_2026-08-03.md) · historical PR https://github.com/seanebones-lang/harness/pull/5
 
@@ -18,7 +18,7 @@
 |-----|----------|------|
 | Stable blocked | REL-01 incomplete; Linux/Windows smoke missing | Cannot claim production-ready |
 | Prebuilt matrix partial | macOS arm64 only; CI billing history (W1.4–1.5 📌) | Broken install story outside one arch |
-| Coverage lag | `COVERAGE.md` **57.13%** lines (llvm-cov 2026-08-07 cont6; 14212/24878); badge ~57%; CI 60% still target | OK if honest; not stable gate yet |
+| Coverage lag | `COVERAGE.md` **61.65%** lines (llvm-cov 2026-08-09 Swarm-51; 16497/26757); badge ~62%; CI 60% **met** | Keep residual climb optional; gate green |
 | Doc/status drift | Exec findings refreshed 2026-08-05 (swarm-50); vault Index → main | Keep checkboxes honest on ship days |
 | Vault | Index on `main`; Swarm-50 notes under `Vault/Swarm-50/` + `docs/swarm-50-2026-08-05/` | Maintain on each ship day |
 

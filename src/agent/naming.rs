@@ -48,9 +48,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use futures::stream;
-    use harness_provider_core::{
-        DeltaStream, Pricing, Provider, ProviderError, StopReason,
-    };
+    use harness_provider_core::{DeltaStream, Pricing, Provider, ProviderError, StopReason};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 

@@ -17,10 +17,7 @@ pub(crate) fn expand_at_files_in(prompt: &str, root: &Path) -> String {
             let full = resolve_at_path(root, path);
             match std::fs::read_to_string(&full) {
                 Ok(contents) => {
-                    let ext = full
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("");
+                    let ext = full.extension().and_then(|e| e.to_str()).unwrap_or("");
                     pinned.push_str(&format!(
                         "<file path=\"{path}\">\n```{ext}\n{contents}\n```\n</file>\n"
                     ));
@@ -54,7 +51,10 @@ fn resolve_at_path(root: &Path, path: &str) -> PathBuf {
 /// Split `@` completion partial into directory prefix (with trailing `/`) + file prefix.
 pub(crate) fn at_completion_dir_and_prefix(partial: &str) -> (String, String) {
     if let Some(slash) = partial.rfind('/') {
-        (partial[..=slash].to_string(), partial[slash + 1..].to_string())
+        (
+            partial[..=slash].to_string(),
+            partial[slash + 1..].to_string(),
+        )
     } else {
         (String::new(), partial.to_string())
     }

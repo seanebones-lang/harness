@@ -4,6 +4,23 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-09 — Swarm-51 residual coverage climb (specialized agents ×50 + orch)**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| `cargo test --bin harness` | **354** pass (was 264) |
+| `cargo test -p harness-tools` | **179** pass (was 148) |
+| clippy `-D warnings` (bin harness) | clean |
+| llvm-cov workspace lines | **61.65%** (16497/26757); regions 63.37%; functions 68.04% |
+| Climb slice | cost/cost_db · daemon · sync crypto · events · bridges · args clap · setup runtime · tools pure · observability path-inject · tui driver/render · Connect `--url` clap fix |
+| Notes | `docs/swarm-51-2026-08-09/` · Vault `Vault/Swarm-51/` · durable id `swe184ad90` |
+| Residual | tui/mod · main dispatch · wiring/driver/input I/O loops |
+
+**Go / no-go:** **GO** public beta. **CI 60% coverage gate measured met.** **Stable** still blocked on full REL-01 matrix + billing prebuilts (📌).
+
+---
+
 **2026-08-07 — Coverage residual cont6 (memory_project + status/input titles)**
 
 | Item | Result |

@@ -35,7 +35,6 @@ Guidelines:
   - When editing multiple files, use spawn_agent for parallelism.
   - In plan mode (--plan flag), destructive calls pause for user approval.";
 
-
 /// Load a project-specific system prompt prefix from well-known files in CWD.
 /// Checks (in order): .harness/SYSTEM.md, AGENTS.md, CLAUDE.md
 pub fn load_project_instructions() -> Option<String> {

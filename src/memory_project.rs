@@ -59,7 +59,11 @@ pub fn load_all_in(dir: &Path) -> String {
     paths.sort();
 
     for path in &paths {
-        let topic = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+        let topic = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         if let Ok(content) = std::fs::read_to_string(path) {
             let trimmed = content.trim();
             if !trimmed.is_empty() {
@@ -168,10 +172,8 @@ mod tests {
     #[test]
     fn format_memory_section_empty_and_joined() {
         assert_eq!(format_memory_section(&[]), "");
-        let s = format_memory_section(&[
-            ("a".into(), "- one".into()),
-            ("b".into(), "- two".into()),
-        ]);
+        let s =
+            format_memory_section(&[("a".into(), "- one".into()), ("b".into(), "- two".into())]);
         assert!(s.starts_with("## Project Memory\n"));
         assert!(s.contains("### a\n- one"));
         assert!(s.contains("### b\n- two"));

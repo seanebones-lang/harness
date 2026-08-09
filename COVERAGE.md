@@ -5,13 +5,14 @@
 | Field | Value |
 |-------|--------|
 | **Tool** | cargo-llvm-cov |
-| **Measured lines** | **57.13%** (14212 covered / 24878 lines) |
-| **Regions** | 58.60% · **Functions** 63.80% |
-| **Date** | 2026-08-07 cont6 (memory_project + status/input titles) |
-| **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **not yet met** |
-| **Near-term target** | ≥ 40% workspace lines — **met** (this measure) |
+| **Measured lines** | **61.65%** (16497 covered / 26757 lines) |
+| **Regions** | 63.37% · **Functions** 68.04% |
+| **Date** | 2026-08-09 Swarm-51 (residual pure-test climb) |
+| **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **met (measured)** |
+| **Near-term target** | ≥ 40% workspace lines — **met** |
 
 Prior measures:
+- llvm-cov 2026-08-07 cont6: **57.13%** lines (14212 / 24878)
 - llvm-cov 2026-08-07 cont5 slash parsers: **56.60%** lines (14010 / 24751)
 - llvm-cov 2026-08-07 cont4 notify+cost: **56.31%** lines (13877 / 24646)
 - llvm-cov 2026-08-07 cont3 theme+resume: **56.18%** lines (13820 / 24600)
@@ -20,7 +21,7 @@ Prior measures:
 
 Tooling differs across tools; treat llvm-cov as current SoT going forward.
 
-Note: Measured % is still below the 60% PR gate. Climb 2026-08-07 cont6: path-inject memory remember/forget/list/load + sanitize; render `input_bar_title` / `status_indicators` / `format_status_bar_line`. render ~26% lines · memory ~92%. Residual: draw_* frames, slash async I/O, build_tools_inner, tui/mod. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md).
+Note: Swarm-51 specialized agents + parent pure edges crossed the **60%** line gate. High climbers: cost/cost_db, observability path-inject, args clap matrix, tools pure edges (tools package **179**), tui events/driver/render residual. Still low: `tui/mod`, `main` dispatch, parts of `wiring`/`driver`/`input` I/O loops. Climb plan: [`docs/COVERAGE_PLAN.md`](docs/COVERAGE_PLAN.md). Notes: [`docs/swarm-51-2026-08-09/`](docs/swarm-51-2026-08-09/).
 
 ## How to re-run
 

@@ -789,6 +789,40 @@ mod tests {
     }
 
     #[test]
+    fn extract_swarm_task_id_edge_markers_and_lengths() {
+        // stacked markers
+        assert_eq!(
+            extract_swarm_task_id("!!!***swzzzz status"),
+            Some("swzzzz".into())
+        );
+        assert_eq!(
+            extract_swarm_task_id("*! swabcd01 queued"),
+            Some("swabcd01".into())
+        );
+        // minimum accepted length is 4 ("sw" + 2)
+        assert_eq!(extract_swarm_task_id("sw1"), None);
+        assert_eq!(extract_swarm_task_id("sw12"), Some("sw12".into()));
+        // leading tab is not in trim set, but split_whitespace still yields "swab"
+        assert_eq!(extract_swarm_task_id("\tswab"), Some("swab".into()));
+        // other leading punctuation stays glued to the token → reject
+        assert_eq!(extract_swarm_task_id("-swab"), None);
+        assert_eq!(extract_swarm_task_id("#swab"), None);
+        // first whitespace-delimited token only
+        assert_eq!(
+            extract_swarm_task_id("swfirst swsecond"),
+            Some("swfirst".into())
+        );
+        // case-sensitive prefix
+        assert_eq!(extract_swarm_task_id("SWab"), None);
+        assert_eq!(extract_swarm_task_id("Swab"), None);
+        // whitespace-only
+        assert_eq!(extract_swarm_task_id("   "), None);
+        assert_eq!(extract_swarm_task_id("***"), None);
+        // id alone with trailing spaces still parses (split_whitespace)
+        assert_eq!(extract_swarm_task_id("swxy  "), Some("swxy".into()));
+    }
+
+    #[test]
     fn count_user_turns_filters_roles() {
         let msgs = vec![
             Message::user("a"),
@@ -798,6 +832,29 @@ mod tests {
         ];
         assert_eq!(count_user_turns(&msgs), 2);
         assert_eq!(count_user_turns(&[]), 0);
+    }
+
+    #[test]
+    fn count_user_turns_ignores_system_tool_and_assistant_only() {
+        let mixed = vec![
+            Message::system("sys"),
+            Message::user("u1"),
+            Message::assistant("a1"),
+            Message::tool_result("tc1", "ok"),
+            Message::user("u2"),
+            Message::tool_result("tc2", "ok2"),
+        ];
+        assert_eq!(count_user_turns(&mixed), 2);
+
+        let no_user = vec![
+            Message::system("s"),
+            Message::assistant("a"),
+            Message::tool_result("t", "r"),
+        ];
+        assert_eq!(count_user_turns(&no_user), 0);
+
+        let only_users = vec![Message::user("1"), Message::user("2"), Message::user("3")];
+        assert_eq!(count_user_turns(&only_users), 3);
     }
 
     #[test]
@@ -825,5 +882,66 @@ mod tests {
         let f2 = fork_session_at(&unnamed, 1);
         assert!(f2.name.is_none());
         assert!(f2.messages.is_empty());
+    }
+
+    #[test]
+    fn fork_session_at_beyond_available_and_preserves_prefix() {
+        let mut original = harness_memory::Session::new("m1");
+        original.name = Some("s".into());
+        original.messages.push(Message::user("u1"));
+        original.messages.push(Message::assistant("a1"));
+        original.messages.push(Message::tool_result("c1", "r1"));
+        original.messages.push(Message::user("u2"));
+
+        // turn beyond available user turns → keep whole transcript
+        let all = fork_session_at(&original, 99);
+        assert_eq!(all.messages.len(), original.messages.len());
+        assert_eq!(count_user_turns(&all.messages), 2);
+        assert_eq!(all.name.as_deref(), Some("s (fork@99)"));
+        assert_ne!(all.id, original.id);
+
+        // fork at last user includes trailing non-user? stops when user_count hits n
+        // after u2 is pushed user_count=2 → break, so no messages after u2 (none anyway)
+        let at2 = fork_session_at(&original, 2);
+        assert_eq!(at2.messages.len(), 4);
+        assert_eq!(count_user_turns(&at2.messages), 2);
+
+        // includes tool result that sits between user turns when n covers later user
+        let at1 = fork_session_at(&original, 1);
+        assert_eq!(at1.messages.len(), 1); // only first user
+    }
+
+    #[test]
+    fn fork_session_at_turn_zero_and_leading_non_user() {
+        let mut original = harness_memory::Session::new("m");
+        original.messages.push(Message::system("sys"));
+        original.messages.push(Message::user("u1"));
+        original.messages.push(Message::assistant("a1"));
+
+        // turn_n=0: after first message user_count(0) >= 0 → break with 1 msg
+        let z = fork_session_at(&original, 0);
+        assert_eq!(z.messages.len(), 1);
+        assert_eq!(count_user_turns(&z.messages), 0);
+        assert!(z.name.is_none()); // original had no name
+
+        // leading non-user then stop at first user
+        let f = fork_session_at(&original, 1);
+        assert_eq!(f.messages.len(), 2); // system + user
+        assert_eq!(count_user_turns(&f.messages), 1);
+    }
+
+    #[test]
+    fn fork_session_at_empty_and_model_copy() {
+        let empty = harness_memory::Session::new("only-model");
+        let f = fork_session_at(&empty, 5);
+        assert_eq!(f.model, "only-model");
+        assert!(f.messages.is_empty());
+        assert!(f.name.is_none());
+        assert_ne!(f.id, empty.id);
+
+        let mut named = harness_memory::Session::new("x");
+        named.name = Some("alpha".into());
+        let f2 = fork_session_at(&named, 0);
+        assert_eq!(f2.name.as_deref(), Some("alpha (fork@0)"));
     }
 }

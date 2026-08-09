@@ -259,9 +259,7 @@ impl Provider for BedrockProvider {
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
         let (system, messages) = messages_to_bedrock(&req);
         if messages.is_empty() {
-            return Err(ProviderError::Other(
-                "bedrock: no messages to send".into(),
-            ));
+            return Err(ProviderError::Other("bedrock: no messages to send".into()));
         }
 
         let mut body = json!({

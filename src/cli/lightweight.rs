@@ -767,6 +767,32 @@ mod tests {
     }
 
     #[test]
+    fn mcp_command_allowed_path_basename_and_full_match_edges() {
+        // Full path matches default by basename only.
+        assert!(mcp_command_allowed("/opt/homebrew/bin/npx", None));
+        assert!(mcp_command_allowed("/usr/local/bin/python3", None));
+        // Relative path with separators — basename wins.
+        assert!(mcp_command_allowed("./bin/node", None));
+        assert!(!mcp_command_allowed("./bin/bash", None));
+        // Empty / odd command strings never match defaults.
+        assert!(!mcp_command_allowed("", None));
+        assert!(!mcp_command_allowed("NPX", None)); // case-sensitive
+        assert!(!mcp_command_allowed("npx.exe", None));
+        // Allowlist may match full command path OR basename.
+        let full = vec!["/opt/custom/bin/my-mcp".into()];
+        assert!(mcp_command_allowed("/opt/custom/bin/my-mcp", Some(&full)));
+        assert!(!mcp_command_allowed("my-mcp", Some(&full))); // basename alone not listed
+        let base = vec!["my-mcp".into()];
+        assert!(mcp_command_allowed("/opt/custom/bin/my-mcp", Some(&base)));
+        assert!(mcp_command_allowed("my-mcp", Some(&base)));
+        // Single-entry allowlist does not widen to defaults.
+        let only_npx = vec!["npx".into()];
+        assert!(mcp_command_allowed("npx", Some(&only_npx)));
+        assert!(!mcp_command_allowed("node", Some(&only_npx)));
+        assert!(!mcp_command_allowed("uvx", Some(&only_npx)));
+    }
+
+    #[test]
     fn resolve_mcp_config_path_in_prefers_existing_explicit() {
         let dir = tempfile::tempdir().unwrap();
         let explicit = dir.path().join("mcp.json");
@@ -783,5 +809,84 @@ mod tests {
             discovered
         );
         assert_eq!(resolve_mcp_config_path_in(None, None), None);
+    }
+
+    #[test]
+    fn resolve_mcp_config_path_in_edges_missing_discovered_and_none_explicit() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("absent.json");
+        // Explicit missing + no discovery → None (do not invent paths).
+        assert_eq!(resolve_mcp_config_path_in(Some(&missing), None), None);
+        // No explicit → pass through discovery (even if file does not exist).
+        let fake = PathBuf::from("/does/not/exist/mcp.json");
+        assert_eq!(
+            resolve_mcp_config_path_in(None, Some(fake.clone())),
+            Some(fake)
+        );
+        // Explicit that exists wins over discovery even when discovery is also real.
+        let a = dir.path().join("a.json");
+        let b = dir.path().join("b.json");
+        fs::write(&a, "{}").unwrap();
+        fs::write(&b, "{}").unwrap();
+        assert_eq!(resolve_mcp_config_path_in(Some(&a), Some(b)), Some(a));
+    }
+
+    #[test]
+    fn load_mcp_servers_filters_sorts_and_allowlist() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp.json");
+        // Unsorted insertion order — output must be name-sorted.
+        fs::write(
+            &path,
+            r#"{
+              "mcpServers": {
+                "zeta": { "command": "npx", "args": ["-y", "z"] },
+                "alpha": { "command": "node", "args": ["a.js"] },
+                "blocked": { "command": "bash", "args": ["-c", "echo"] },
+                "mid": { "command": "/usr/bin/python3", "args": [] }
+              }
+            }"#,
+        )
+        .unwrap();
+
+        let mut cfg = Config::default();
+        cfg.mcp.command_allowlist = None; // defaults: npx/node/python3/uvx
+
+        let all = load_mcp_servers(&path, &cfg, None).unwrap();
+        let names: Vec<&str> = all.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "mid", "zeta"]); // blocked skipped; sorted
+
+        let only_mid = load_mcp_servers(&path, &cfg, Some("mid")).unwrap();
+        assert_eq!(only_mid.len(), 1);
+        assert_eq!(only_mid[0].0, "mid");
+        assert_eq!(only_mid[0].1.command, "/usr/bin/python3");
+
+        let missing = load_mcp_servers(&path, &cfg, Some("nope")).unwrap();
+        assert!(missing.is_empty());
+
+        // Empty allowlist = allow all (including bash).
+        cfg.mcp.command_allowlist = Some(vec![]);
+        let wide = load_mcp_servers(&path, &cfg, None).unwrap();
+        assert_eq!(wide.len(), 4);
+        assert!(wide.iter().any(|(n, _)| n == "blocked"));
+
+        // Custom allowlist: only bash basename.
+        cfg.mcp.command_allowlist = Some(vec!["bash".into()]);
+        let bash_only = load_mcp_servers(&path, &cfg, None).unwrap();
+        assert_eq!(bash_only.len(), 1);
+        assert_eq!(bash_only[0].0, "blocked");
+    }
+
+    #[test]
+    fn load_mcp_servers_missing_file_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("no-such-mcp.json");
+        let cfg = Config::default();
+        let err = load_mcp_servers(&missing, &cfg, None).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("loading MCP config") || msg.contains("no-such-mcp"),
+            "unexpected err: {msg}"
+        );
     }
 }

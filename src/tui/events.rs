@@ -302,4 +302,48 @@ mod tests {
         assert_eq!(s.event_log.len(), 1);
         assert!(s.event_log[0].contains("recalled 7 entries"));
     }
+
+    #[test]
+    fn context_compacted_emits_before_after_counts() {
+        let st = arc_state();
+        apply_agent_event(
+            &st,
+            AgentEvent::ContextCompacted {
+                messages_before: 40,
+                messages_after: 12,
+            },
+        );
+        let s = st.lock();
+        assert_eq!(s.event_log.len(), 1);
+        assert!(s.event_log[0].contains("compact: 40 → 12 messages"));
+    }
+
+    #[test]
+    fn subagent_spawned_truncates_task_and_marks_swarm() {
+        let st = arc_state();
+        let long = "x".repeat(100);
+        apply_agent_event(&st, AgentEvent::SubAgentSpawned { task: long.clone() });
+        let s = st.lock();
+        assert_eq!(s.event_log.len(), 1);
+        assert!(s.event_log[0].starts_with("swarm ↓ "));
+        // 60 char task preview + ellipsis in format
+        assert!(s.event_log[0].len() < long.len() + 20);
+        assert!(s.event_log[0].contains('…'));
+    }
+
+    #[test]
+    fn subagent_done_emits_done_line() {
+        let st = arc_state();
+        apply_agent_event(
+            &st,
+            AgentEvent::SubAgentDone {
+                task: "ship tests".into(),
+                summary: "ok".into(),
+            },
+        );
+        let s = st.lock();
+        assert_eq!(s.event_log.len(), 1);
+        assert!(s.event_log[0].starts_with("swarm ↑ done:"));
+        assert!(s.event_log[0].contains("ship tests"));
+    }
 }

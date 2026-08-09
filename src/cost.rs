@@ -250,4 +250,48 @@ mod tests {
     fn price_for_model_unknown_is_none() {
         assert!(price_for_model("totally-unknown-model-xyz").is_none());
     }
+
+    #[test]
+    fn price_for_model_local_is_free() {
+        for m in ["qwen2.5-coder:1.5b", "llama3.2", "mistral", "ollama/phi"] {
+            let p = price_for_model(m).expect(m);
+            assert_eq!(p.cost_usd(1_000_000, 1_000_000), 0.0, "{m}");
+        }
+    }
+
+    #[test]
+    fn price_for_model_grok45_and_sonnet_and_haiku() {
+        let g = price_for_model("xai:grok-4.5").unwrap();
+        assert!((g.input_per_m - 1.25).abs() < 0.01);
+        let s = price_for_model("Claude-Sonnet-4-6").unwrap();
+        assert!((s.input_per_m - 3.0).abs() < 0.01);
+        let h = price_for_model("claude-haiku-4-5").unwrap();
+        assert!((h.input_per_m - 1.0).abs() < 0.01);
+        let h3 = price_for_model("claude-haiku").unwrap();
+        assert!((h3.input_per_m - 0.25).abs() < 0.01);
+    }
+
+    #[test]
+    fn price_for_model_openai_family_precedence() {
+        let nano = price_for_model("gpt-5.4-nano").unwrap();
+        assert!((nano.input_per_m - 0.20).abs() < 0.01);
+        let mini = price_for_model("gpt-5.4-mini").unwrap();
+        assert!((mini.input_per_m - 0.75).abs() < 0.01);
+        let g54 = price_for_model("gpt-5.4").unwrap();
+        assert!((g54.input_per_m - 2.50).abs() < 0.01);
+        let g5 = price_for_model("gpt-5-turbo").unwrap();
+        assert!((g5.input_per_m - 1.25).abs() < 0.01);
+        let o4 = price_for_model("o4-mini").unwrap();
+        assert!((o4.input_per_m - 1.10).abs() < 0.01);
+    }
+
+    #[test]
+    fn cost_usd_basic_math() {
+        let p = TokenPrice::new(1.0, 0.1, 2.0);
+        // 1M in + 1M out = $1 + $2
+        assert!((p.cost_usd(1_000_000, 1_000_000) - 3.0).abs() < 1e-9);
+        let cached = p.cost_with_cache(500_000, 500_000, 0);
+        // 0.5M fresh @1 + 0.5M cached @0.1 = 0.5 + 0.05
+        assert!((cached - 0.55).abs() < 1e-9);
+    }
 }

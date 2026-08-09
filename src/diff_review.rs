@@ -368,12 +368,22 @@ impl AutoTrustPatterns {
         let path = dirs::home_dir()
             .unwrap_or_default()
             .join(".harness/diff-trust.toml");
+        Self::load_from(&path)
+    }
+
+    /// Load trust patterns from an explicit toml path (path-injectable).
+    pub fn load_from(path: &Path) -> Self {
         if !path.exists() {
             return Self::default();
         }
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        let Ok(text) = std::fs::read_to_string(path) else {
             return Self::default();
         };
+        Self::from_toml_str(&text)
+    }
+
+    /// Parse trust patterns from toml text (pure).
+    pub fn from_toml_str(text: &str) -> Self {
         let Ok(val) = text.parse::<toml::Value>() else {
             return Self::default();
         };
@@ -703,5 +713,241 @@ mod tests {
     fn hunk_decision_equality() {
         assert_eq!(HunkDecision::Pending, HunkDecision::Pending);
         assert_ne!(HunkDecision::Accept, HunkDecision::Reject);
+    }
+
+    #[test]
+    fn auto_trust_load_from_missing_and_invalid() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("no-trust.toml");
+        let pats = AutoTrustPatterns::load_from(&missing);
+        assert!(pats.always_accept.is_empty());
+        assert!(pats.always_reject.is_empty());
+
+        let bad = dir.path().join("bad.toml");
+        std::fs::write(&bad, "[[[not toml").unwrap();
+        let pats = AutoTrustPatterns::load_from(&bad);
+        assert!(pats.always_accept.is_empty());
+    }
+
+    #[test]
+    fn auto_trust_load_from_and_from_toml_str() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("diff-trust.toml");
+        std::fs::write(
+            &path,
+            r#"
+always_accept = ["**/*.gen.rs", "Cargo.lock"]
+always_reject = [".env", "secrets/*"]
+"#,
+        )
+        .unwrap();
+        let pats = AutoTrustPatterns::load_from(&path);
+        assert_eq!(pats.always_accept.len(), 2);
+        assert_eq!(pats.always_reject.len(), 2);
+        assert!(pats.should_auto_accept(Path::new("src/foo.gen.rs")));
+        assert!(pats.should_auto_reject(Path::new(".env")));
+
+        let pure = AutoTrustPatterns::from_toml_str(
+            r#"
+always_accept = ["only.rs"]
+always_reject = []
+"#,
+        );
+        assert_eq!(pure.always_accept, vec!["only.rs".to_string()]);
+        assert!(pure.always_reject.is_empty());
+        assert!(pure.should_auto_accept(Path::new("only.rs")));
+
+        // Non-string array entries ignored
+        let mixed = AutoTrustPatterns::from_toml_str(
+            r#"
+always_accept = ["ok.rs", 123, true]
+"#,
+        );
+        assert_eq!(mixed.always_accept, vec!["ok.rs".to_string()]);
+    }
+
+    #[test]
+    fn file_diff_from_patch_file_tool() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("patch_me.txt");
+        std::fs::write(&path, "hello world\n").unwrap();
+        let diff = file_diff_from_tool(
+            "patch_file",
+            &json!({
+                "path": path.to_string_lossy(),
+                "old_string": "world",
+                "new_string": "there"
+            }),
+        )
+        .expect("diff");
+        assert!(diff.proposed.contains("hello there"));
+        assert!(!diff.hunks.is_empty());
+    }
+
+    #[test]
+    fn file_diff_from_patch_file_no_match_is_none() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("patch_me.txt");
+        std::fs::write(&path, "hello world\n").unwrap();
+        assert!(file_diff_from_tool(
+            "patch_file",
+            &json!({
+                "path": path.to_string_lossy(),
+                "old_string": "missing",
+                "new_string": "x"
+            }),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn file_diff_from_patch_file_missing_fields_or_file() {
+        assert!(
+            file_diff_from_tool("patch_file", &json!({"path": "/tmp/x", "old_string": "a"}),)
+                .is_none()
+        );
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("nope.txt");
+        assert!(file_diff_from_tool(
+            "patch_file",
+            &json!({
+                "path": missing.to_string_lossy(),
+                "old_string": "a",
+                "new_string": "b"
+            }),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn staging_commit_new_file_accept_and_reject() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("out.txt");
+        let mut buf = StagingBuffer::new();
+        buf.stage_write(&path, "content\n");
+        // Accept via file_decision
+        if let Some(diff) = buf.entries.get_mut(&path) {
+            diff.file_decision = Some(true);
+        }
+        let results = buf.commit();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_ok());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "content\n");
+
+        // Reject file_decision leaves existing content
+        std::fs::write(&path, "keep\n").unwrap();
+        let mut buf2 = StagingBuffer::new();
+        buf2.stage_write(&path, "overwrite\n");
+        if let Some(diff) = buf2.entries.get_mut(&path) {
+            diff.file_decision = Some(false);
+        }
+        let _ = buf2.commit();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep\n");
+    }
+
+    #[test]
+    fn staging_commit_hunk_accept_writes_proposed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("hunk.txt");
+        std::fs::write(&path, "old\n").unwrap();
+        let mut buf = StagingBuffer::new();
+        buf.stage_write(&path, "new\n");
+        if let Some(diff) = buf.entries.get_mut(&path) {
+            for i in 0..diff.hunks.len() {
+                set_hunk_decision(diff, i, true);
+            }
+        }
+        let _ = buf.commit();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new\n");
+    }
+
+    #[test]
+    fn staging_commit_all_hunks_rejected_keeps_original() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("keep.txt");
+        std::fs::write(&path, "original\n").unwrap();
+        let mut buf = StagingBuffer::new();
+        buf.stage_write(&path, "changed\n");
+        if let Some(diff) = buf.entries.get_mut(&path) {
+            for i in 0..diff.hunks.len() {
+                set_hunk_decision(diff, i, false);
+            }
+        }
+        let _ = buf.commit();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "original\n");
+    }
+
+    #[test]
+    fn finalize_all_pending_returns_proposed() {
+        let diff = FileDiff {
+            path: PathBuf::from("p.rs"),
+            original: Some("a".into()),
+            proposed: "b".into(),
+            hunks: vec![sample_hunk(HunkDecision::Pending)],
+            file_decision: None,
+        };
+        let (_, content) = finalize_for_apply(&diff).expect("some");
+        assert_eq!(content, "b");
+    }
+
+    #[test]
+    fn stage_write_existing_file_computes_hunks() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("exist.txt");
+        std::fs::write(&path, "line1\nline2\n").unwrap();
+        let mut buf = StagingBuffer::new();
+        buf.stage_write(&path, "line1\nline2-changed\n");
+        let diff = buf.entries.get(&path).expect("entry");
+        assert_eq!(diff.original.as_deref(), Some("line1\nline2\n"));
+        assert!(!diff.hunks.is_empty());
+        assert!(diff
+            .hunks
+            .iter()
+            .any(|h| h.lines.iter().any(|(op, _)| *op == '+' || *op == '-')));
+    }
+
+    #[test]
+    fn compute_hunks_multiline_swap() {
+        let orig = "a\nb\nc\nd\n";
+        let prop = "a\nX\nc\nY\n";
+        let hunks = compute_hunks(orig, prop);
+        assert!(!hunks.is_empty());
+        let ops: Vec<char> = hunks
+            .iter()
+            .flat_map(|h| h.lines.iter().map(|(op, _)| *op))
+            .collect();
+        assert!(ops.contains(&'+'));
+        assert!(ops.contains(&'-'));
+        // Headers present
+        assert!(hunks.iter().all(|h| h.header.contains("@@")));
+        assert!(hunks.iter().all(|h| h.decision == HunkDecision::Pending));
+    }
+
+    #[test]
+    fn apply_accepted_hunks_empty_slice_returns_proposed_via_all_pending_branch() {
+        // empty hunks: all(|Reject) is true vacuously → original
+        let out = apply_accepted_hunks("orig", "prop", &[]);
+        assert_eq!(out, "orig");
+    }
+
+    #[test]
+    fn glob_match_dot_literal_and_invalid_pattern_safe() {
+        assert!(glob_match("file.txt", "file.txt"));
+        assert!(!glob_match("file.txt", "fileXtxt"));
+        // Unbalanced regex-ish input should not panic
+        assert!(!glob_match("(", "x"));
+    }
+
+    #[test]
+    fn new_file_hunk_header_mentions_new_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("brand_new.rs");
+        let mut buf = StagingBuffer::new();
+        buf.stage_write(&path, "fn main() {}\n");
+        let diff = buf.entries.get(&path).unwrap();
+        assert!(diff.original.is_none());
+        assert_eq!(diff.hunks.len(), 1);
+        assert!(diff.hunks[0].header.contains("new file"));
+        assert!(diff.hunks[0].lines.iter().all(|(op, _)| *op == '+'));
     }
 }

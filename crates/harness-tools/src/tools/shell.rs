@@ -465,11 +465,7 @@ mod tests {
             log_path: None,
             cmd_allowlist: None,
         });
-        let err = f
-            .tool
-            .execute(json!({"command": 123}))
-            .await
-            .unwrap_err();
+        let err = f.tool.execute(json!({"command": 123})).await.unwrap_err();
         assert!(err.to_string().contains("missing command"));
     }
 

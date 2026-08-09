@@ -51,7 +51,10 @@ mod tests {
     #[test]
     fn extract_bearer_from_header() {
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer secret-token"));
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer secret-token"),
+        );
         assert_eq!(
             extract_bearer(&headers, None).as_deref(),
             Some("secret-token")

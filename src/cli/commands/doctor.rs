@@ -37,9 +37,8 @@ pub async fn handle_doctor_command(cfg: &Config) {
             .map(|k| !k.is_empty())
             .unwrap_or(false)
     };
-    let env_key = |env: &str| -> bool {
-        std::env::var(env).map(|k| !k.is_empty()).unwrap_or(false)
-    };
+    let env_key =
+        |env: &str| -> bool { std::env::var(env).map(|k| !k.is_empty()).unwrap_or(false) };
 
     let checks: &[(&str, &str, &str, &str)] = &[
         (
@@ -76,9 +75,23 @@ pub async fn handle_doctor_command(cfg: &Config) {
                     let m = m.to_ascii_lowercase();
                     match *provider_name {
                         "xai" => m.contains("grok") || m.starts_with("xai"),
-                        "anthropic" => m.contains("claude") || m.contains("sonnet") || m.contains("opus") || m.contains("haiku"),
-                        "openai" => m.starts_with("gpt") || m.contains("o1") || m.contains("o3") || m.contains("o4"),
-                        "mistral" => m.contains("mistral") || m.contains("mixtral") || m.contains("codestral"),
+                        "anthropic" => {
+                            m.contains("claude")
+                                || m.contains("sonnet")
+                                || m.contains("opus")
+                                || m.contains("haiku")
+                        }
+                        "openai" => {
+                            m.starts_with("gpt")
+                                || m.contains("o1")
+                                || m.contains("o3")
+                                || m.contains("o4")
+                        }
+                        "mistral" => {
+                            m.contains("mistral")
+                                || m.contains("mixtral")
+                                || m.contains("codestral")
+                        }
                         _ => false,
                     }
                 })
@@ -117,7 +130,9 @@ pub async fn handle_doctor_command(cfg: &Config) {
     }
     if !any_key {
         println!("\n  ⚠ No API key found! Set ANTHROPIC_API_KEY / XAI_API_KEY / OPENAI_API_KEY,");
-        println!("  or put api_key under [provider] / [providers.<name>] in ~/.harness/config.toml.");
+        println!(
+            "  or put api_key under [provider] / [providers.<name>] in ~/.harness/config.toml."
+        );
     }
 
     let ollama_running = tokio::process::Command::new("ollama")

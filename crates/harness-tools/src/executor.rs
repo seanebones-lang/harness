@@ -469,14 +469,17 @@ mod tests {
         assert!(ex.is_trusted("shell", "cargo test -p harness"));
         assert!(!ex.is_trusted("shell", "rm -rf /"));
         assert!(!ex.is_trusted("write_file", "cargo test"));
-        let star = ToolExecutor::new(ToolRegistry::new()).with_trusted(vec![("*".into(), "*".into())]);
+        let star =
+            ToolExecutor::new(ToolRegistry::new()).with_trusted(vec![("*".into(), "*".into())]);
         assert!(star.is_trusted("anything", "x"));
     }
 
     #[test]
     fn matches_always_ask_wildcard_and_substring() {
-        let ex = ToolExecutor::new(ToolRegistry::new())
-            .with_always_ask(vec![("shell".into(), "rm -rf".into()), ("*".into(), "prod".into())]);
+        let ex = ToolExecutor::new(ToolRegistry::new()).with_always_ask(vec![
+            ("shell".into(), "rm -rf".into()),
+            ("*".into(), "prod".into()),
+        ]);
         assert!(ex.matches_always_ask("shell", "sudo rm -rf /tmp"));
         assert!(!ex.matches_always_ask("shell", "echo hi"));
         assert!(ex.matches_always_ask("write_file", "deploy-prod.yaml"));
@@ -484,10 +487,7 @@ mod tests {
 
     #[test]
     fn build_preview_shapes() {
-        let shell = build_preview(
-            "shell",
-            &json!({"command": "echo hi", "cwd": "/tmp"}),
-        );
+        let shell = build_preview("shell", &json!({"command": "echo hi", "cwd": "/tmp"}));
         assert!(shell.contains("$ echo hi"));
         assert!(shell.contains("/tmp"));
 
@@ -565,10 +565,7 @@ mod tests {
         let mut names = HashSet::new();
         names.insert("mcp_foo".into());
         let ex = executor_with_policy(ConfirmPolicy::Plan).with_mcp_tool_names(names);
-        assert!(
-            ex.test_needs_confirmation("mcp_foo", &json!({}))
-                .await
-        );
+        assert!(ex.test_needs_confirmation("mcp_foo", &json!({})).await);
     }
 
     #[tokio::test]

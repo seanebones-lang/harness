@@ -187,7 +187,11 @@ mod tests {
     fn reload_definition_name() {
         let tool = ReloadSelfTool::new(PathBuf::from("/tmp/harness-src"));
         assert_eq!(tool.definition().function.name, "reload_self");
-        assert!(tool.definition().function.description.contains("Hot-reload"));
+        assert!(tool
+            .definition()
+            .function
+            .description
+            .contains("Hot-reload"));
     }
 
     #[test]
@@ -225,5 +229,60 @@ mod tests {
             msg.contains("Binary not found") && msg.contains("rebuild_self"),
             "unexpected error: {msg}"
         );
+    }
+
+    #[test]
+    fn rebuild_definition_schema_exposes_check_only() {
+        let tool = RebuildSelfTool::new(PathBuf::from("/tmp/harness-src"));
+        let params = &tool.definition().function.parameters;
+        assert!(params["properties"]["check_only"].is_object());
+        let desc = params["properties"]["check_only"]["description"]
+            .as_str()
+            .unwrap_or("");
+        assert!(desc.contains("cargo check") || desc.contains("check"));
+    }
+
+    #[test]
+    fn reload_definition_has_empty_properties_object() {
+        let tool = ReloadSelfTool::new(PathBuf::from("/tmp/harness-src"));
+        let params = &tool.definition().function.parameters;
+        assert_eq!(params["type"], "object");
+        let props = params["properties"].as_object().expect("properties");
+        assert!(props.is_empty());
+    }
+
+    #[test]
+    fn rebuild_with_profile_accepts_custom_and_empty() {
+        let custom = RebuildSelfTool::new(PathBuf::from("/src")).with_profile("dev");
+        assert_eq!(custom.profile, "dev");
+        let empty = RebuildSelfTool::new(PathBuf::from("/src")).with_profile("");
+        assert_eq!(empty.profile, "");
+        assert_eq!(empty.src_dir, PathBuf::from("/src"));
+    }
+
+    #[test]
+    fn rebuild_and_reload_independent_src_dirs() {
+        let a = PathBuf::from("/a/src");
+        let b = PathBuf::from("/b/src");
+        let rebuild = RebuildSelfTool::new(a.clone()).with_profile("selfdev");
+        let reload = ReloadSelfTool::new(b.clone());
+        assert_eq!(rebuild.src_dir, a);
+        assert_eq!(reload.src_dir, b);
+        assert_ne!(rebuild.src_dir, reload.src_dir);
+    }
+
+    #[tokio::test]
+    async fn reload_missing_binary_mentions_expected_path_segments() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tool = ReloadSelfTool::new(dir.path().to_path_buf());
+        let err = tool.execute(json!({"ignored": true})).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("target"));
+        assert!(msg.contains("selfdev"));
+        assert!(msg.contains("harness"));
+        // Nested dirs alone without binary still fail the same way.
+        std::fs::create_dir_all(dir.path().join("target").join("selfdev")).unwrap();
+        let err2 = tool.execute(json!({})).await.unwrap_err();
+        assert!(err2.to_string().contains("Binary not found"));
     }
 }

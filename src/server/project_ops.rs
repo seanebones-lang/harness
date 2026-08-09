@@ -249,7 +249,11 @@ A  added.txt
         assert_eq!(default_test_command(root), "npm test");
         fs::remove_file(root.join("package.json")).unwrap();
 
-        fs::write(root.join("Cargo.toml"), "[package]\nname=\"t\"\nversion=\"0.1.0\"\n").unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname=\"t\"\nversion=\"0.1.0\"\n",
+        )
+        .unwrap();
         assert_eq!(default_test_command(root), "cargo test");
     }
 
@@ -289,7 +293,9 @@ A  added.txt
         out.clear();
         collect_files(root, root, "", 2, &mut out).unwrap();
         assert_eq!(out.len(), 2);
-        assert!(out.iter().all(|p| !p.contains("target") && !p.contains("node_modules")));
+        assert!(out
+            .iter()
+            .all(|p| !p.contains("target") && !p.contains("node_modules")));
 
         out.clear();
         collect_files(root, root, "readme", 10, &mut out).unwrap();

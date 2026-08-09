@@ -81,7 +81,7 @@ pub enum Commands {
     /// Connect to a running harness server and chat via SSE.
     Connect {
         /// Server base URL.
-        #[arg(default_value = "http://127.0.0.1:8787")]
+        #[arg(long, default_value = "http://127.0.0.1:8787")]
         url: String,
         /// Prompt to send.
         prompt: String,
@@ -542,4 +542,546 @@ pub enum ProjectAction {
         #[arg(long)]
         run: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(args).unwrap_or_else(|e| panic!("parse should succeed: {e}"))
+    }
+
+    fn parse_err(args: &[&str]) -> clap::error::Error {
+        match Cli::try_parse_from(args) {
+            Ok(_) => panic!("parse should fail for {args:?}"),
+            Err(e) => e,
+        }
+    }
+
+    #[test]
+    fn top_level_defaults_and_global_flags() {
+        let cli = parse(&["harness"]);
+        assert!(cli.command.is_none());
+        assert!(cli.prompt.is_none());
+        assert!(!cli.no_memory);
+        assert!(!cli.browser);
+        assert!(!cli.plan);
+        assert!(!cli.verbose);
+        assert_eq!(cli.browser_url, "http://localhost:9222");
+        assert!(cli.think.is_none());
+        assert!(cli.model.is_none());
+        assert!(cli.resume.is_none());
+        assert!(cli.image.is_none());
+
+        let cli = parse(&[
+            "harness",
+            "--no-memory",
+            "--browser",
+            "--plan",
+            "-v",
+            "--model",
+            "grok-4.5",
+            "--think",
+            "10000",
+            "--browser-url",
+            "http://127.0.0.1:9333",
+            "--resume",
+            "abc",
+            "do the thing",
+        ]);
+        assert!(cli.no_memory);
+        assert!(cli.browser);
+        assert!(cli.plan);
+        assert!(cli.verbose);
+        assert_eq!(cli.model.as_deref(), Some("grok-4.5"));
+        assert_eq!(cli.think, Some(10_000));
+        assert_eq!(cli.browser_url, "http://127.0.0.1:9333");
+        assert_eq!(cli.resume.as_deref(), Some("abc"));
+        assert_eq!(cli.prompt.as_deref(), Some("do the thing"));
+    }
+
+    #[test]
+    fn parse_run_serve_export_delete_and_init() {
+        let cli = parse(&["harness", "run", "hello world"]);
+        match cli.command {
+            Some(Commands::Run { prompt }) => assert_eq!(prompt, "hello world"),
+            _ => panic!("expected Run"),
+        }
+
+        let cli = parse(&["harness", "serve", "--addr", "0.0.0.0:9000"]);
+        match cli.command {
+            Some(Commands::Serve { addr }) => assert_eq!(addr, "0.0.0.0:9000"),
+            _ => panic!("expected Serve"),
+        }
+        // default addr
+        let cli = parse(&["harness", "serve"]);
+        match cli.command {
+            Some(Commands::Serve { addr }) => assert_eq!(addr, "127.0.0.1:8787"),
+            _ => panic!("expected Serve default"),
+        }
+
+        let cli = parse(&["harness", "export", "sess01", "-o", "out.md"]);
+        match cli.command {
+            Some(Commands::Export { id, output }) => {
+                assert_eq!(id, "sess01");
+                assert_eq!(output.as_deref(), Some(std::path::Path::new("out.md")));
+            }
+            _ => panic!("expected Export"),
+        }
+
+        let cli = parse(&["harness", "delete", "deadbeef"]);
+        match cli.command {
+            Some(Commands::Delete { id }) => assert_eq!(id, "deadbeef"),
+            _ => panic!("expected Delete"),
+        }
+
+        let cli = parse(&["harness", "init", "--project", "--force"]);
+        match cli.command {
+            Some(Commands::Init { project, force }) => {
+                assert!(project);
+                assert!(force);
+            }
+            _ => panic!("expected Init"),
+        }
+    }
+
+    #[test]
+    fn parse_swarm_run_aliases_status_json_cancel_all_gc() {
+        // -n and visible_alias --agents
+        let cli = parse(&[
+            "harness",
+            "swarm",
+            "run",
+            "task-a",
+            "-n",
+            "3",
+            "--model",
+            "ollama:qwen",
+        ]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action:
+                    SwarmAction::Run {
+                        prompt,
+                        model,
+                        count,
+                    },
+            }) => {
+                assert_eq!(prompt, "task-a");
+                assert_eq!(model.as_deref(), Some("ollama:qwen"));
+                assert_eq!(count, Some(3));
+            }
+            _ => panic!("expected swarm run -n"),
+        }
+
+        let cli = parse(&["harness", "swarm", "run", "task-b", "--agents", "2"]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action: SwarmAction::Run { count, .. },
+            }) => assert_eq!(count, Some(2)),
+            _ => panic!("expected swarm run --agents"),
+        }
+
+        // defaults: count None when omitted
+        let cli = parse(&["harness", "swarm", "run", "solo"]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action:
+                    SwarmAction::Run {
+                        prompt,
+                        model,
+                        count,
+                    },
+            }) => {
+                assert_eq!(prompt, "solo");
+                assert!(model.is_none());
+                assert!(count.is_none());
+            }
+            _ => panic!("expected swarm run defaults"),
+        }
+
+        let cli = parse(&["harness", "swarm", "status", "tid", "--json"]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action: SwarmAction::Status { id, json },
+            }) => {
+                assert_eq!(id, "tid");
+                assert!(json);
+            }
+            _ => panic!("expected swarm status --json"),
+        }
+
+        let cli = parse(&["harness", "swarm", "result", "tid2", "--json"]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action: SwarmAction::Result { id, json },
+            }) => {
+                assert_eq!(id, "tid2");
+                assert!(json);
+            }
+            _ => panic!("expected swarm result --json"),
+        }
+
+        let cli = parse(&["harness", "swarm", "cancel", "--all"]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action: SwarmAction::Cancel { id, all },
+            }) => {
+                assert!(id.is_none());
+                assert!(all);
+            }
+            _ => panic!("expected cancel --all"),
+        }
+
+        let cli = parse(&["harness", "swarm", "cancel", "abc123"]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action: SwarmAction::Cancel { id, all },
+            }) => {
+                assert_eq!(id.as_deref(), Some("abc123"));
+                assert!(!all);
+            }
+            _ => panic!("expected cancel id"),
+        }
+
+        let cli = parse(&["harness", "swarm", "wait", "w1"]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action: SwarmAction::Wait { id, timeout_secs },
+            }) => {
+                assert_eq!(id, "w1");
+                assert_eq!(timeout_secs, 300);
+            }
+            _ => panic!("expected wait default timeout"),
+        }
+
+        let cli = parse(&[
+            "harness",
+            "swarm",
+            "gc",
+            "--stale-secs",
+            "60",
+            "--keep",
+            "5",
+            "--older-than-secs",
+            "86400",
+            "--dry-run",
+        ]);
+        match cli.command {
+            Some(Commands::Swarm {
+                action:
+                    SwarmAction::Gc {
+                        stale_secs,
+                        keep,
+                        older_than_secs,
+                        dry_run,
+                    },
+            }) => {
+                assert_eq!(stale_secs, 60);
+                assert_eq!(keep, Some(5));
+                assert_eq!(older_than_secs, Some(86_400));
+                assert!(dry_run);
+            }
+            _ => panic!("expected gc flags"),
+        }
+
+        // list has no flags
+        let cli = parse(&["harness", "swarm", "list"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Swarm {
+                action: SwarmAction::List
+            })
+        ));
+    }
+
+    #[test]
+    fn parse_mcp_bridge_cost_project_aliases_and_bench() {
+        let cli = parse(&["harness", "mcp", "resources", "--server", "fs"]);
+        match cli.command {
+            Some(Commands::Mcp {
+                action: McpAction::Resources { server },
+            }) => assert_eq!(server.as_deref(), Some("fs")),
+            _ => panic!("expected mcp resources"),
+        }
+
+        let cli = parse(&["harness", "mcp", "read", "file:///tmp/x", "--server", "fs"]);
+        match cli.command {
+            Some(Commands::Mcp {
+                action: McpAction::Read { uri, server },
+            }) => {
+                assert_eq!(uri, "file:///tmp/x");
+                assert_eq!(server.as_deref(), Some("fs"));
+            }
+            _ => panic!("expected mcp read"),
+        }
+
+        assert!(matches!(
+            parse(&["harness", "mcp", "roots"]).command,
+            Some(Commands::Mcp {
+                action: McpAction::Roots
+            })
+        ));
+
+        let cli = parse(&["harness", "bridge", "obsidian", "T", "body"]);
+        match cli.command {
+            Some(Commands::Bridge {
+                action: BridgeAction::Obsidian { title, content },
+            }) => {
+                assert_eq!(title, "T");
+                assert_eq!(content, "body");
+            }
+            _ => panic!("expected bridge obsidian"),
+        }
+
+        let cli = parse(&["harness", "cost", "by-model"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Cost {
+                action: CostAction::ByModel
+            })
+        ));
+
+        // project visible aliases
+        let cli = parse(&["harness", "proj", "ls"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Project {
+                action: ProjectAction::List
+            })
+        ));
+
+        let cli = parse(&[
+            "harness",
+            "project",
+            "new",
+            "demo",
+            "--default-branch",
+            "develop",
+        ]);
+        match cli.command {
+            Some(Commands::Project {
+                action:
+                    ProjectAction::Init {
+                        name,
+                        path,
+                        default_branch,
+                    },
+            }) => {
+                assert_eq!(name, "demo");
+                assert!(path.is_none());
+                assert_eq!(default_branch, "develop");
+            }
+            _ => panic!("expected project init alias new"),
+        }
+
+        let cli = parse(&["harness", "bench", "--json", "--pack", "demo/bench_tasks"]);
+        match cli.command {
+            Some(Commands::Bench { pack, json }) => {
+                assert!(json);
+                assert_eq!(
+                    pack.as_deref(),
+                    Some(std::path::Path::new("demo/bench_tasks"))
+                );
+            }
+            _ => panic!("expected bench"),
+        }
+
+        let cli = parse(&["harness", "voice", "-d", "12"]);
+        match cli.command {
+            Some(Commands::Voice {
+                duration,
+                send,
+                realtime,
+            }) => {
+                assert_eq!(duration, 12);
+                assert!(!send);
+                assert!(!realtime);
+            }
+            _ => panic!("expected voice"),
+        }
+
+        // default voice duration
+        let cli = parse(&["harness", "voice"]);
+        match cli.command {
+            Some(Commands::Voice { duration, .. }) => assert_eq!(duration, 5),
+            _ => panic!("expected voice default"),
+        }
+
+        let cli = parse(&["harness", "pr", "42", "--comment", "lgtm"]);
+        match cli.command {
+            Some(Commands::Pr { number, comment }) => {
+                assert_eq!(number, 42);
+                assert_eq!(comment.as_deref(), Some("lgtm"));
+            }
+            _ => panic!("expected pr"),
+        }
+
+        let cli = parse(&[
+            "harness",
+            "connect",
+            "--url",
+            "http://x:1",
+            "hi",
+            "--session",
+            "s1",
+        ]);
+        match cli.command {
+            Some(Commands::Connect {
+                url,
+                prompt,
+                session,
+            }) => {
+                assert_eq!(url, "http://x:1");
+                assert_eq!(prompt, "hi");
+                assert_eq!(session.as_deref(), Some("s1"));
+            }
+            _ => panic!("expected connect"),
+        }
+
+        let cli = parse(&["harness", "connect", "hello"]);
+        match cli.command {
+            Some(Commands::Connect { url, prompt, .. }) => {
+                assert_eq!(url, "http://127.0.0.1:8787");
+                assert_eq!(prompt, "hello");
+            }
+            _ => panic!("expected connect default url"),
+        }
+    }
+
+    #[test]
+    fn parse_rejects_unknown_subcommand_and_missing_required() {
+        // Bare unknown token becomes top-level `prompt` (not an error) — document that.
+        let cli = parse(&["harness", "not-a-real-command"]);
+        assert!(cli.command.is_none());
+        assert_eq!(cli.prompt.as_deref(), Some("not-a-real-command"));
+
+        // Force a subcommand context for a real unknown action:
+        let err = parse_err(&["harness", "swarm", "not-a-swarm-action"]);
+        let _ = err;
+
+        let err = parse_err(&["harness", "swarm", "status"]); // missing id
+        assert!(
+            err.to_string().to_lowercase().contains("required")
+                || err.kind() != clap::error::ErrorKind::DisplayHelp
+        );
+
+        let _ = parse_err(&["harness", "export"]); // missing id
+        let _ = parse_err(&["harness", "mcp", "read"]); // missing uri
+
+        // project sync --all conflicts with target
+        let err = parse_err(&["harness", "project", "sync", "foo", "--all"]);
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("cannot be used with")
+                || msg.contains("conflict")
+                || err.kind() == clap::error::ErrorKind::ArgumentConflict,
+            "expected conflict error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_checkpoint_sync_trust_trace_and_completions_shell() {
+        assert!(matches!(
+            parse(&["harness", "checkpoint", "list"]).command,
+            Some(Commands::Checkpoint {
+                action: CheckpointAction::List
+            })
+        ));
+
+        let cli = parse(&["harness", "sync", "init", "git@example.com:r.git"]);
+        match cli.command {
+            Some(Commands::Sync {
+                action: SyncAction::Init { git_url },
+            }) => assert_eq!(git_url, "git@example.com:r.git"),
+            _ => panic!("expected sync init"),
+        }
+
+        let cli = parse(&["harness", "trust", "shell", "cargo test"]);
+        match cli.command {
+            Some(Commands::Trust { tool, pattern }) => {
+                assert_eq!(tool, "shell");
+                assert_eq!(pattern, "cargo test");
+            }
+            _ => panic!("expected trust"),
+        }
+
+        let cli = parse(&["harness", "trace", "abc"]);
+        match cli.command {
+            Some(Commands::Trace { id }) => assert_eq!(id.as_deref(), Some("abc")),
+            _ => panic!("expected trace id"),
+        }
+        assert!(matches!(
+            parse(&["harness", "trace"]).command,
+            Some(Commands::Trace { id: None })
+        ));
+
+        // Completions shell enum — just ensure parse succeeds for common shells.
+        for shell in ["bash", "zsh", "fish"] {
+            let cli = parse(&["harness", "completions", shell]);
+            assert!(
+                matches!(cli.command, Some(Commands::Completions { .. })),
+                "completions {shell}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_project_exec_trailing_and_publish_flags() {
+        let cli = parse(&[
+            "harness",
+            "project",
+            "exec",
+            "demo",
+            "--",
+            "cargo",
+            "test",
+            "--",
+            "--nocapture",
+        ]);
+        match cli.command {
+            Some(Commands::Project {
+                action: ProjectAction::Exec { target, command },
+            }) => {
+                assert_eq!(target, "demo");
+                assert_eq!(command, vec!["cargo", "test", "--", "--nocapture"]);
+            }
+            _ => panic!("expected project exec"),
+        }
+
+        let cli = parse(&[
+            "harness",
+            "project",
+            "publish",
+            "demo",
+            "--public",
+            "--repo",
+            "owner/demo",
+        ]);
+        match cli.command {
+            Some(Commands::Project {
+                action:
+                    ProjectAction::Publish {
+                        target,
+                        repo,
+                        remote,
+                        public,
+                        private,
+                        push,
+                    },
+            }) => {
+                assert_eq!(target, "demo");
+                assert_eq!(repo.as_deref(), Some("owner/demo"));
+                assert_eq!(remote, "origin");
+                assert!(public);
+                // --public conflicts with --private; clap still stores private default_t
+                // but public flag is true when passed.
+                let _ = private;
+                assert!(push);
+            }
+            _ => panic!("expected publish"),
+        }
+    }
 }

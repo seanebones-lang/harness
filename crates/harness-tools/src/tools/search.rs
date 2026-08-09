@@ -168,7 +168,88 @@ mod tests {
     #[tokio::test]
     async fn invalid_regex_errors() {
         let dir = TempDir::new().unwrap();
-        let err = tool(&dir).execute(json!({"pattern": "("})).await.unwrap_err();
+        let err = tool(&dir)
+            .execute(json!({"pattern": "("}))
+            .await
+            .unwrap_err();
         assert!(!err.to_string().is_empty());
+    }
+
+    #[test]
+    fn glob_match_edges_empty_and_multi_suffix() {
+        assert!(glob_match("*.toml", "Cargo.toml"));
+        assert!(!glob_match("*.toml", "Cargo.toml.bak"));
+        assert!(glob_match("*.bak", "Cargo.toml.bak"));
+        assert!(!glob_match("*.rs", ""));
+        assert!(!glob_match("exact", "exact.rs"));
+        assert!(glob_match("exact", "exact"));
+        // Non-*. patterns are exact name equality only.
+        assert!(!glob_match("src/*.rs", "main.rs"));
+    }
+
+    #[test]
+    fn definition_requires_pattern_property() {
+        let dir = TempDir::new().unwrap();
+        let def = tool(&dir).definition();
+        assert_eq!(def.function.name, "search_code");
+        let params = &def.function.parameters;
+        let required = params["required"].as_array().expect("required");
+        assert!(required.iter().any(|v| v.as_str() == Some("pattern")));
+        assert!(params["properties"]["pattern"].is_object());
+        assert!(params["properties"]["file_glob"].is_object());
+        assert!(params["properties"]["max_results"].is_object());
+        assert!(
+            def.function.description.contains("regex")
+                || def.function.description.contains("Search")
+        );
+    }
+
+    #[tokio::test]
+    async fn non_string_pattern_errors_as_missing() {
+        let dir = TempDir::new().unwrap();
+        let err = tool(&dir)
+            .execute(json!({"pattern": 123}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("missing pattern"));
+    }
+
+    #[tokio::test]
+    async fn max_results_zero_yields_no_matches_message() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("hit.rs"), "needle here\n").unwrap();
+        let out = tool(&dir)
+            .execute(json!({"pattern": "needle", "max_results": 0}))
+            .await
+            .unwrap();
+        // Zero budget never accumulates hits → empty-result path.
+        assert!(out.contains("No matches"));
+    }
+
+    #[tokio::test]
+    async fn strict_workspace_rejects_absolute_escape_path() {
+        let dir = TempDir::new().unwrap();
+        let err = tool(&dir)
+            .execute(json!({
+                "pattern": "x",
+                "path": "/tmp/definitely-outside-harness-search-ws"
+            }))
+            .await
+            .unwrap_err();
+        assert!(!err.to_string().is_empty());
+    }
+
+    #[tokio::test]
+    async fn skips_unreadable_binaryish_content_without_panic() {
+        let dir = TempDir::new().unwrap();
+        // Invalid UTF-8 is skipped by read_to_string Ok-guard.
+        std::fs::write(dir.path().join("bin.dat"), [0xff, 0xfe, 0xfd]).unwrap();
+        std::fs::write(dir.path().join("ok.rs"), "findme\n").unwrap();
+        let out = tool(&dir)
+            .execute(json!({"pattern": "findme"}))
+            .await
+            .unwrap();
+        assert!(out.contains("ok.rs"));
+        assert!(!out.contains("bin.dat"));
     }
 }

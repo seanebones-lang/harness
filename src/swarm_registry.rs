@@ -259,9 +259,9 @@ pub fn task_from_json(v: &Value) -> Result<TaskEntry> {
         }
     });
     let created_ts = v.get("created_ts").and_then(|x| x.as_i64()).unwrap_or(0);
-    let completed_ts =
-        v.get("completed_ts")
-            .and_then(|x| if x.is_null() { None } else { x.as_i64() });
+    let completed_ts = v
+        .get("completed_ts")
+        .and_then(|x| if x.is_null() { None } else { x.as_i64() });
     Ok(TaskEntry {
         id,
         prompt,

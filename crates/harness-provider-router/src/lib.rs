@@ -126,7 +126,7 @@ pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcPr
         "bedrock" => {
             let model = entry.model.clone();
             let region = entry.base_url.clone(); // optional region override via base_url field
-            // Prefer explicit api_key as access key only if full env not used — env is source of truth.
+                                                 // Prefer explicit api_key as access key only if full env not used — env is source of truth.
             if entry.api_key.is_some()
                 && std::env::var("AWS_ACCESS_KEY_ID").is_err()
                 && std::env::var("AWS_SECRET_ACCESS_KEY").is_err()
@@ -373,8 +373,8 @@ impl ProviderRouter {
             || std::env::var("MISTRAL_API_KEY")
                 .map(|k| !k.is_empty())
                 .unwrap_or(false);
-        let has_gemini = entries.contains_key("gemini")
-            || harness_provider_gemini::api_key_from_env().is_some();
+        let has_gemini =
+            entries.contains_key("gemini") || harness_provider_gemini::api_key_from_env().is_some();
         let has_bedrock = entries.contains_key("bedrock")
             || (std::env::var("AWS_ACCESS_KEY_ID")
                 .map(|k| !k.is_empty())
@@ -448,9 +448,9 @@ impl ProviderRouter {
                 ProviderEntry {
                     name: Some("bedrock".into()),
                     api_key: None,
-                    model: std::env::var("BEDROCK_MODEL_ID").ok().or_else(|| {
-                        Some(harness_provider_bedrock::DEFAULT_MODEL.into())
-                    }),
+                    model: std::env::var("BEDROCK_MODEL_ID")
+                        .ok()
+                        .or_else(|| Some(harness_provider_bedrock::DEFAULT_MODEL.into())),
                     base_url: std::env::var("AWS_REGION")
                         .or_else(|_| std::env::var("AWS_DEFAULT_REGION"))
                         .ok(),

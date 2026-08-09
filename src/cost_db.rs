@@ -203,28 +203,121 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    fn sample_row(session: &str, project: &str, model: &str, ts: i64, usd: f64) -> UsageRow {
+        UsageRow {
+            session_id: session.into(),
+            project: project.into(),
+            provider: "anthropic".into(),
+            model: model.into(),
+            ts,
+            in_tok: 100,
+            cached_in: 0,
+            out_tok: 50,
+            native_calls: 0,
+            usd,
+        }
+    }
+
     #[test]
     fn record_and_query_roundtrip() {
         let dir = TempDir::new().expect("tempdir");
         let path = dir.path().join("cost.db");
         let db = CostDb::open_at(path).expect("open");
-        let row = UsageRow {
-            session_id: "abc".into(),
-            project: "harness".into(),
-            provider: "anthropic".into(),
-            model: "claude-sonnet-4-6".into(),
-            ts: 1_700_000_000,
-            in_tok: 100,
-            cached_in: 0,
-            out_tok: 50,
-            native_calls: 0,
-            usd: 0.01,
-        };
+        let row = sample_row("abc", "harness", "claude-sonnet-4-6", 1_700_000_000, 0.01);
         db.record(&row).expect("record");
         let total = db.total_usd_since(0).expect("total");
         assert!((total - 0.01).abs() < f64::EPSILON);
         let recent = db.recent(1).expect("recent");
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].session_id, "abc");
+    }
+
+    #[test]
+    fn format_usd_precision_bands() {
+        assert_eq!(format_usd(0.0001), "$0.0001");
+        assert_eq!(format_usd(0.009), "$0.0090");
+        assert_eq!(format_usd(0.05), "$0.050");
+        assert_eq!(format_usd(0.999), "$0.999");
+        assert_eq!(format_usd(1.2), "$1.20");
+        assert_eq!(format_usd(12.345), "$12.35");
+    }
+
+    #[test]
+    fn days_ago_is_roughly_n_days_before_now() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let d0 = days_ago(0);
+        let d1 = days_ago(1);
+        let d7 = days_ago(7);
+        assert!((now - d0).abs() < 2);
+        assert!((now - 86400 - d1).abs() < 2);
+        assert!((now - 7 * 86400 - d7).abs() < 2);
+    }
+
+    #[test]
+    fn by_model_and_project_aggregate() {
+        let dir = TempDir::new().expect("tempdir");
+        let db = CostDb::open_at(dir.path().join("cost.db")).expect("open");
+        db.record(&sample_row("s1", "harness", "grok-4.5", 100, 0.10))
+            .unwrap();
+        db.record(&sample_row("s2", "harness", "grok-4.5", 101, 0.05))
+            .unwrap();
+        db.record(&sample_row("s3", "other", "claude", 102, 0.20))
+            .unwrap();
+
+        let by_model = db.by_model_since(0).expect("by_model");
+        let grok = by_model
+            .iter()
+            .find(|(m, _)| m == "grok-4.5")
+            .expect("grok");
+        assert!((grok.1 - 0.15).abs() < 1e-9);
+        let claude = by_model
+            .iter()
+            .find(|(m, _)| m == "claude")
+            .expect("claude");
+        assert!((claude.1 - 0.20).abs() < 1e-9);
+
+        let by_proj = db.by_project_since(0).expect("by_project");
+        let h = by_proj
+            .iter()
+            .find(|(p, _)| p == "harness")
+            .expect("harness");
+        assert!((h.1 - 0.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn check_budget_none_and_percent() {
+        let dir = TempDir::new().expect("tempdir");
+        let db = CostDb::open_at(dir.path().join("cost.db")).expect("open");
+        // fresh spend so daily window includes it
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        db.record(&sample_row("s", "p", "m", now, 0.50)).unwrap();
+
+        let (d, m) = check_budget(&db, None, None);
+        assert!(d.is_none() && m.is_none());
+
+        let (d, m) = check_budget(&db, Some(1.0), Some(10.0));
+        let d = d.expect("daily");
+        let m = m.expect("monthly");
+        assert!((d - 50.0).abs() < 1.0, "daily pct ~50, got {d}");
+        assert!((m - 5.0).abs() < 1.0, "monthly pct ~5, got {m}");
+    }
+
+    #[test]
+    fn total_usd_since_filters_old_rows() {
+        let dir = TempDir::new().expect("tempdir");
+        let db = CostDb::open_at(dir.path().join("cost.db")).expect("open");
+        db.record(&sample_row("old", "p", "m", 1_000, 1.0)).unwrap();
+        db.record(&sample_row("new", "p", "m", 2_000, 0.25))
+            .unwrap();
+        let total = db.total_usd_since(1_500).expect("total");
+        assert!((total - 0.25).abs() < 1e-9);
+        assert_eq!(db.recent(10).unwrap().len(), 2);
+        assert_eq!(db.recent(1).unwrap().len(), 1);
     }
 }

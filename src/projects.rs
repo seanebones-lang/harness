@@ -34,7 +34,11 @@ impl ProjectStore {
     }
 
     pub fn load() -> Self {
-        let path = Self::path();
+        Self::load_from(&Self::path())
+    }
+
+    /// Load store from an explicit path (path-injectable; missing/invalid → default).
+    pub fn load_from(path: &Path) -> Self {
         if !path.exists() {
             return Self::default();
         }
@@ -45,7 +49,11 @@ impl ProjectStore {
     }
 
     pub fn save(&self) -> Result<()> {
-        let path = Self::path();
+        self.save_to(&Self::path())
+    }
+
+    /// Persist store to an explicit path (path-injectable).
+    pub fn save_to(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -202,6 +210,11 @@ mod tests {
     }
 
     #[test]
+    fn list_sorted_empty_is_empty() {
+        assert!(ProjectStore::default().list_sorted().is_empty());
+    }
+
+    #[test]
     fn add_find_remove_by_name_and_path() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().to_path_buf();
@@ -265,6 +278,14 @@ mod tests {
     }
 
     #[test]
+    fn canonicalize_existing_tempdir_is_absolute() {
+        let dir = TempDir::new().unwrap();
+        let got = canonicalize_or_absolute(dir.path().to_path_buf()).unwrap();
+        assert!(got.is_absolute());
+        assert!(got.exists());
+    }
+
+    #[test]
     fn load_missing_file_is_default() {
         // path() may exist on developer machines; empty parse path covered by Default.
         let s = ProjectStore::default();
@@ -272,5 +293,134 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         assert!(json.contains("projects"));
         let _ = fs::metadata(std::env::temp_dir()); // touch fs without depending on HOME
+    }
+
+    #[test]
+    fn load_from_missing_and_invalid_json_are_default() {
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("nope.json");
+        assert!(ProjectStore::load_from(&missing).projects.is_empty());
+
+        let bad = dir.path().join("bad.json");
+        fs::write(&bad, "{not-json").unwrap();
+        assert!(ProjectStore::load_from(&bad).projects.is_empty());
+
+        let empty = dir.path().join("empty.json");
+        fs::write(&empty, "").unwrap();
+        assert!(ProjectStore::load_from(&empty).projects.is_empty());
+    }
+
+    #[test]
+    fn save_to_load_from_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("nested").join("projects.json");
+        let a = TempDir::new().unwrap();
+        let mut store = ProjectStore::default();
+        store
+            .add(
+                Some("round".into()),
+                Some(a.path().to_path_buf()),
+                Some("git@ex:repo.git".into()),
+                Some("develop".into()),
+            )
+            .unwrap();
+        store.save_to(&nested).unwrap();
+        assert!(nested.exists());
+
+        let loaded = ProjectStore::load_from(&nested);
+        assert_eq!(loaded.projects.len(), 1);
+        assert_eq!(loaded.projects[0].name, "round");
+        assert_eq!(
+            loaded.projects[0].remote.as_deref(),
+            Some("git@ex:repo.git")
+        );
+        assert_eq!(
+            loaded.projects[0].default_branch.as_deref(),
+            Some("develop")
+        );
+        assert!(!loaded.projects[0].added.is_empty());
+        assert!(!loaded.projects[0].updated.is_empty());
+    }
+
+    #[test]
+    fn add_infers_name_from_path_basename() {
+        let dir = TempDir::new().unwrap();
+        let project = dir.path().join("my-cool-app");
+        fs::create_dir_all(&project).unwrap();
+        let mut store = ProjectStore::default();
+        let out = store
+            .add(None, Some(project.clone()), None, Some("main".into()))
+            .unwrap();
+        match out {
+            AddOutcome::Added(e) => {
+                assert_eq!(e.name, "my-cool-app");
+                assert_eq!(e.default_branch.as_deref(), Some("main"));
+            }
+            AddOutcome::Updated(_) => panic!("expected Added"),
+        }
+    }
+
+    #[test]
+    fn update_preserves_default_branch_when_none_and_no_git() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().to_path_buf();
+        let mut store = ProjectStore::default();
+        store
+            .add(
+                Some("p".into()),
+                Some(path.clone()),
+                None,
+                Some("release".into()),
+            )
+            .unwrap();
+        let out = store
+            .add(Some("p2".into()), Some(path), None, None)
+            .unwrap();
+        match out {
+            AddOutcome::Updated(e) => {
+                assert_eq!(e.name, "p2");
+                // No git repo → detect_default_branch None → keep existing
+                assert_eq!(e.default_branch.as_deref(), Some("release"));
+            }
+            AddOutcome::Added(_) => panic!("expected Updated"),
+        }
+    }
+
+    #[test]
+    fn remove_by_path_and_missing_target() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().to_path_buf();
+        let mut store = ProjectStore::default();
+        store
+            .add(Some("rm".into()), Some(path.clone()), None, None)
+            .unwrap();
+        assert!(store.remove(path.to_str().unwrap()).is_some());
+        assert!(store.projects.is_empty());
+        assert!(store.remove("ghost").is_none());
+        assert!(store.find("ghost").is_none());
+    }
+
+    #[test]
+    fn project_entry_serde_roundtrip() {
+        let e = entry("n", PathBuf::from("/tmp/x"));
+        let json = serde_json::to_string_pretty(&e).unwrap();
+        let back: ProjectEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "n");
+        assert_eq!(back.path, PathBuf::from("/tmp/x"));
+        assert_eq!(back.default_branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn path_ends_with_projects_json() {
+        let p = ProjectStore::path();
+        assert!(p.ends_with("projects.json"));
+        assert!(p.to_string_lossy().contains(".harness") || p.ends_with("projects.json"));
+    }
+
+    #[test]
+    fn detect_git_remote_and_branch_none_on_plain_dir() {
+        let dir = TempDir::new().unwrap();
+        assert!(detect_git_remote(dir.path()).is_none());
+        assert!(detect_default_branch(dir.path()).is_none());
     }
 }
