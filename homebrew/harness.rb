@@ -21,12 +21,12 @@ class Harness < Formula
       sha256 "REPLACE_WITH_ACTUAL_SHA"
     else
       url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-linux-x86_64"
-      sha256 "REPLACE_WITH_ACTUAL_SHA"
+      sha256 "a616e87218906bb4e6abfaf2acf6c78fe1bebf448c6426a0a08f8c53246ed2a2"
     end
   end
 
   def install
-    bin.install "harness"
+    bin.install Dir["harness*"].first
   end
 
   test do
