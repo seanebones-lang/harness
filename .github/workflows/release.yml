@@ -1,5 +1,6 @@
 name: Release
 # Policy: tag only when `main` CI is green and docs checks in `docs/PUBLIC_RELEASE.md` are satisfied.
+# Builds multi-arch prebuilts for one-click install.sh / install.ps1 / Homebrew.
 
 on:
   push:
@@ -7,6 +8,11 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]*"
       - "v[0-9]+.[0-9]+.[0-9]*-*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach assets to (e.g. v1.3.0). Empty = use github.ref_name."
+        required: false
+        default: ""
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,13 +36,13 @@ jobs:
             cross: true
             smoke: verify
 
-          # macOS
+          # macOS — pin Intel runner for x86_64; Apple Silicon runner for arm64
           - target: x86_64-apple-darwin
-            runner: macos-latest
+            runner: macos-13
             artifact: harness-macos-x86_64
             smoke: native
           - target: aarch64-apple-darwin
-            runner: macos-latest
+            runner: macos-14
             artifact: harness-macos-aarch64
             smoke: native
 
@@ -75,6 +81,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cp target/${{ matrix.target }}/release-lto/harness ${{ matrix.artifact }}
+          chmod +x ${{ matrix.artifact }}
 
       - name: Rename binary (Windows)
         if: runner.os == 'Windows'
@@ -88,14 +95,6 @@ jobs:
           chmod +x "${{ matrix.artifact }}"
           "./${{ matrix.artifact }}" --version
           "./${{ matrix.artifact }}" --help >/dev/null
-
-      - name: Smoke test binary (Unix — Rosetta x86_64)
-        if: runner.os != 'Windows' && matrix.smoke == 'rosetta'
-        run: |
-          test -f "${{ matrix.artifact }}"
-          chmod +x "${{ matrix.artifact }}"
-          arch -x86_64 "./${{ matrix.artifact }}" --version
-          arch -x86_64 "./${{ matrix.artifact }}" --help >/dev/null
 
       - name: Verify binary artifact (cross-built)
         if: runner.os != 'Windows' && matrix.smoke == 'verify'
@@ -116,21 +115,36 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
+          if-no-files-found: error
 
   release:
-    name: Create GitHub Release
+    name: Attach GitHub Release assets
     needs: build
+    # Publish whatever matrix legs succeeded (one-click degrades gracefully per OS)
+    if: always() && needs.build.result != 'cancelled'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=v1.3.0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
           merge-multiple: true
+        continue-on-error: true
 
       - name: Generate checksums
         run: |
@@ -141,15 +155,17 @@ jobs:
             echo "No release artifacts found" >&2
             exit 1
           fi
+          ls -la
           sha256sum "${files[@]}" > checksums.txt
           cat checksums.txt
 
-      - name: Create release
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Harness ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: Harness ${{ steps.tag.outputs.name }}
           files: |
             artifacts/*
-          generate_release_notes: true
+          fail_on_unmatched_files: false
+          generate_release_notes: false
           draft: false

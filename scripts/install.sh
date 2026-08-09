@@ -6,7 +6,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.sh | bash
 #
 # Or with a specific version:
-#   curl -fsSL ... | bash -s -- v0.2.0
+#   curl -fsSL ... | bash -s -- v1.3.0
 
 set -euo pipefail
 
@@ -85,19 +85,25 @@ install_prebuilt() {
         # Try to verify checksum if available
         checksum_url="${url%/*}/checksums.txt"
         if curl -fsSL "$checksum_url" -o "$tmp/checksums.txt" 2>/dev/null; then
-            if command -v sha256sum >/dev/null; then
-                local expected
-                expected=$(grep " ${ARTIFACT}$" "$tmp/checksums.txt" | awk '{print $1}' | head -1)
-                if [[ -n "$expected" ]]; then
-                    local actual
+            local expected actual
+            expected=$(grep " ${ARTIFACT}$" "$tmp/checksums.txt" | awk '{print $1}' | head -1)
+            if [[ -n "$expected" ]]; then
+                if command -v sha256sum >/dev/null; then
                     actual=$(sha256sum "$tmp/harness" | awk '{print $1}')
-                    if [[ "$actual" != "$expected" ]]; then
-                        error "Checksum mismatch for ${ARTIFACT}"
-                    fi
-                    info "Checksum verified"
+                elif command -v shasum >/dev/null; then
+                    actual=$(shasum -a 256 "$tmp/harness" | awk '{print $1}')
                 else
-                    warn "No checksum entry for ${ARTIFACT} in checksums.txt"
+                    warn "No sha256sum/shasum; skipping checksum verify"
+                    actual=""
                 fi
+                if [[ -n "$actual" && "$actual" != "$expected" ]]; then
+                    error "Checksum mismatch for ${ARTIFACT}"
+                fi
+                if [[ -n "$actual" ]]; then
+                    info "Checksum verified"
+                fi
+            else
+                warn "No checksum entry for ${ARTIFACT} in checksums.txt"
             fi
         fi
         mkdir -p "$INSTALL_DIR"
@@ -114,7 +120,6 @@ install_prebuilt() {
         return 1
     fi
 }
-
 # Fallback: build from source
 build_from_source() {
     if ! command -v cargo &>/dev/null; then

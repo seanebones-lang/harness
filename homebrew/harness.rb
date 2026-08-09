@@ -8,7 +8,7 @@ class Harness < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-macos-aarch64"
-      sha256 "7d4a6fc216385383ce59e12cdba1ed7b32ecd011eefe94a12a580115864152a6"
+      sha256 "bc66e7913c60e7e8562d4c18bd505989c67bd2dd67b93303a4a46b7f2948ca18"
     else
       url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/harness-macos-x86_64"
       sha256 "REPLACE_WITH_ACTUAL_SHA"

@@ -52,6 +52,31 @@ Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls throug
 
 ## Quick start
 
+### One-click install (prebuilt)
+
+```bash
+# macOS / Linux — downloads the matching binary from GitHub Releases
+curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.sh | bash
+
+# pin a version
+curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.sh | bash -s -- v1.3.0
+```
+
+```powershell
+# Windows PowerShell
+irm https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.ps1 | iex
+```
+
+Installs to `~/.local/bin/harness` (override with `HARNESS_INSTALL_DIR`). Falls back to building from source if no prebuilt exists for your OS/arch.
+
+**Homebrew (macOS, when formula SHAs are current):**
+
+```bash
+brew install --formula ./homebrew/harness.rb   # from a clone
+```
+
+### Build from source
+
 ### macOS / Linux
 
 ```bash
