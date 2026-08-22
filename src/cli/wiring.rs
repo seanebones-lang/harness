@@ -776,7 +776,10 @@ mod tests {
             SseConnectAction::Ignore
         );
         assert_eq!(parse_sse_connect_line(""), SseConnectAction::Ignore);
-        assert_eq!(parse_sse_connect_line("event: ping"), SseConnectAction::Ignore);
+        assert_eq!(
+            parse_sse_connect_line("event: ping"),
+            SseConnectAction::Ignore
+        );
     }
 
     #[test]
@@ -790,7 +793,9 @@ mod tests {
     fn computer_use_model_gate_edges() {
         assert!(!computer_use_model_supported(""));
         assert!(!computer_use_model_supported("claude-haiku-4"));
-        assert!(computer_use_model_supported("prefix-claude-sonnet-4-suffix"));
+        assert!(computer_use_model_supported(
+            "prefix-claude-sonnet-4-suffix"
+        ));
     }
 
     #[test]

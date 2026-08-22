@@ -84,7 +84,7 @@ See **[`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md)** for the latest automated g
 
 - **Date:** update when you tag
 - **Recorded revision:** `git log -1 --oneline`
-- **Go / no-go:** **GO** for public beta under MIT — complete TUI + `gh` checks on a full dev machine before calling it stable.
+- **Go / no-go:** **GO** for public beta under the proprietary evaluation license — complete TUI + `gh` checks on a full dev machine before calling it stable.
 
 ---
 

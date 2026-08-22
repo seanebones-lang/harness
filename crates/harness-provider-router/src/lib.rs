@@ -249,6 +249,41 @@ pub struct ProviderRouter {
     fallback: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct ProviderEnvironment {
+    anthropic_api_key: Option<String>,
+    xai_api_key: Option<String>,
+    openai_api_key: Option<String>,
+    mistral_api_key: Option<String>,
+    gemini_api_key: Option<String>,
+    aws_access_key_id: Option<String>,
+    aws_secret_access_key: Option<String>,
+    bedrock_model_id: Option<String>,
+    aws_region: Option<String>,
+    mlx_runtime_available: bool,
+}
+
+impl ProviderEnvironment {
+    fn detect() -> Self {
+        fn nonempty(name: &str) -> Option<String> {
+            std::env::var(name).ok().filter(|value| !value.is_empty())
+        }
+
+        Self {
+            anthropic_api_key: nonempty("ANTHROPIC_API_KEY"),
+            xai_api_key: nonempty("XAI_API_KEY"),
+            openai_api_key: nonempty("OPENAI_API_KEY"),
+            mistral_api_key: nonempty("MISTRAL_API_KEY"),
+            gemini_api_key: harness_provider_gemini::api_key_from_env(),
+            aws_access_key_id: nonempty("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key: nonempty("AWS_SECRET_ACCESS_KEY"),
+            bedrock_model_id: nonempty("BEDROCK_MODEL_ID"),
+            aws_region: nonempty("AWS_REGION").or_else(|| nonempty("AWS_DEFAULT_REGION")),
+            mlx_runtime_available: harness_provider_mlx::mlx_runtime_available(),
+        }
+    }
+}
+
 impl ProviderRouter {
     pub fn new(default_name: impl Into<String>) -> Self {
         let default_name = default_name.into();
@@ -356,34 +391,26 @@ impl ProviderRouter {
         entries: &HashMap<String, ProviderEntry>,
         router_cfg: &RouterConfig,
     ) -> anyhow::Result<Self> {
+        Self::from_config_with_environment(entries, router_cfg, &ProviderEnvironment::detect())
+    }
+
+    fn from_config_with_environment(
+        entries: &HashMap<String, ProviderEntry>,
+        router_cfg: &RouterConfig,
+        environment: &ProviderEnvironment,
+    ) -> anyhow::Result<Self> {
         // Smart defaults: detect which providers are actually available
-        let has_anthropic = entries.contains_key("anthropic")
-            || std::env::var("ANTHROPIC_API_KEY")
-                .map(|k| !k.is_empty())
-                .unwrap_or(false);
-        let has_xai = entries.contains_key("xai")
-            || std::env::var("XAI_API_KEY")
-                .map(|k| !k.is_empty())
-                .unwrap_or(false);
-        let has_openai = entries.contains_key("openai")
-            || std::env::var("OPENAI_API_KEY")
-                .map(|k| !k.is_empty())
-                .unwrap_or(false);
-        let has_mistral = entries.contains_key("mistral")
-            || std::env::var("MISTRAL_API_KEY")
-                .map(|k| !k.is_empty())
-                .unwrap_or(false);
-        let has_gemini =
-            entries.contains_key("gemini") || harness_provider_gemini::api_key_from_env().is_some();
+        let has_anthropic =
+            entries.contains_key("anthropic") || environment.anthropic_api_key.is_some();
+        let has_xai = entries.contains_key("xai") || environment.xai_api_key.is_some();
+        let has_openai = entries.contains_key("openai") || environment.openai_api_key.is_some();
+        let has_mistral = entries.contains_key("mistral") || environment.mistral_api_key.is_some();
+        let has_gemini = entries.contains_key("gemini") || environment.gemini_api_key.is_some();
         let has_bedrock = entries.contains_key("bedrock")
-            || (std::env::var("AWS_ACCESS_KEY_ID")
-                .map(|k| !k.is_empty())
-                .unwrap_or(false)
-                && std::env::var("AWS_SECRET_ACCESS_KEY")
-                    .map(|k| !k.is_empty())
-                    .unwrap_or(false));
+            || (environment.aws_access_key_id.is_some()
+                && environment.aws_secret_access_key.is_some());
         let has_ollama = entries.contains_key("ollama");
-        let has_mlx = entries.contains_key("mlx") || harness_provider_mlx::mlx_runtime_available();
+        let has_mlx = entries.contains_key("mlx") || environment.mlx_runtime_available;
 
         // Auto-populate providers from env keys if not explicitly configured
         let mut augmented: HashMap<String, ProviderEntry> = entries.clone();
@@ -392,7 +419,7 @@ impl ProviderRouter {
                 "anthropic".into(),
                 ProviderEntry {
                     name: Some("anthropic".into()),
-                    api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
+                    api_key: environment.anthropic_api_key.clone(),
                     model: Some("claude-sonnet-4-6".into()),
                     base_url: None,
                 },
@@ -403,7 +430,7 @@ impl ProviderRouter {
                 "xai".into(),
                 ProviderEntry {
                     name: Some("xai".into()),
-                    api_key: std::env::var("XAI_API_KEY").ok(),
+                    api_key: environment.xai_api_key.clone(),
                     model: Some("grok-4.3".into()),
                     base_url: None,
                 },
@@ -414,7 +441,7 @@ impl ProviderRouter {
                 "openai".into(),
                 ProviderEntry {
                     name: Some("openai".into()),
-                    api_key: std::env::var("OPENAI_API_KEY").ok(),
+                    api_key: environment.openai_api_key.clone(),
                     model: Some("gpt-5.5".into()),
                     base_url: None,
                 },
@@ -425,7 +452,7 @@ impl ProviderRouter {
                 "mistral".into(),
                 ProviderEntry {
                     name: Some("mistral".into()),
-                    api_key: std::env::var("MISTRAL_API_KEY").ok(),
+                    api_key: environment.mistral_api_key.clone(),
                     model: Some("mistral-large-latest".into()),
                     base_url: Some("https://api.mistral.ai/v1".into()),
                 },
@@ -436,7 +463,7 @@ impl ProviderRouter {
                 "gemini".into(),
                 ProviderEntry {
                     name: Some("gemini".into()),
-                    api_key: harness_provider_gemini::api_key_from_env(),
+                    api_key: environment.gemini_api_key.clone(),
                     model: Some(harness_provider_gemini::DEFAULT_MODEL.into()),
                     base_url: Some(harness_provider_gemini::DEFAULT_BASE_URL.into()),
                 },
@@ -448,12 +475,11 @@ impl ProviderRouter {
                 ProviderEntry {
                     name: Some("bedrock".into()),
                     api_key: None,
-                    model: std::env::var("BEDROCK_MODEL_ID")
-                        .ok()
+                    model: environment
+                        .bedrock_model_id
+                        .clone()
                         .or_else(|| Some(harness_provider_bedrock::DEFAULT_MODEL.into())),
-                    base_url: std::env::var("AWS_REGION")
-                        .or_else(|_| std::env::var("AWS_DEFAULT_REGION"))
-                        .ok(),
+                    base_url: environment.aws_region.clone(),
                 },
             );
         }
@@ -838,7 +864,12 @@ mod tests {
     fn from_config_falls_back_to_ollama_when_no_cloud_keys() {
         let entries = HashMap::new();
         let cfg = RouterConfig::default();
-        let router = ProviderRouter::from_config(&entries, &cfg).expect("ollama fallback");
+        let router = ProviderRouter::from_config_with_environment(
+            &entries,
+            &cfg,
+            &ProviderEnvironment::default(),
+        )
+        .expect("ollama fallback");
         assert!(router.get("ollama").is_some());
         assert_eq!(router.default_provider().unwrap().name(), "ollama");
     }

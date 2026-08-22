@@ -7,7 +7,7 @@
 
 ## 1. Abstract
 
-Large language model (LLM) coding agents have emerged as productivity multipliers for software engineers, yet existing solutions suffer from one or more critical deficiencies: they are locked to a single LLM provider, consume excessive memory due to runtime overhead, exhibit startup latency incompatible with interactive workflows, or provide insufficient tool composability. Harness addresses these gaps with a production-quality, open-source coding agent written in Rust. The system implements a trait-based provider abstraction supporting Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, local Ollama (Qwen3-Coder), and Apple Silicon MLX backends under a single unified interface. A 14-crate Cargo workspace separates concerns cleanly while enabling thin-LTO release builds that start in under 100 milliseconds. The agent loop incorporates cosine-similarity semantic memory retrieval, plan-mode diff review with LCS-based hunks, and a parallel sub-agent swarm backed by SQLite. Full MCP 2025-03-26 protocol support — including sampling, resources, roots advertisement, and progress notifications — enables deep interoperability with any compliant tool server. The test suite comprises 218 tests exercised on Ubuntu, macOS, and Windows in continuous integration, with a line coverage gate of at least 60 percent. A P0 security audit was completed with all seven findings closed before public beta release.
+Large language model (LLM) coding agents have emerged as productivity multipliers for software engineers, yet existing solutions suffer from one or more critical deficiencies: they are locked to a single LLM provider, consume excessive memory due to runtime overhead, exhibit startup latency incompatible with interactive workflows, or provide insufficient tool composability. Harness addresses these gaps with a public-beta, proprietary source-available coding agent written in Rust. The system implements a trait-based provider abstraction supporting Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, local Ollama (Qwen3-Coder), and Apple Silicon MLX backends under a single unified interface. A 14-crate Cargo workspace separates concerns cleanly while enabling thin-LTO release builds that start in under 100 milliseconds. The agent loop incorporates cosine-similarity semantic memory retrieval, plan-mode diff review with LCS-based hunks, and a parallel sub-agent swarm backed by SQLite. Full MCP 2025-03-26 protocol support — including sampling, resources, roots advertisement, and progress notifications — enables deep interoperability with any compliant tool server. At this report's May 2026 snapshot, the test suite comprised 218 tests exercised on Ubuntu, macOS, and Windows in continuous integration, with a line coverage gate of at least 60 percent. A P0 security audit was completed with all seven findings closed before public beta release. Current status and gate results are recorded in `docs/RELEASE_STATUS.md`.
 
 ---
 
@@ -183,7 +183,7 @@ Task state is managed with SQLite WAL mode and explicit `BEGIN IMMEDIATE` transa
 
 ### 6.1 Test Coverage
 
-The workspace ships 218 tests across four test files and per-crate unit tests:
+At this report's May 2026 snapshot, the workspace shipped 218 tests across four test files and per-crate unit tests:
 
 | File | Focus |
 |------|-------|

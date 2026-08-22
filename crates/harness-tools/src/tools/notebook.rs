@@ -450,9 +450,7 @@ mod tests {
         assert!(!notebook_action_is_mutating(
             &json!({"action": "read_cell"})
         ));
-        assert!(!notebook_action_is_mutating(
-            &json!({"action": "metadata"})
-        ));
+        assert!(!notebook_action_is_mutating(&json!({"action": "metadata"})));
         assert!(!notebook_action_is_mutating(&json!({})));
         assert!(!notebook_action_is_mutating(&json!({"action": "unknown"})));
     }

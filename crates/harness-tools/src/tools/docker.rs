@@ -92,7 +92,11 @@ pub fn docker_action_is_mutating(args: &Value) -> bool {
 pub fn build_docker_args(action: &str, args: &Value) -> Result<Vec<String>, String> {
     match action {
         "ps" => {
-            let mut a = vec!["ps".into(), "--format".into(), "{{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}".into()];
+            let mut a = vec![
+                "ps".into(),
+                "--format".into(),
+                "{{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}".into(),
+            ];
             if args.get("all").and_then(Value::as_bool).unwrap_or(false) {
                 a.insert(1, "-a".into());
             }
@@ -267,7 +271,11 @@ impl Tool for DockerTool {
     }
 }
 
-async fn run_docker(bin: &std::path::Path, args: &[String], timeout_secs: u64) -> anyhow::Result<String> {
+async fn run_docker(
+    bin: &std::path::Path,
+    args: &[String],
+    timeout_secs: u64,
+) -> anyhow::Result<String> {
     // Honest error if binary missing.
     if bin.as_os_str() != "docker" {
         if !bin.exists() {
@@ -422,27 +430,23 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cps[0], "compose");
-        assert!(cps.windows(2).any(|w| w[0] == "-f" && w[1] == "docker-compose.yml"));
+        assert!(cps
+            .windows(2)
+            .any(|w| w[0] == "-f" && w[1] == "docker-compose.yml"));
 
         let cup = build_docker_args("compose_up", &json!({"service": "web"})).unwrap();
         assert!(cup.iter().any(|s| s == "up"));
         assert!(cup.iter().any(|s| s == "-d"));
 
         assert!(build_docker_args("logs", &json!({"container": "a;rm -rf"})).is_err());
-        assert!(build_docker_args(
-            "compose_ps",
-            &json!({"file": "../etc/passwd"})
-        )
-        .is_err());
+        assert!(build_docker_args("compose_ps", &json!({"file": "../etc/passwd"})).is_err());
     }
 
     #[test]
     fn mutating_policy_helper() {
         assert!(!docker_action_is_mutating(&json!({"action": "ps"})));
         assert!(!docker_action_is_mutating(&json!({"action": "logs"})));
-        assert!(docker_action_is_mutating(
-            &json!({"action": "compose_up"})
-        ));
+        assert!(docker_action_is_mutating(&json!({"action": "compose_up"})));
         assert!(!docker_action_is_mutating(&json!({})));
         assert!(!docker_action_is_mutating(&json!({"action": "images"})));
     }

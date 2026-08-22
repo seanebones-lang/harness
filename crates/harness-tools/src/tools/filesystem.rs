@@ -504,7 +504,10 @@ mod tests {
             }))
             .await
             .expect("ambig");
-        assert!(out.contains("appears 2 times") || out.contains("unique"), "got: {out}");
+        assert!(
+            out.contains("appears 2 times") || out.contains("unique"),
+            "got: {out}"
+        );
         let content = std::fs::read_to_string(dir.path().join("dup.txt")).unwrap();
         assert_eq!(content, "aa\nbb\naa\n");
 
@@ -545,20 +548,14 @@ mod tests {
         assert!(err.to_string().contains("missing path"));
 
         std::fs::create_dir(dir.path().join("empty")).unwrap();
-        let out = tool
-            .execute(json!({"path": "empty"}))
-            .await
-            .expect("empty");
+        let out = tool.execute(json!({"path": "empty"})).await.expect("empty");
         assert_eq!(out, "(empty directory)");
     }
 
     #[test]
     fn trim_context_keeps_neighbors_and_elides() {
         // No changes → placeholder
-        let none = trim_context(
-            &[" a\n".into(), " b\n".into(), " c\n".into()],
-            1,
-        );
+        let none = trim_context(&[" a\n".into(), " b\n".into(), " c\n".into()], 1);
         assert_eq!(none, vec!["(no changes)".to_string()]);
 
         let lines = vec![
@@ -573,10 +570,14 @@ mod tests {
             " 7\n".into(),
         ];
         let trimmed = trim_context(&lines, 1);
-        assert!(trimmed.iter().any(|l| l.starts_with('-') || l.starts_with('+')));
+        assert!(trimmed
+            .iter()
+            .any(|l| l.starts_with('-') || l.starts_with('+')));
         // Middle equal stretch should produce an elision marker
         assert!(
-            trimmed.iter().any(|l| l.contains('…') || l.starts_with("@@")),
+            trimmed
+                .iter()
+                .any(|l| l.contains('…') || l.starts_with("@@")),
             "expected elision in {trimmed:?}"
         );
     }
