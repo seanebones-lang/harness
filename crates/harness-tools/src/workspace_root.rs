@@ -237,8 +237,14 @@ mod tests {
     #[test]
     fn relaxed_allows_absolute_outside_root() {
         let (_d, r) = ws(SandboxMode::Relaxed);
-        let p = r.resolve("/tmp/whatever.txt").unwrap();
-        assert_eq!(p, PathBuf::from("/tmp/whatever.txt").clean());
+        let outside = tempdir().unwrap();
+        let target = outside.path().join("whatever.txt");
+        std::fs::write(&target, b"outside workspace").unwrap();
+        let target = std::fs::canonicalize(target).unwrap();
+
+        let p = r.resolve(target.to_str().unwrap()).unwrap();
+        assert_eq!(p, target);
+        assert!(!p.starts_with(r.root()));
     }
 
     #[cfg(unix)]
