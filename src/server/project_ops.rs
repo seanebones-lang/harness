@@ -183,7 +183,10 @@ pub(crate) fn collect_files(
             continue;
         }
         if let Ok(rel) = path.strip_prefix(root) {
-            let rel_s = rel.display().to_string();
+            // HTTP consumers need one stable path representation on every host.
+            let rel_s = rel
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/");
             if query.is_empty() || rel_s.to_lowercase().contains(query) {
                 out.push(rel_s);
                 if out.len() >= limit {

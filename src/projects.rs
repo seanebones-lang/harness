@@ -272,7 +272,9 @@ mod tests {
 
     #[test]
     fn canonicalize_absolute_missing_keeps_path() {
-        let p = PathBuf::from("/tmp/harness-project-store-missing-xyz");
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("harness-project-store-missing-xyz");
+        assert!(p.is_absolute());
         let got = canonicalize_or_absolute(p.clone()).unwrap();
         assert_eq!(got, p);
     }

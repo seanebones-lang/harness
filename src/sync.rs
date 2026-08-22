@@ -198,11 +198,14 @@ fn untar_dir(data: &[u8], parent: &Path) -> Result<()> {
 }
 
 fn validate_tar_entry_path(path: &Path) -> Result<()> {
-    if path.is_absolute()
-        || path
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
+    if path.components().any(|c| {
+        matches!(
+            c,
+            std::path::Component::Prefix(_)
+                | std::path::Component::RootDir
+                | std::path::Component::ParentDir
+        )
+    }) {
         anyhow::bail!("tar entry path {:?} is not allowed", path);
     }
     Ok(())
