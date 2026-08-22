@@ -257,7 +257,7 @@ async fn shell_tool_timeout() {
     registry.register(ShellTool::new(ShellConfig::default(), ws));
     let executor = ToolExecutor::new(registry);
 
-    /// Long-enough command for each platform's shell interpreter.
+    // Long-enough command for each platform's shell interpreter.
     #[cfg(windows)]
     let command = r#"powershell -NoProfile -Command "Start-Sleep -Seconds 10""#;
     #[cfg(not(windows))]

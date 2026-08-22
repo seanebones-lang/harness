@@ -99,6 +99,7 @@ pub fn socket_path() -> PathBuf {
 /// Connect to the running daemon transport for this platform.
 pub async fn connect_daemon() -> Result<DaemonConn> {
     let _token = crate::auth_token::read_token_file("daemon.token")?;
+    #[cfg(unix)]
     let mode = effective_transport();
 
     #[cfg(unix)]
@@ -289,6 +290,7 @@ pub async fn run_daemon(
     let auth_token = crate::auth_token::daemon_token()?;
     tracing::info!("daemon auth token loaded from ~/.harness/daemon.token");
 
+    #[cfg(unix)]
     let transport = effective_transport();
 
     #[cfg(unix)]
