@@ -2,6 +2,7 @@
 
 use crate::config::Config;
 use crate::provider_build;
+use std::time::Duration;
 
 pub async fn handle_doctor_command(cfg: &Config) {
     println!("harness doctor — system health check\n");
@@ -135,12 +136,17 @@ pub async fn handle_doctor_command(cfg: &Config) {
         );
     }
 
-    let ollama_running = tokio::process::Command::new("ollama")
-        .arg("list")
-        .output()
-        .await
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    // `doctor` is a local diagnostic, so an optional Ollama installation must not
+    // hold up the entire command when its background service is unavailable.
+    let ollama_running = tokio::time::timeout(
+        Duration::from_secs(2),
+        tokio::process::Command::new("ollama").arg("list").output(),
+    )
+    .await
+    .ok()
+    .and_then(|result| result.ok())
+    .map(|output| output.status.success())
+    .unwrap_or(false);
     println!(
         "  {} Ollama local models: {}",
         if ollama_running { "✓" } else { "○" },
