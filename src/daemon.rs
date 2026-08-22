@@ -81,6 +81,7 @@ pub fn configure(cfg: &DaemonConfig) {
     let _ = DAEMON_TRANSPORT.set(cfg.effective_transport());
 }
 
+#[cfg(unix)]
 fn effective_transport() -> DaemonTransport {
     DAEMON_TRANSPORT
         .get()
