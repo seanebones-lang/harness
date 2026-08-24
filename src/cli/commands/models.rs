@@ -26,6 +26,23 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             ],
         ),
         (
+            "nvidia",
+            &[
+                (
+                    "deepseek-ai/deepseek-v4-flash-0731",
+                    "NVIDIA · fast + reliable · default ★",
+                ),
+                (
+                    "nvidia/nemotron-3-super-120b-a12b",
+                    "NVIDIA · 120B MoE · deep reasoning",
+                ),
+                (
+                    "nvidia/nemotron-3-ultra-550b-a55b",
+                    "NVIDIA · 550B flagship (can 503 under load)",
+                ),
+            ],
+        ),
+        (
             "xai",
             &[
                 ("grok-4.5", "$1.25/$2.50 · 1M ctx · orchestrator ★"),
@@ -102,6 +119,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             "xai" => "XAI_API_KEY",
             "gemini" => "GEMINI_API_KEY",
             "bedrock" => "AWS_ACCESS_KEY_ID",
+            "nvidia" => "NVIDIA_API_KEY",
             _ => "",
         };
         let available = if env_key.is_empty() {
