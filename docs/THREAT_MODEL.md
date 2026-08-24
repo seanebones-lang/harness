@@ -46,7 +46,8 @@ NextEleven Harness is a **local coding agent**: it runs shell commands, edits fi
 
 - Keys via env / config only; never commit secrets.
 - Gemini uses OpenAI-compatible Google endpoint; Bedrock uses AWS SigV4 Converse — credentials are standard AWS env vars.
-- Smart router auto-detects keys; missing keys must fail closed without sending prompts.
+- The saved provider route is authoritative; multiple detected providers without a route fail closed instead of invoking an arbitrary vendor.
+- Custom providers name their credential environment variable with `api_key_env`; the setup UI does not collect or persist secrets.
 
 ## Sync (`harness sync`)
 

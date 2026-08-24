@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::config::Config;
+use crate::config::{self, Config};
 
 /// Handle `harness models [--set provider:model]`.
 pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<()> {
@@ -11,7 +11,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             "anthropic",
             &[
                 ("claude-opus-4-7", "$5/$25 · 1M ctx · adaptive thinking"),
-                ("claude-sonnet-4-6", "$3/$15 · 1M ctx · default ★"),
+                ("claude-sonnet-4-6", "$3/$15 · 1M ctx"),
                 ("claude-haiku-4-5", "$1/$5  · fast / cheap"),
             ],
         ),
@@ -30,7 +30,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             &[
                 (
                     "deepseek-ai/deepseek-v4-flash-0731",
-                    "NVIDIA · fast + reliable · default ★",
+                    "NVIDIA · fast + reliable",
                 ),
                 (
                     "nvidia/nemotron-3-super-120b-a12b",
@@ -45,7 +45,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
         (
             "xai",
             &[
-                ("grok-4.5", "$1.25/$2.50 · 1M ctx · orchestrator ★"),
+                ("grok-4.5", "$1.25/$2.50 · 1M ctx"),
                 ("grok-4.3", "$1.25/$2.50 · 1M ctx"),
                 (
                     "grok-4.20-0309-reasoning",
@@ -60,7 +60,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
         (
             "ollama",
             &[
-                ("qwen2.5-coder:1.5b", "local · small code slave ★"),
+                ("qwen2.5-coder:1.5b", "local · small code model"),
                 ("qwen2.5-coder:3b", "local · small-mid code"),
                 ("llama3.2:1b", "local · tiny general"),
                 ("qwen3-coder:30b", "local · 256K ctx · agentic"),
@@ -71,7 +71,7 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
         (
             "gemini",
             &[
-                ("gemini-2.0-flash", "Google · fast default ★"),
+                ("gemini-2.0-flash", "Google · fast"),
                 ("gemini-1.5-pro", "Google · 1M ctx"),
                 ("gemini-1.5-flash", "Google · fast / cheap"),
             ],
@@ -86,41 +86,61 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
                 ("amazon.nova-pro-v1:0", "AWS Bedrock · Nova Pro"),
             ],
         ),
+        (
+            "deepseek",
+            &[
+                ("deepseek-v4-flash", "DeepSeek API"),
+                ("deepseek-v4-pro", "DeepSeek API"),
+            ],
+        ),
+        ("cerebras", &[]),
+        ("fireworks", &[]),
+        ("groq", &[]),
+        ("huggingface", &[]),
+        ("mistral", &[("mistral-large-latest", "Mistral API")]),
+        ("mlx", &[]),
+        ("openrouter", &[]),
+        ("perplexity", &[]),
+        ("sambanova", &[]),
+        ("together", &[]),
     ];
 
     if let Some(ref model_spec) = set {
-        let (provider_part, model_part) = if model_spec.contains(':') {
-            let mut parts = model_spec.splitn(2, ':');
-            (
-                parts.next().unwrap_or("").to_string(),
-                parts.next().unwrap_or("").to_string(),
+        let (provider_part, model_part) = model_spec.split_once(':').ok_or_else(|| {
+            anyhow::anyhow!(
+                "model changes require provider:model; use `harness route model <provider> <model>`"
             )
-        } else {
-            (String::new(), model_spec.clone())
-        };
-
-        let paths = config_paths_to_update();
-        for path in paths {
-            apply_model_set(&path, &provider_part, &model_part)?;
-            println!(
-                "✓ Default model set to '{model_spec}' in {}",
-                path.display()
-            );
-        }
+        })?;
+        let path = config::active_config_toml_path();
+        apply_model_set(&path, provider_part, model_part)?;
+        println!("✓ Model set to '{model_spec}' in {}", path.display());
+        println!("Use `harness route show` to inspect the exact route.");
         return Ok(());
     }
 
-    println!("Available models (May 2026):");
+    println!("Provider/model catalogue (examples only; no model is preferred):");
     println!();
-    for (provider, models) in catalogue {
-        let env_key = match *provider {
+    let current_provider = cfg.router.default.as_deref().unwrap_or("<route not set>");
+    let current_model = cfg
+        .router
+        .default
+        .as_deref()
+        .and_then(|provider| cfg.providers.get(provider))
+        .and_then(|entry| entry.model.as_deref())
+        .unwrap_or("<model not set>");
+    let mut sorted_catalogue = catalogue.to_vec();
+    sorted_catalogue.sort_by_key(|(provider, _)| *provider);
+    for (provider, models) in sorted_catalogue {
+        let env_key = match provider {
             "anthropic" => "ANTHROPIC_API_KEY",
             "openai" => "OPENAI_API_KEY",
             "xai" => "XAI_API_KEY",
             "gemini" => "GEMINI_API_KEY",
             "bedrock" => "AWS_ACCESS_KEY_ID",
-            "nvidia" => "NVIDIA_API_KEY",
-            _ => "",
+            other => harness_provider_router::provider_preset(other)
+                .and_then(|preset| preset.api_key_envs.first())
+                .copied()
+                .unwrap_or(""),
         };
         let available = if env_key.is_empty() {
             "local".to_string()
@@ -133,38 +153,23 @@ pub async fn handle_models_command(set: Option<String>, cfg: &Config) -> Result<
             format!("✗ {} not set", env_key)
         };
         println!("  {provider} ({available})");
-        for (model, desc) in *models {
-            let current = cfg.provider.model.as_deref() == Some(model);
+        if models.is_empty() {
+            println!("    <use any model id supported by this provider>");
+        }
+        for (model, desc) in models {
+            let current = current_provider == provider && current_model == *model;
             let marker = if current { " ◀ current" } else { "" };
             println!("    {:42} {desc}{marker}", model);
         }
         println!();
     }
 
-    let current = cfg.provider.model.as_deref().unwrap_or("claude-sonnet-4-6");
-    println!("Current default: {current}");
+    println!("Current primary: {current_provider}:{current_model}");
     println!();
-    println!("To switch: harness models --set <provider:model>");
-    println!("Example:   harness models --set anthropic:claude-opus-4-7");
+    println!("Set route:    harness route set <provider:model> [provider:model ...]");
+    println!("Change model: harness route model <provider> <model>");
 
     Ok(())
-}
-
-fn config_paths_to_update() -> Vec<std::path::PathBuf> {
-    let mut paths = Vec::new();
-    let local = std::path::PathBuf::from(".harness/config.toml");
-    if local.parent().is_some() {
-        let _ = std::fs::create_dir_all(".harness");
-        paths.push(local);
-    }
-    if let Some(home) = dirs::home_dir() {
-        let global = home.join(".harness/config.toml");
-        let _ = std::fs::create_dir_all(global.parent().unwrap_or(std::path::Path::new(".")));
-        if !paths.iter().any(|p| p == &global) {
-            paths.push(global);
-        }
-    }
-    paths
 }
 
 fn apply_model_set(path: &std::path::Path, provider_part: &str, model_part: &str) -> Result<()> {
@@ -181,19 +186,14 @@ fn apply_model_set(path: &std::path::Path, provider_part: &str, model_part: &str
     }
     doc["provider"]["model"] = toml_edit::value(model_part);
 
-    let router_default = if !provider_part.is_empty() {
-        if !doc.contains_key("router") {
-            doc["router"] = toml_edit::Item::Table(toml_edit::Table::new());
-        }
-        doc["router"]["default"] = toml_edit::value(provider_part);
-        provider_part.to_string()
-    } else {
-        doc.get("router")
-            .and_then(|r| r.get("default"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("xai")
-            .to_string()
-    };
+    if provider_part.is_empty() || model_part.is_empty() {
+        anyhow::bail!("provider and model are required");
+    }
+    if !doc.contains_key("router") {
+        doc["router"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    doc["router"]["default"] = toml_edit::value(provider_part);
+    let router_default = provider_part.to_string();
 
     if !doc.contains_key("providers") {
         doc["providers"] = toml_edit::Item::Table(toml_edit::Table::new());

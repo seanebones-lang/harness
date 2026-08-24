@@ -2,6 +2,21 @@
 
 This document covers breaking changes introduced in Phase E (April 2026).
 
+## August 2026: explicit provider routes
+
+Harness no longer chooses a provider priority or inserts an automatic Ollama fallback. Existing configurations should save an explicit route:
+
+```bash
+harness route set anthropic:claude-sonnet-4-6 openai:gpt-5.5
+harness route show
+```
+
+The first entry is primary and the rest are exact fallbacks. A route with one provider is valid. If multiple provider keys/entries exist without `[router].default`, Harness now fails closed and asks you to run setup. `harness setup --force` converts an existing installation interactively.
+
+`harness models --set` remains as a compatibility command, but only updates the active config. New automation should use `harness route` with `--global` or `--project` when scope matters.
+
+Setup no longer prompts for or writes API keys. Store credentials in environment variables, or use `api_key_env` in a provider entry. Existing stored `api_key` values still load.
+
 ## Breaking Changes
 
 ### 1. Voice Recording: `Ctrl+V` → `Ctrl+S`
@@ -11,10 +26,12 @@ This document covers breaking changes introduced in Phase E (April 2026).
 
 **Why:** `Ctrl+V` is the standard paste shortcut; using it for voice caused conflicts when pasting text that started with `v`. `Ctrl+S` ("speak") is now the dedicated voice key.
 
-### 2. Provider Initialization — No Longer XAI-gated
+### 2. Provider Initialization — No Longer XAI-gated (historical Phase E behavior)
 
 **Phase D:** Harness required `XAI_API_KEY` to be set at startup.  
-**Phase E:** Smart provider detection — any of `ANTHROPIC_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY` will work. Ollama is tried as a final fallback.
+**Phase E at its April 2026 release:** provider detection accepted `ANTHROPIC_API_KEY`, `XAI_API_KEY`, or `OPENAI_API_KEY`, then inserted Ollama as a final fallback.
+
+**Current behavior (August 2026):** that implicit priority is retired. Save the exact route you want as described at the top of this guide; Harness will not rank detected credentials or append Ollama.
 
 **What to do:** Remove any workaround scripts that exported a dummy `XAI_API_KEY`. Just set the key for the provider you use.
 

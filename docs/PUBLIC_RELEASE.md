@@ -80,7 +80,7 @@ Record here when you run this checklist (update the table per release).
 
 ### Snapshot for current tree (fill in when cutting a release)
 
-See **[`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md)** for the latest automated gate results (May 2026 Round 2: **218 tests**, P0 closed, threat model published; manual smoke §3 still pending).
+See **[`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md)** for the latest automated gate results. That log is the source of truth for current test counts, security posture, and remaining manual release gates.
 
 - **Date:** update when you tag
 - **Recorded revision:** `git log -1 --oneline`

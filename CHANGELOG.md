@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Provider-neutral `harness route show|set|model|add|remove|move|custom` commands with explicit global/project scope
+- First-class presets for Cerebras, DeepSeek, Fireworks, Groq, Hugging Face, NVIDIA, OpenRouter, Perplexity, SambaNova, and Together through the OpenAI-compatible transport
+- `api_key_env` and `kind = "openai-compatible"` configuration for future bearer-authenticated endpoints without source changes
+
+### Changed
+- Setup now asks for one or more exact `provider:model` entries and preserves their order; no provider or model is marked recommended
+- Runtime no longer chooses a provider priority, inserts implicit fallbacks, or silently falls back to Ollama
+- Browser setup edits the same exact route as the CLI and no longer collects API keys
+- `harness models --set` updates only the active config; route commands provide explicit `--global` and `--project` targeting
+
+### Security
+- Unknown provider names without an explicit adapter/base URL now fail closed instead of falling through to xAI
+- Setup keeps credentials in environment variables instead of writing newly entered secrets to config
+
 ### Notes
 - Working tree tracks **1.3.0** on `main`. See below for the cut.
 

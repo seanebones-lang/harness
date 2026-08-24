@@ -1,20 +1,15 @@
 //! Provider router for Harness.
 //!
-//! Selects from multiple configured providers based on per-request intent,
-//! with automatic exponential-backoff fallback on rate-limit or server errors.
+//! Selects from multiple configured providers based on the user's saved route,
+//! with ordered fallback on provider errors.
 //!
 //! # Usage
 //!
 //! ```toml
-//! [providers]
-//! default = "anthropic"
-//!
 //! [providers.anthropic]
-//! api_key = "sk-ant-..."
 //! model = "claude-sonnet-4-6"
 //!
 //! [providers.xai]
-//! api_key = "xai-..."
 //! model = "grok-4.3"
 //!
 //! [providers.ollama]
@@ -26,10 +21,11 @@
 //! model = "mlx-community/Qwen3-Coder-30B"
 //!
 //! [router]
+//! default = "anthropic"
 //! fast_model = "xai:grok-4.1-fast"
 //! heavy_model = "anthropic:claude-opus-4-7"
 //! embed_model = "ollama:nomic-embed-text"
-//! fallback = ["anthropic", "xai", "openai", "ollama", "mlx"]
+//! fallback = ["xai", "ollama"]
 //! ```
 
 use async_trait::async_trait;
@@ -58,73 +54,263 @@ pub struct RouterConfig {
 /// Config for a single named provider entry.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct ProviderEntry {
-    pub name: Option<String>, // e.g. "anthropic", "xai", "openai", "ollama"
+    /// Provider adapter. Usually omitted because the table name selects it.
+    /// Set to `openai-compatible` for a custom OpenAI-format endpoint.
+    pub kind: Option<String>,
+    /// Deprecated adapter alias retained for existing configuration files.
+    pub name: Option<String>,
     pub api_key: Option<String>,
+    /// Environment variable containing the API key. Prefer this over storing a key.
+    pub api_key_env: Option<String>,
     pub model: Option<String>,
     pub base_url: Option<String>,
 }
 
+/// Metadata for built-in provider adapters and OpenAI-compatible presets.
+/// The order is alphabetical for display only and is never used for routing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProviderPreset {
+    pub name: &'static str,
+    pub kind: &'static str,
+    pub api_key_envs: &'static [&'static str],
+    pub base_url: Option<&'static str>,
+    pub local: bool,
+}
+
+pub const PROVIDER_PRESETS: &[ProviderPreset] = &[
+    ProviderPreset {
+        name: "anthropic",
+        kind: "anthropic",
+        api_key_envs: &["ANTHROPIC_API_KEY"],
+        base_url: None,
+        local: false,
+    },
+    ProviderPreset {
+        name: "bedrock",
+        kind: "bedrock",
+        api_key_envs: &["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+        base_url: None,
+        local: false,
+    },
+    ProviderPreset {
+        name: "cerebras",
+        kind: "openai-compatible",
+        api_key_envs: &["CEREBRAS_API_KEY"],
+        base_url: Some("https://api.cerebras.ai/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "deepseek",
+        kind: "openai-compatible",
+        api_key_envs: &["DEEPSEEK_API_KEY"],
+        base_url: Some("https://api.deepseek.com"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "fireworks",
+        kind: "openai-compatible",
+        api_key_envs: &["FIREWORKS_API_KEY"],
+        base_url: Some("https://api.fireworks.ai/inference/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "gemini",
+        kind: "gemini",
+        api_key_envs: &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        base_url: None,
+        local: false,
+    },
+    ProviderPreset {
+        name: "groq",
+        kind: "openai-compatible",
+        api_key_envs: &["GROQ_API_KEY"],
+        base_url: Some("https://api.groq.com/openai/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "huggingface",
+        kind: "openai-compatible",
+        api_key_envs: &["HF_TOKEN"],
+        base_url: Some("https://router.huggingface.co/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "mistral",
+        kind: "mistral",
+        api_key_envs: &["MISTRAL_API_KEY"],
+        base_url: Some("https://api.mistral.ai/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "mlx",
+        kind: "mlx",
+        api_key_envs: &[],
+        base_url: None,
+        local: true,
+    },
+    ProviderPreset {
+        name: "nvidia",
+        kind: "openai-compatible",
+        api_key_envs: &["NVIDIA_API_KEY"],
+        base_url: Some("https://integrate.api.nvidia.com/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "ollama",
+        kind: "ollama",
+        api_key_envs: &[],
+        base_url: None,
+        local: true,
+    },
+    ProviderPreset {
+        name: "openai",
+        kind: "openai",
+        api_key_envs: &["OPENAI_API_KEY"],
+        base_url: None,
+        local: false,
+    },
+    ProviderPreset {
+        name: "openrouter",
+        kind: "openai-compatible",
+        api_key_envs: &["OPENROUTER_API_KEY"],
+        base_url: Some("https://openrouter.ai/api/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "perplexity",
+        kind: "openai-compatible",
+        api_key_envs: &["PERPLEXITY_API_KEY"],
+        base_url: Some("https://api.perplexity.ai"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "sambanova",
+        kind: "openai-compatible",
+        api_key_envs: &["SAMBANOVA_API_KEY"],
+        base_url: Some("https://api.sambanova.ai/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "together",
+        kind: "openai-compatible",
+        api_key_envs: &["TOGETHER_API_KEY"],
+        base_url: Some("https://api.together.ai/v1"),
+        local: false,
+    },
+    ProviderPreset {
+        name: "xai",
+        kind: "xai",
+        api_key_envs: &["XAI_API_KEY"],
+        base_url: None,
+        local: false,
+    },
+];
+
+pub fn provider_preset(name: &str) -> Option<&'static ProviderPreset> {
+    PROVIDER_PRESETS.iter().find(|preset| preset.name == name)
+}
+
+/// Fill adapter, key-environment, and base URL metadata without choosing a model.
+pub fn configured_provider_entry(name: &str) -> ProviderEntry {
+    let Some(preset) = provider_preset(name) else {
+        return ProviderEntry::default();
+    };
+    ProviderEntry {
+        kind: (preset.kind != preset.name).then(|| preset.kind.to_string()),
+        api_key_env: preset
+            .api_key_envs
+            .first()
+            .map(|value| (*value).to_string()),
+        base_url: preset.base_url.map(str::to_string),
+        ..ProviderEntry::default()
+    }
+}
+
+pub fn provider_key_environment(name: &str, entry: &ProviderEntry) -> Option<String> {
+    entry.api_key_env.clone().or_else(|| {
+        provider_preset(name)
+            .and_then(|preset| preset.api_key_envs.first())
+            .map(|value| (*value).to_string())
+    })
+}
+
+fn nonempty_environment(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
+fn resolved_api_key(name: &str, entry: &ProviderEntry) -> String {
+    entry
+        .api_key
+        .clone()
+        .filter(|value| !value.is_empty())
+        .or_else(|| entry.api_key_env.as_deref().and_then(nonempty_environment))
+        .or_else(|| {
+            provider_preset(name).and_then(|preset| {
+                preset
+                    .api_key_envs
+                    .iter()
+                    .find_map(|env_name| nonempty_environment(env_name))
+            })
+        })
+        .unwrap_or_default()
+}
+
 /// Build an `ArcProvider` from a `ProviderEntry`.
 ///
-/// `kind` is usually the `[providers.<kind>]` table key.
+/// `name` is the `[providers.<name>]` table key. `entry.kind` optionally selects
+/// an adapter for a custom name.
 /// Supported kinds: `anthropic`, `xai`, `openai`, `mistral`, `gemini`, `bedrock`,
-/// `openai-compatible` / `compatible`, `ollama`, `mlx`. Any other name **with** `base_url` is treated as
-/// OpenAI-compatible under that name; without `base_url` falls back to xAI (legacy).
-pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcProvider> {
+/// `openai-compatible` / `compatible`, `ollama`, `mlx`. Built-in hosted presets
+/// use the OpenAI-compatible adapter. Any other name with `base_url` is also
+/// treated as OpenAI-compatible; unknown names without an adapter are rejected.
+pub fn build_provider(name: &str, entry: &ProviderEntry) -> anyhow::Result<ArcProvider> {
+    let preset = provider_preset(name);
+    let kind = entry
+        .kind
+        .as_deref()
+        .or(entry.name.as_deref())
+        .or_else(|| preset.map(|value| value.kind))
+        .unwrap_or(name);
+    let api_key = resolved_api_key(name, entry);
+    let base_url = entry
+        .base_url
+        .as_deref()
+        .or_else(|| preset.and_then(|value| value.base_url));
+    let model = entry
+        .model
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("provider '{name}' requires an explicit model"))?;
+
     match kind {
         "anthropic" => {
-            let key = entry.api_key.as_deref().unwrap_or("");
-            let mut cfg = harness_provider_anthropic::AnthropicConfig::new(key);
-            if let Some(m) = &entry.model {
-                cfg = cfg.with_model(m);
-            }
+            let cfg = harness_provider_anthropic::AnthropicConfig::new(&api_key).with_model(model);
             Ok(Arc::new(
                 harness_provider_anthropic::AnthropicProvider::new(cfg)?,
             ))
         }
         "openai" => {
-            let key = entry.api_key.as_deref().unwrap_or("");
-            let mut cfg = harness_provider_openai::OpenAIConfig::new(key);
-            if let Some(m) = &entry.model {
-                cfg = cfg.with_model(m);
-            }
-            if let Some(u) = &entry.base_url {
+            let mut cfg = harness_provider_openai::OpenAIConfig::new(&api_key).with_model(model);
+            if let Some(u) = base_url {
                 cfg = cfg.with_base_url(u);
             }
             Ok(Arc::new(harness_provider_openai::OpenAIProvider::new(cfg)?))
         }
         "mistral" => {
-            let key = entry
-                .api_key
-                .clone()
-                .or_else(|| std::env::var("MISTRAL_API_KEY").ok())
-                .unwrap_or_default();
-            let mut cfg = harness_provider_openai::OpenAIConfig::mistral(key);
-            if let Some(m) = &entry.model {
-                cfg = cfg.with_model(m);
-            }
-            if let Some(u) = &entry.base_url {
+            let mut cfg = harness_provider_openai::OpenAIConfig::mistral(api_key).with_model(model);
+            if let Some(u) = base_url {
                 cfg = cfg.with_base_url(u);
             }
             Ok(Arc::new(harness_provider_openai::OpenAIProvider::new(cfg)?))
         }
         "gemini" => {
-            let key = entry
-                .api_key
-                .clone()
-                .or_else(harness_provider_gemini::api_key_from_env)
-                .unwrap_or_default();
-            let mut cfg = harness_provider_openai::OpenAIConfig::gemini(key);
-            if let Some(m) = &entry.model {
-                cfg = cfg.with_model(m);
-            }
-            if let Some(u) = &entry.base_url {
+            let mut cfg = harness_provider_openai::OpenAIConfig::gemini(api_key).with_model(model);
+            if let Some(u) = base_url {
                 cfg = cfg.with_base_url(u);
             }
             Ok(Arc::new(harness_provider_openai::OpenAIProvider::new(cfg)?))
         }
         "bedrock" => {
-            let model = entry.model.clone();
             let region = entry.base_url.clone(); // optional region override via base_url field
                                                  // Prefer explicit api_key as access key only if full env not used — env is source of truth.
             if entry.api_key.is_some()
@@ -135,9 +321,7 @@ pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcPr
                 if let Some(pair) = entry.api_key.as_deref() {
                     if let Some((ak, sk)) = pair.split_once(':') {
                         let cfg = harness_provider_bedrock::BedrockConfig {
-                            model: model
-                                .clone()
-                                .unwrap_or_else(|| harness_provider_bedrock::DEFAULT_MODEL.into()),
+                            model: model.to_string(),
                             region: region
                                 .clone()
                                 .unwrap_or_else(|| harness_provider_bedrock::DEFAULT_REGION.into()),
@@ -151,65 +335,42 @@ pub fn build_provider(kind: &str, entry: &ProviderEntry) -> anyhow::Result<ArcPr
                     }
                 }
             }
-            harness_provider_bedrock::build_arc(model, region)
+            harness_provider_bedrock::build_arc(Some(model.to_string()), region)
         }
         "openai-compatible" | "compatible" => {
-            let key = entry.api_key.as_deref().unwrap_or("");
-            let base = entry
-                .base_url
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "openai-compatible provider requires base_url (OpenAI-format /v1 endpoint)"
-                    )
-                })?;
-            let mut cfg = harness_provider_openai::OpenAIConfig::new(key)
-                .with_provider_name("openai-compatible")
+            let base = base_url.filter(|s| !s.is_empty()).ok_or_else(|| {
+                anyhow::anyhow!("provider '{name}' requires base_url (OpenAI-format endpoint)")
+            })?;
+            let cfg = harness_provider_openai::OpenAIConfig::new(&api_key)
+                .with_provider_name(name)
                 .with_base_url(base)
-                .with_model(entry.model.as_deref().unwrap_or("gpt-4o-mini"));
-            if let Some(m) = &entry.model {
-                cfg = cfg.with_model(m);
-            }
+                .with_model(model);
             Ok(Arc::new(harness_provider_openai::OpenAIProvider::new(cfg)?))
         }
         "ollama" => {
-            let model = entry.model.as_deref().unwrap_or("qwen3-coder:30b");
             let mut cfg = harness_provider_ollama::OllamaConfig::new(model);
-            if let Some(u) = &entry.base_url {
+            if let Some(u) = base_url {
                 cfg = cfg.with_base_url(u);
             }
             Ok(Arc::new(harness_provider_ollama::OllamaProvider::new(cfg)?))
         }
-        "mlx" => harness_provider_mlx::build_arc(entry.model.clone(), entry.base_url.clone()),
+        "mlx" => harness_provider_mlx::build_arc(Some(model.to_string()), entry.base_url.clone()),
         "xai" => {
-            let key = entry.api_key.as_deref().unwrap_or("");
-            let mut cfg = harness_provider_xai::XaiConfig::new(key);
-            if let Some(m) = &entry.model {
-                cfg = cfg.with_model(m);
-            }
+            let cfg = harness_provider_xai::XaiConfig::new(&api_key).with_model(model);
             Ok(Arc::new(harness_provider_xai::XaiProvider::new(cfg)?))
         }
-        other => {
+        _ => {
             // Custom table name with base_url → OpenAI-compatible under that name.
-            if let Some(base) = entry.base_url.as_deref().filter(|s| !s.is_empty()) {
-                let key = entry.api_key.as_deref().unwrap_or("");
-                let mut cfg = harness_provider_openai::OpenAIConfig::new(key)
-                    .with_provider_name(other)
+            if let Some(base) = base_url.filter(|s| !s.is_empty()) {
+                let cfg = harness_provider_openai::OpenAIConfig::new(&api_key)
+                    .with_provider_name(name)
                     .with_base_url(base)
-                    .with_model(entry.model.as_deref().unwrap_or("default"));
-                if let Some(m) = &entry.model {
-                    cfg = cfg.with_model(m);
-                }
+                    .with_model(model);
                 return Ok(Arc::new(harness_provider_openai::OpenAIProvider::new(cfg)?));
             }
-            // Legacy: unknown kind without base_url was treated as xAI.
-            let key = entry.api_key.as_deref().unwrap_or("");
-            let mut cfg = harness_provider_xai::XaiConfig::new(key);
-            if let Some(m) = &entry.model {
-                cfg = cfg.with_model(m);
-            }
-            Ok(Arc::new(harness_provider_xai::XaiProvider::new(cfg)?))
+            anyhow::bail!(
+                "unknown provider '{name}'; set kind = \"openai-compatible\" and base_url, or choose a built-in provider"
+            )
         }
     }
 }
@@ -261,6 +422,7 @@ struct ProviderEnvironment {
     bedrock_model_id: Option<String>,
     aws_region: Option<String>,
     mlx_runtime_available: bool,
+    compatible_api_keys: HashMap<String, String>,
 }
 
 impl ProviderEnvironment {
@@ -268,6 +430,24 @@ impl ProviderEnvironment {
         fn nonempty(name: &str) -> Option<String> {
             std::env::var(name).ok().filter(|value| !value.is_empty())
         }
+
+        let compatible_api_keys = [
+            ("cerebras", "CEREBRAS_API_KEY"),
+            ("deepseek", "DEEPSEEK_API_KEY"),
+            ("fireworks", "FIREWORKS_API_KEY"),
+            ("groq", "GROQ_API_KEY"),
+            ("huggingface", "HF_TOKEN"),
+            ("nvidia", "NVIDIA_API_KEY"),
+            ("openrouter", "OPENROUTER_API_KEY"),
+            ("perplexity", "PERPLEXITY_API_KEY"),
+            ("sambanova", "SAMBANOVA_API_KEY"),
+            ("together", "TOGETHER_API_KEY"),
+        ]
+        .into_iter()
+        .filter_map(|(provider, env_name)| {
+            nonempty(env_name).map(|key| (provider.to_string(), key))
+        })
+        .collect();
 
         Self {
             anthropic_api_key: nonempty("ANTHROPIC_API_KEY"),
@@ -280,8 +460,70 @@ impl ProviderEnvironment {
             bedrock_model_id: nonempty("BEDROCK_MODEL_ID"),
             aws_region: nonempty("AWS_REGION").or_else(|| nonempty("AWS_DEFAULT_REGION")),
             mlx_runtime_available: harness_provider_mlx::mlx_runtime_available(),
+            compatible_api_keys,
         }
     }
+
+    fn provider_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for (name, available) in [
+            ("anthropic", self.anthropic_api_key.is_some()),
+            (
+                "bedrock",
+                self.aws_access_key_id.is_some() && self.aws_secret_access_key.is_some(),
+            ),
+            ("gemini", self.gemini_api_key.is_some()),
+            ("mistral", self.mistral_api_key.is_some()),
+            ("openai", self.openai_api_key.is_some()),
+            ("xai", self.xai_api_key.is_some()),
+            ("mlx", self.mlx_runtime_available),
+        ] {
+            if available {
+                names.push(name.to_string());
+            }
+        }
+        names.extend(self.compatible_api_keys.keys().cloned());
+        names.sort();
+        names
+    }
+
+    fn entry(&self, name: &str) -> Option<ProviderEntry> {
+        let mut entry = configured_provider_entry(name);
+        entry.api_key = match name {
+            "anthropic" => self.anthropic_api_key.clone(),
+            "xai" => self.xai_api_key.clone(),
+            "openai" => self.openai_api_key.clone(),
+            "mistral" => self.mistral_api_key.clone(),
+            "gemini" => self.gemini_api_key.clone(),
+            "bedrock" => None,
+            "mlx" if self.mlx_runtime_available => None,
+            other => self.compatible_api_keys.get(other).cloned(),
+        };
+        if name == "bedrock" {
+            if self.aws_access_key_id.is_none() || self.aws_secret_access_key.is_none() {
+                return None;
+            }
+            entry.model = self.bedrock_model_id.clone();
+            entry.base_url = self.aws_region.clone();
+        } else if (name == "mlx" && !self.mlx_runtime_available)
+            || (!provider_preset(name).is_some_and(|preset| preset.local)
+                && entry.api_key.is_none())
+        {
+            return None;
+        }
+        Some(entry)
+    }
+}
+
+fn configured_entry_for_selected_provider(
+    name: &str,
+    environment: &ProviderEnvironment,
+) -> Option<ProviderEntry> {
+    environment.entry(name).or_else(|| {
+        provider_preset(name)
+            .filter(|preset| preset.local)
+            .map(|_| configured_provider_entry(name))
+    })
 }
 
 impl ProviderRouter {
@@ -325,15 +567,20 @@ impl ProviderRouter {
         self
     }
 
-    /// Return a reference to the named provider, or the default.
+    /// Return a reference to a named provider.
     pub fn get(&self, name: &str) -> Option<&ArcProvider> {
         self.providers.get(name)
     }
 
     pub fn default_provider(&self) -> Option<&ArcProvider> {
-        self.providers
-            .get(&self.default_name)
-            .or_else(|| self.providers.values().next())
+        self.providers.get(&self.default_name)
+    }
+
+    /// Exact configured route: primary first, followed by fallbacks.
+    pub fn route_names(&self) -> Vec<&str> {
+        std::iter::once(self.default_name.as_str())
+            .chain(self.fallback.iter().map(String::as_str))
+            .collect()
     }
 
     pub fn fast_provider(&self) -> Option<&ArcProvider> {
@@ -377,16 +624,12 @@ impl ProviderRouter {
         Arc::new(self)
     }
 
-    /// Build from a flat config map (name → ProviderEntry) + RouterConfig.
+    /// Build from named provider entries and an explicit routing policy.
     ///
-    /// If no `[router]` block is present (all fields `None`), automatically selects
-    /// sensible defaults based on which `*_API_KEY` environment variables are set:
-    ///
-    /// | Priority | Default  | Fast                     | Heavy                  | Embed                   |
-    /// |----------|----------|--------------------------|------------------------|-------------------------|
-    /// | 1st      | anthropic (if ANTHROPIC_API_KEY) | anthropic:claude-haiku-4-5 | anthropic:claude-opus-4-7 | ollama:nomic-embed-text |
-    /// | 2nd      | xai (if XAI_API_KEY)    | xai:grok-4.1-fast | xai:grok-4.3 | ollama:nomic-embed-text |
-    /// | 3rd      | ollama (local, always)  | ollama:qwen3-coder:30b | ollama:qwen3-coder:30b | ollama:nomic-embed-text |
+    /// The first provider is `[router].default`; `[router].fallback` is tried in
+    /// the exact saved order. When no route exists, exactly one configured or
+    /// environment-detected provider is accepted as an unambiguous legacy case.
+    /// Multiple candidates require the user to save a route.
     pub fn from_config(
         entries: &HashMap<String, ProviderEntry>,
         router_cfg: &RouterConfig,
@@ -399,231 +642,97 @@ impl ProviderRouter {
         router_cfg: &RouterConfig,
         environment: &ProviderEnvironment,
     ) -> anyhow::Result<Self> {
-        // Smart defaults: detect which providers are actually available
-        let has_anthropic =
-            entries.contains_key("anthropic") || environment.anthropic_api_key.is_some();
-        let has_xai = entries.contains_key("xai") || environment.xai_api_key.is_some();
-        let has_openai = entries.contains_key("openai") || environment.openai_api_key.is_some();
-        let has_mistral = entries.contains_key("mistral") || environment.mistral_api_key.is_some();
-        let has_gemini = entries.contains_key("gemini") || environment.gemini_api_key.is_some();
-        let has_bedrock = entries.contains_key("bedrock")
-            || (environment.aws_access_key_id.is_some()
-                && environment.aws_secret_access_key.is_some());
-        let has_ollama = entries.contains_key("ollama");
-        let has_mlx = entries.contains_key("mlx") || environment.mlx_runtime_available;
-
-        // Auto-populate providers from env keys if not explicitly configured
-        let mut augmented: HashMap<String, ProviderEntry> = entries.clone();
-        if has_anthropic && !augmented.contains_key("anthropic") {
-            augmented.insert(
-                "anthropic".into(),
-                ProviderEntry {
-                    name: Some("anthropic".into()),
-                    api_key: environment.anthropic_api_key.clone(),
-                    model: Some("claude-sonnet-4-6".into()),
-                    base_url: None,
-                },
-            );
-        }
-        if has_xai && !augmented.contains_key("xai") {
-            augmented.insert(
-                "xai".into(),
-                ProviderEntry {
-                    name: Some("xai".into()),
-                    api_key: environment.xai_api_key.clone(),
-                    model: Some("grok-4.3".into()),
-                    base_url: None,
-                },
-            );
-        }
-        if has_openai && !augmented.contains_key("openai") {
-            augmented.insert(
-                "openai".into(),
-                ProviderEntry {
-                    name: Some("openai".into()),
-                    api_key: environment.openai_api_key.clone(),
-                    model: Some("gpt-5.5".into()),
-                    base_url: None,
-                },
-            );
-        }
-        if has_mistral && !augmented.contains_key("mistral") {
-            augmented.insert(
-                "mistral".into(),
-                ProviderEntry {
-                    name: Some("mistral".into()),
-                    api_key: environment.mistral_api_key.clone(),
-                    model: Some("mistral-large-latest".into()),
-                    base_url: Some("https://api.mistral.ai/v1".into()),
-                },
-            );
-        }
-        if has_gemini && !augmented.contains_key("gemini") {
-            augmented.insert(
-                "gemini".into(),
-                ProviderEntry {
-                    name: Some("gemini".into()),
-                    api_key: environment.gemini_api_key.clone(),
-                    model: Some(harness_provider_gemini::DEFAULT_MODEL.into()),
-                    base_url: Some(harness_provider_gemini::DEFAULT_BASE_URL.into()),
-                },
-            );
-        }
-        if has_bedrock && !augmented.contains_key("bedrock") {
-            augmented.insert(
-                "bedrock".into(),
-                ProviderEntry {
-                    name: Some("bedrock".into()),
-                    api_key: None,
-                    model: environment
-                        .bedrock_model_id
-                        .clone()
-                        .or_else(|| Some(harness_provider_bedrock::DEFAULT_MODEL.into())),
-                    base_url: environment.aws_region.clone(),
-                },
-            );
-        }
-        if has_mlx && !augmented.contains_key("mlx") {
-            augmented.insert(
-                "mlx".into(),
-                ProviderEntry {
-                    name: Some("mlx".into()),
-                    api_key: None,
-                    model: Some(harness_provider_mlx::DEFAULT_MODEL.into()),
-                    base_url: Some(harness_provider_mlx::DEFAULT_BASE_URL.into()),
-                },
-            );
+        let mut available = entries.clone();
+        for name in environment.provider_names() {
+            if let Some(entry) = environment.entry(&name) {
+                available.entry(name).or_insert(entry);
+            }
         }
 
-        // Default provider: anthropic > xai > openai > mistral > gemini > bedrock > ollama > mlx
-        let smart_default = if has_anthropic {
-            "anthropic"
-        } else if has_xai {
-            "xai"
-        } else if has_openai {
-            "openai"
-        } else if has_mistral {
-            "mistral"
-        } else if has_gemini {
-            "gemini"
-        } else if has_bedrock {
-            "bedrock"
-        } else if has_ollama {
-            "ollama"
-        } else if has_mlx {
-            "mlx"
+        let default_name = if let Some(name) = router_cfg.default.as_deref() {
+            name.trim().to_lowercase()
         } else {
-            "ollama"
+            let mut candidates: Vec<String> = available.keys().cloned().collect();
+            candidates.sort();
+            candidates.dedup();
+            match candidates.as_slice() {
+                [only] => only.clone(),
+                [] => anyhow::bail!(
+                    "no provider route configured; run `harness setup` or `harness route set <provider:model> ...`"
+                ),
+                _ => anyhow::bail!(
+                    "multiple providers are available but no route is configured ({}); run `harness setup` or `harness route set <provider:model> ...`",
+                    candidates.join(", ")
+                ),
+            }
         };
 
-        let default_name = router_cfg
-            .default
-            .clone()
-            .unwrap_or_else(|| smart_default.into());
-        let mut r = Self::new(&default_name);
-
-        for (name, entry) in &augmented {
-            match build_provider(name.as_str(), entry) {
-                Ok(p) => {
-                    r.providers.insert(name.clone(), p);
-                }
-                Err(e) => warn!(name, err = %e, "failed to build provider"),
+        let fallback = router_cfg.fallback.clone().unwrap_or_default();
+        let mut seen = std::collections::HashSet::new();
+        seen.insert(default_name.clone());
+        for name in &fallback {
+            if !seen.insert(name.clone()) {
+                anyhow::bail!("provider route contains duplicate entry '{name}'");
             }
         }
 
-        // Smart route overrides if not explicitly configured
-        if let Some(ref f) = router_cfg.fast_model {
-            let (pname, model) = parse_route_spec(f);
-            r.fast_name = Some(pname);
+        let mut required = vec![default_name.clone()];
+        required.extend(fallback.iter().cloned());
+        for spec in [
+            router_cfg.fast_model.as_deref(),
+            router_cfg.heavy_model.as_deref(),
+            router_cfg.embed_model.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let (name, _) = parse_route_spec(spec);
+            if !required.contains(&name) {
+                required.push(name);
+            }
+        }
+
+        let mut r = Self::new(&default_name).with_fallback(fallback);
+        for name in required {
+            let entry = available
+                .get(&name)
+                .cloned()
+                .or_else(|| configured_entry_for_selected_provider(&name, environment))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "provider '{name}' is in the saved route but is not configured; add [providers.{name}] or rerun `harness setup`"
+                    )
+                })?;
+            if entry.model.as_deref().unwrap_or("").is_empty() {
+                anyhow::bail!(
+                    "provider '{name}' is selected but has no model; run `harness setup` or `harness route model {name} <model>`"
+                );
+            }
+            let provider = build_provider(&name, &entry).map_err(|error| {
+                anyhow::anyhow!("failed to build selected provider '{name}': {error}")
+            })?;
+            r.providers.insert(name, provider);
+        }
+
+        if let Some(ref spec) = router_cfg.fast_model {
+            let (name, model) = parse_route_spec(spec);
+            r.fast_name = Some(name);
             r.fast_model_override = model;
-        } else {
-            // fast: haiku > grok-fast > openai-mini > ollama
-            let fast = if has_anthropic {
-                "anthropic"
-            } else if has_xai {
-                "xai"
-            } else if has_openai {
-                "openai"
-            } else if has_ollama {
-                "ollama"
-            } else if has_mlx {
-                "mlx"
-            } else {
-                "ollama"
-            };
-            r.fast_name = Some(fast.to_string());
         }
-
-        if let Some(ref h) = router_cfg.heavy_model {
-            let (pname, model) = parse_route_spec(h);
-            r.heavy_name = Some(pname);
+        if let Some(ref spec) = router_cfg.heavy_model {
+            let (name, model) = parse_route_spec(spec);
+            r.heavy_name = Some(name);
             r.heavy_model_override = model;
-        } else {
-            // heavy: opus > grok-reasoning > gpt-5.5 > ollama
-            let heavy = if has_anthropic {
-                "anthropic"
-            } else if has_xai {
-                "xai"
-            } else if has_openai {
-                "openai"
-            } else if has_ollama {
-                "ollama"
-            } else if has_mlx {
-                "mlx"
-            } else {
-                "ollama"
-            };
-            r.heavy_name = Some(heavy.to_string());
         }
-
-        if let Some(ref e) = router_cfg.embed_model {
-            let (pname, model) = parse_route_spec(e);
-            r.embed_name = Some(pname);
+        if let Some(ref spec) = router_cfg.embed_model {
+            let (name, model) = parse_route_spec(spec);
+            r.embed_name = Some(name);
             r.embed_model_override = model;
-        } else if has_ollama {
-            r.embed_name = Some("ollama".to_string());
-        } else if has_anthropic {
-            r.embed_name = Some("anthropic".to_string());
-        }
-
-        // Fallback chain: explicit → smart order
-        if let Some(ref fb) = router_cfg.fallback {
-            r.fallback = fb.clone();
-        } else {
-            let mut fb = Vec::new();
-            for n in &["anthropic", "xai", "openai", "mistral", "ollama", "mlx"] {
-                if r.providers.contains_key(*n) && *n != default_name.as_str() {
-                    fb.push(n.to_string());
-                }
-            }
-            r.fallback = fb;
-        }
-
-        if r.providers.is_empty() {
-            let ollama_entry = ProviderEntry {
-                name: Some("ollama".into()),
-                api_key: None,
-                model: Some("qwen3-coder:30b".into()),
-                base_url: None,
-            };
-            if let Ok(p) = build_provider("ollama", &ollama_entry) {
-                r.providers.insert("ollama".into(), p);
-                if !r.providers.contains_key(&r.default_name) {
-                    r.default_name = "ollama".to_string();
-                }
-            }
-        }
-
-        if r.providers.is_empty() {
-            return Err(anyhow::anyhow!(
-                "No providers available. Set ANTHROPIC_API_KEY, XAI_API_KEY, or OPENAI_API_KEY, \
-                 add a [providers.*] block in ~/.harness/config.toml, or start Ollama locally."
-            ));
         }
 
         info!(
             default = %r.default_name,
-            providers = ?r.providers.keys().collect::<Vec<_>>(),
+            route = ?r.route_names(),
             "router initialised"
         );
 
@@ -836,6 +945,7 @@ mod tests {
                 api_key: Some("sk-ant-test".into()),
                 model: Some("claude-sonnet-4-6".into()),
                 base_url: None,
+                ..ProviderEntry::default()
             },
         );
         entries.insert(
@@ -845,6 +955,7 @@ mod tests {
                 api_key: Some("xai-test".into()),
                 model: Some("grok-4.3".into()),
                 base_url: None,
+                ..ProviderEntry::default()
             },
         );
 
@@ -856,22 +967,53 @@ mod tests {
 
         let router = ProviderRouter::from_config(&entries, &cfg).expect("router");
         assert_eq!(router.default_provider().unwrap().name(), "xai");
+        assert_eq!(router.route_names(), ["xai", "anthropic"]);
         assert!(router.get("anthropic").is_some());
         assert!(router.get("xai").is_some());
     }
 
     #[test]
-    fn from_config_falls_back_to_ollama_when_no_cloud_keys() {
+    fn from_config_requires_a_route_when_no_provider_is_available() {
         let entries = HashMap::new();
         let cfg = RouterConfig::default();
-        let router = ProviderRouter::from_config_with_environment(
+        let error = ProviderRouter::from_config_with_environment(
             &entries,
             &cfg,
             &ProviderEnvironment::default(),
         )
-        .expect("ollama fallback");
-        assert!(router.get("ollama").is_some());
-        assert_eq!(router.default_provider().unwrap().name(), "ollama");
+        .err()
+        .expect("missing route must fail");
+        assert!(error.to_string().contains("no provider route configured"));
+    }
+
+    #[test]
+    fn from_config_rejects_ambiguous_provider_candidates() {
+        let entries = HashMap::from([
+            (
+                "ollama".to_string(),
+                ProviderEntry {
+                    model: Some("qwen".into()),
+                    ..ProviderEntry::default()
+                },
+            ),
+            (
+                "mlx".to_string(),
+                ProviderEntry {
+                    model: Some("mlx-model".into()),
+                    ..ProviderEntry::default()
+                },
+            ),
+        ]);
+        let error = ProviderRouter::from_config_with_environment(
+            &entries,
+            &RouterConfig::default(),
+            &ProviderEnvironment::default(),
+        )
+        .err()
+        .expect("ambiguous route must fail");
+        assert!(error
+            .to_string()
+            .contains("multiple providers are available"));
     }
 
     #[test]
@@ -900,6 +1042,7 @@ mod tests {
                 api_key: Some("xai-test".into()),
                 model: Some("grok-4.3".into()),
                 base_url: None,
+                ..ProviderEntry::default()
             },
         );
         let cfg = RouterConfig {
@@ -912,35 +1055,34 @@ mod tests {
     }
 
     #[test]
-    fn build_provider_mistral_defaults() {
-        let p = build_provider(
+    fn build_provider_requires_explicit_model() {
+        let error = build_provider(
             "mistral",
             &ProviderEntry {
                 name: Some("mistral".into()),
                 api_key: Some("mistral-test".into()),
                 model: None,
                 base_url: None,
+                ..ProviderEntry::default()
             },
         )
-        .expect("mistral");
-        assert_eq!(p.name(), "mistral");
-        assert_eq!(p.model(), "mistral-large-latest");
+        .err()
+        .expect("missing model must fail");
+        assert!(error.to_string().contains("explicit model"));
     }
 
     #[test]
-    fn build_provider_gemini_defaults() {
-        let p = build_provider(
+    fn build_provider_uses_explicit_model() {
+        let provider = build_provider(
             "gemini",
             &ProviderEntry {
-                name: Some("gemini".into()),
                 api_key: Some("gemini-test".into()),
-                model: None,
-                base_url: None,
+                model: Some("user-selected-model".into()),
+                ..ProviderEntry::default()
             },
         )
         .expect("gemini");
-        assert_eq!(p.name(), "gemini");
-        assert_eq!(p.model(), "gemini-2.0-flash");
+        assert_eq!(provider.model(), "user-selected-model");
     }
 
     #[test]
@@ -952,6 +1094,7 @@ mod tests {
                 api_key: Some("AKIAtest:secret".into()),
                 model: Some("my.bedrock-model".into()),
                 base_url: Some("us-west-2".into()),
+                ..ProviderEntry::default()
             },
         )
         .expect("bedrock");
@@ -968,6 +1111,7 @@ mod tests {
                 model: Some("m".into()),
                 base_url: None,
                 name: None,
+                ..ProviderEntry::default()
             },
         );
         assert!(result.is_err());
@@ -984,10 +1128,46 @@ mod tests {
                 api_key: Some("k".into()),
                 model: Some("local-model".into()),
                 base_url: Some("http://127.0.0.1:8000/v1".into()),
+                ..ProviderEntry::default()
             },
         )
         .expect("compatible");
         assert_eq!(p.name(), "my-proxy");
         assert_eq!(p.model(), "local-model");
+    }
+
+    #[test]
+    fn provider_presets_are_alphabetical_and_unique() {
+        let names: Vec<&str> = PROVIDER_PRESETS.iter().map(|preset| preset.name).collect();
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(names, sorted);
+    }
+
+    #[test]
+    fn compatible_preset_seeds_transport_without_choosing_model() {
+        let entry = configured_provider_entry("nvidia");
+        assert_eq!(entry.kind.as_deref(), Some("openai-compatible"));
+        assert_eq!(entry.api_key_env.as_deref(), Some("NVIDIA_API_KEY"));
+        assert_eq!(
+            entry.base_url.as_deref(),
+            Some("https://integrate.api.nvidia.com/v1")
+        );
+        assert!(entry.model.is_none());
+    }
+
+    #[test]
+    fn unknown_provider_without_adapter_is_rejected() {
+        let error = build_provider(
+            "mystery",
+            &ProviderEntry {
+                model: Some("m".into()),
+                ..ProviderEntry::default()
+            },
+        )
+        .err()
+        .expect("unknown provider must fail");
+        assert!(error.to_string().contains("unknown provider"));
     }
 }

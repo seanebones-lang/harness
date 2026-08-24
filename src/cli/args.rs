@@ -6,8 +6,8 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     name = "harness",
-    about = "NextEleven Harness — multi-provider AI coding agent (Claude · GPT · Grok · Qwen)",
-    long_about = "NextEleven Harness is a Rust-native AI coding agent by NextEleven LLC. Supports Anthropic Claude 4.x, OpenAI GPT-5.x, xAI Grok 4.x, Gemini, Bedrock, Mistral, and Ollama Qwen3-Coder. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or XAI_API_KEY and run `harness` to start.",
+    about = "NextEleven Harness — provider-neutral, multi-provider AI coding agent",
+    long_about = "NextEleven Harness is a Rust-native AI coding agent by NextEleven LLC. Choose any supported provider/model as primary, save an exact fallback chain, or register a bearer-authenticated OpenAI-compatible endpoint. Run `harness setup` to create the route, then `harness` to start.",
     version
 )]
 pub struct Cli {
@@ -148,7 +148,7 @@ pub enum Commands {
         #[arg(long)]
         force: bool,
     },
-    /// Interactive provider and API key setup (same flow as the first-run wizard).
+    /// Interactive provider, model, and fallback-route setup.
     Setup {
         /// Re-run setup even when keys are already configured.
         #[arg(long)]
@@ -165,11 +165,16 @@ pub enum Commands {
         #[command(subcommand)]
         action: CheckpointAction,
     },
-    /// List available providers and models, with an interactive picker to change defaults.
+    /// List provider/model examples or update the active primary model.
     Models {
-        /// Set the default model (writes to .harness/config.toml). Format: "provider:model" or just "model".
+        /// Set the primary provider and model in the active config. Format: provider:model.
         #[arg(long)]
         set: Option<String>,
+    },
+    /// Inspect or change the exact primary and fallback provider route.
+    Route {
+        #[command(subcommand)]
+        action: RouteAction,
     },
     /// Sync Harness state across machines via an encrypted git repository.
     Sync {
@@ -261,6 +266,83 @@ pub enum Commands {
 pub enum CheckpointAction {
     /// List all harness checkpoint stashes.
     List,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RouteAction {
+    /// Show the exact saved route and provider models.
+    Show {
+        #[arg(long, conflicts_with = "project")]
+        global: bool,
+        #[arg(long, conflicts_with = "global")]
+        project: bool,
+    },
+    /// Replace the route. First provider is primary; the rest are fallbacks.
+    Set {
+        /// Ordered provider:model entries.
+        #[arg(required = true, value_name = "PROVIDER:MODEL")]
+        route: Vec<String>,
+        #[arg(long, conflicts_with = "project")]
+        global: bool,
+        #[arg(long, conflicts_with = "global")]
+        project: bool,
+    },
+    /// Change one provider's model without changing route order.
+    Model {
+        provider: String,
+        model: String,
+        #[arg(long, conflicts_with = "project")]
+        global: bool,
+        #[arg(long, conflicts_with = "global")]
+        project: bool,
+    },
+    /// Add a provider to the route (at the end unless --position is supplied).
+    Add {
+        #[arg(value_name = "PROVIDER:MODEL")]
+        provider: String,
+        /// One-based route position.
+        #[arg(long)]
+        position: Option<usize>,
+        #[arg(long, conflicts_with = "project")]
+        global: bool,
+        #[arg(long, conflicts_with = "global")]
+        project: bool,
+    },
+    /// Remove a provider from the route.
+    Remove {
+        provider: String,
+        #[arg(long, conflicts_with = "project")]
+        global: bool,
+        #[arg(long, conflicts_with = "global")]
+        project: bool,
+    },
+    /// Move a provider to a one-based position.
+    Move {
+        provider: String,
+        position: usize,
+        #[arg(long, conflicts_with = "project")]
+        global: bool,
+        #[arg(long, conflicts_with = "global")]
+        project: bool,
+    },
+    /// Add or update a custom OpenAI-compatible provider, then optionally route to it.
+    Custom {
+        name: String,
+        #[arg(long)]
+        base_url: String,
+        #[arg(long)]
+        model: String,
+        /// Environment variable containing a bearer token. Omit for an unauthenticated endpoint.
+        #[arg(long)]
+        api_key_env: Option<String>,
+        /// Append the provider to the saved route.
+        #[arg(long)]
+        add: bool,
+        #[arg(long, conflicts_with = "project")]
+        global: bool,
+        #[arg(long, conflicts_with = "global")]
+        project: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1083,5 +1165,52 @@ mod tests {
             }
             _ => panic!("expected publish"),
         }
+    }
+
+    #[test]
+    fn parse_provider_route_commands() {
+        let cli = parse(&[
+            "harness",
+            "route",
+            "set",
+            "anthropic:claude-sonnet-4-6",
+            "ollama:qwen3-coder:30b",
+            "--global",
+        ]);
+        match cli.command {
+            Some(Commands::Route {
+                action:
+                    RouteAction::Set {
+                        route,
+                        global,
+                        project,
+                    },
+            }) => {
+                assert_eq!(route.len(), 2);
+                assert!(global);
+                assert!(!project);
+            }
+            _ => panic!("expected route set"),
+        }
+
+        let cli = parse(&[
+            "harness",
+            "route",
+            "custom",
+            "my-cloud",
+            "--base-url",
+            "https://example.com/v1",
+            "--model",
+            "m",
+            "--api-key-env",
+            "MY_KEY",
+            "--add",
+        ]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Route {
+                action: RouteAction::Custom { add: true, .. }
+            })
+        ));
     }
 }

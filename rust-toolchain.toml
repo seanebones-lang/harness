@@ -1,5 +1,5 @@
 [toolchain]
-# Pinned known-good (local 2026-07-30). MSRV remains rust-version 1.76 in Cargo.toml.
+# Pinned known-good and current MSRV. Locked AWS dependencies require Rust 1.94.1+.
 channel = "1.95.0"
 components = ["rustfmt", "clippy"]
 profile = "minimal"

@@ -2,7 +2,7 @@
 
 This guide walks through installing NextEleven Harness on every OS the project **tests in CI** and supports in the field: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
 
-**Status (May 2026):** Public **beta** — **218 automated tests**, P0 security closed. See [`TODO.md`](../TODO.md) for open work and [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for latest gates.
+**Status (August 2026):** Public **beta** — **376 binary tests**, P0 security closed. See [`TODO.md`](../TODO.md) for open work and [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for latest gates.
 
 **Quick links:** [macOS](#macos) · [Linux](#linux) · [Windows](#windows-native) · [WSL2](#windows-subsystem-for-linux-wsl2) · [After installing](#after-installing) · [Updating](#updating) · [Uninstall](#uninstall)
 
@@ -29,11 +29,7 @@ NextEleven Harness does not ship OS-specific installers (`.msi`, `.dmg`, `.deb`)
 2. **Git** — to clone the repository.  
    - **Windows:** [Git for Windows](https://git-scm.com/download/win) is strongly recommended (it puts `git` and often `bash`/`sh` on `PATH`, which improves the **`shell` tool**).
 
-3. **An LLM backend** — at least one of:
-   - `ANTHROPIC_API_KEY` (recommended default path in config), or  
-   - `XAI_API_KEY`, or  
-   - `OPENAI_API_KEY`, or  
-   - Local **[Ollama](https://ollama.com)** with a chat model (no cloud key).
+3. **An LLM backend** — choose any built-in provider, a custom OpenAI-format endpoint, or a local runtime such as **[Ollama](https://ollama.com)** / MLX. Hosted providers use their named credential environment variable; Harness does not prefer one backend over another.
 
 4. **Optional — semantic memory embeddings** — default config uses `nomic-embed-text`. That usually means **Ollama** running locally (`ollama pull nomic-embed-text`) unless you change `[memory].embed_model` in config.
 
@@ -113,7 +109,7 @@ harness doctor
 | `cargo: command not found` | Run `source "$HOME/.cargo/env"` or restart the shell after rustup. |
 | Linker errors when building | Run `xcode-select --install`. Ensure CLT finished installing. |
 | Build very slow first time | Normal; Rust is compiling the dependency graph. Subsequent builds are faster. |
-| `harness` exits: no API key | Export `ANTHROPIC_API_KEY` (or another key), or run Ollama locally and configure the router for `ollama`. |
+| `harness` exits: route not configured | Run `harness setup`, or use `harness route set <provider:model> [...]`. Credentials stay in environment variables. |
 
 ---
 
@@ -254,6 +250,7 @@ Copy-Item -Force .\target\release-lto\harness.exe "$HOME\.local\bin\harness.exe"
 
 ```powershell
 $env:ANTHROPIC_API_KEY = "sk-ant-..."
+harness setup
 harness
 ```
 
@@ -338,14 +335,21 @@ Reboot if prompted; launch **Ubuntu** from Start, create a user, then follow [Li
 
    Install scripts may already have created the same template.
 
-4. **Optional — Ollama for defaults**
+4. **Choose the exact provider/model route**
+
+   ```bash
+   harness setup
+   # or: harness route set anthropic:claude-sonnet-4-6 openai:gpt-5.5
+   ```
+
+5. **Optional — Ollama for a local route**
 
    ```bash
    ollama pull qwen3-coder:30b
    ollama pull nomic-embed-text
    ```
 
-5. **Run**
+6. **Run**
 
    ```bash
    cd /path/to/your/project

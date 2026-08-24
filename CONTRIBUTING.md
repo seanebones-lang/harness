@@ -67,14 +67,14 @@ These are well-scoped, self-contained, and unblock the next person reviewing the
 
 ### New providers
 
-The router auto-selects providers from env keys. Adding a new one is four steps:
+OpenAI-format services can be registered with `harness route custom` and do not require a new crate. A native provider is appropriate only when protocol, authentication, streaming, or tool semantics differ:
 
 1. Create `crates/harness-provider-<name>/` and implement the `Provider` trait (see `CLAUDE.md` → *Adding a new provider*).
-2. Add a build arm in `crates/harness-provider-router/src/lib.rs`.
-3. Add env-key detection in the smart-defaults block.
-4. Write at least one unit test with a mock HTTP server.
+2. Add a build arm and alphabetical preset in `crates/harness-provider-router/src/lib.rs`.
+3. Add credential detection for status/setup display only. Detection must never select, rank, or append a provider.
+4. Write mock-server construction tests plus an exact-route test.
 
-Interesting targets: **Mistral**, **Cohere**, **Google Gemini**, **AWS Bedrock**.
+Interesting native-adapter targets include providers whose APIs are not faithfully OpenAI-compatible. Keep routing policy in the user's config.
 
 ### New tools
 

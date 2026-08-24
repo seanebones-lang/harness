@@ -4,26 +4,32 @@ use anyhow::{Context, Result};
 
 use crate::config::{self, Config};
 
-/// Returns `true` when no provider keys or explicit `[providers]` entries are configured.
+/// Returns `true` until an explicit primary provider and model are saved.
 pub fn needs_setup(cfg: &Config) -> bool {
-    let has_xai = cfg.provider.api_key.is_some()
-        || std::env::var("XAI_API_KEY")
-            .map(|k| !k.is_empty())
-            .unwrap_or(false);
-    let has_anthropic = std::env::var("ANTHROPIC_API_KEY")
-        .map(|k| !k.is_empty())
-        .unwrap_or(false);
-    let has_openai = std::env::var("OPENAI_API_KEY")
-        .map(|k| !k.is_empty())
-        .unwrap_or(false);
-    let has_ollama = cfg.providers.contains_key("ollama");
-
-    !has_xai
-        && !has_anthropic
-        && !has_openai
-        && !has_ollama
-        && cfg.providers.is_empty()
-        && !harness_provider_mlx::mlx_runtime_available()
+    let Some(primary) = cfg.router.default.as_deref() else {
+        return true;
+    };
+    let route = std::iter::once(primary)
+        .chain(
+            cfg.router
+                .fallback
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(String::as_str),
+        )
+        .collect::<Vec<_>>();
+    let mut seen = std::collections::HashSet::new();
+    route.iter().any(|name| {
+        name.is_empty()
+            || !seen.insert(*name)
+            || cfg
+                .providers
+                .get(*name)
+                .and_then(|entry| entry.model.as_deref())
+                .unwrap_or("")
+                .is_empty()
+    })
 }
 
 /// Interactive first-run wizard. Updates config on disk when the user completes setup.
@@ -31,13 +37,15 @@ pub fn run_setup_interactive(cfg: &Config, force: bool) -> Result<()> {
     use std::io::Write;
 
     if !force && !needs_setup(cfg) {
-        println!("Provider keys are already configured.");
-        println!("Run `harness setup --force` to reconfigure, or `harness status` to inspect.");
+        println!("A provider route is already configured.");
+        println!(
+            "Run `harness route show` to inspect it or `harness setup --force` to replace it."
+        );
         return Ok(());
     }
 
     if !force {
-        eprintln!("harness: No API keys configured.");
+        eprintln!("harness: No explicit provider route is configured.");
         eprintln!();
         eprintln!("Would you like to set one up now? (y/n)");
 
@@ -51,90 +59,71 @@ pub fn run_setup_interactive(cfg: &Config, force: bool) -> Result<()> {
     }
 
     println!();
-    println!("Recommended: xAI (Grok 4.3) — fast and cost-efficient.");
+    println!("Available provider adapters (alphabetical; no provider is preferred):");
+    for preset in harness_provider_router::PROVIDER_PRESETS {
+        let status = if preset.local {
+            "local"
+        } else if preset.api_key_envs.iter().any(|name| {
+            std::env::var(name)
+                .map(|value| !value.is_empty())
+                .unwrap_or(false)
+        }) {
+            "credentials detected"
+        } else {
+            "credentials not detected"
+        };
+        println!("  {:<12} {status}", preset.name);
+    }
     println!();
-    println!("Which provider?");
-    println!("  [1] xAI (Grok)         ← Recommended");
-    println!("  [2] Anthropic (Claude)");
-    println!("  [3] OpenAI");
-    println!("  [4] Ollama (local)");
-    println!();
-    print!("Enter choice [1-4]: ");
+    println!("Enter provider names in the exact order Harness should try them.");
+    println!("The first is primary; the rest are fallbacks. One provider is valid.");
+    print!("Route (comma-separated): ");
     std::io::stdout().flush().ok();
 
-    let mut choice = String::new();
-    std::io::stdin().read_line(&mut choice).ok();
+    let mut route_input = String::new();
+    std::io::stdin().read_line(&mut route_input)?;
+    let names: Vec<String> = route_input
+        .split(',')
+        .map(|name| name.trim().to_ascii_lowercase())
+        .filter(|name| !name.is_empty())
+        .collect();
+    if names.is_empty() {
+        anyhow::bail!("At least one provider is required.");
+    }
 
-    let provider_choice = choice.trim();
-    let (provider_name, env_var) = match provider_choice {
-        "1" => ("xai", "XAI_API_KEY"),
-        "2" => ("anthropic", "ANTHROPIC_API_KEY"),
-        "3" => ("openai", "OPENAI_API_KEY"),
-        "4" => {
-            println!("\n→ Make sure Ollama is running:");
-            println!("   ollama run qwen3-coder:30b");
-            let config_path = config::active_config_toml_path();
-            let mut new_cfg = cfg.clone();
-            new_cfg.providers.entry("ollama".into()).or_default().model =
-                Some("qwen3-coder:30b".into());
-            config::write_config_toml(&config_path, &new_cfg)
-                .context("failed to write Ollama provider config")?;
-            println!("\n✓ Ollama provider saved to {}", config_path.display());
-            return Ok(());
+    let mut specs = Vec::with_capacity(names.len());
+    for name in names {
+        if harness_provider_router::provider_preset(&name).is_none()
+            && !cfg.providers.contains_key(&name)
+        {
+            anyhow::bail!(
+                "Unknown provider '{name}'. Add custom endpoints with `harness route custom`."
+            );
         }
-        _ => {
-            anyhow::bail!("Invalid choice.");
+        print!("Model id for {name}: ");
+        std::io::stdout().flush().ok();
+        let mut model = String::new();
+        std::io::stdin().read_line(&mut model)?;
+        let model = model.trim();
+        if model.is_empty() {
+            anyhow::bail!("A model id is required for {name}.");
         }
-    };
-
-    let default_model = match provider_name {
-        "xai" => "grok-4.3",
-        "anthropic" => "claude-sonnet-4-6",
-        "openai" => "gpt-5.5",
-        _ => "grok-4.3",
-    };
-    println!();
-    println!("Recommended model for {provider_name}: {default_model}");
-    print!("Enter model (or press Enter for default): ");
-    std::io::stdout().flush().ok();
-
-    let mut model_input = String::new();
-    std::io::stdin().read_line(&mut model_input).ok();
-    let chosen_model = if model_input.trim().is_empty() {
-        default_model.to_string()
-    } else {
-        model_input.trim().to_string()
-    };
-
-    println!();
-    print!("Enter your {env_var} key: ");
-    std::io::stdout().flush().ok();
-
-    let mut key = String::new();
-    std::io::stdin().read_line(&mut key).ok();
-    let key = key.trim().to_string();
-
-    if key.is_empty() {
-        anyhow::bail!("No key provided.");
+        specs.push(format!("{name}:{model}"));
     }
 
     let config_path = config::active_config_toml_path();
     let mut new_cfg = cfg.clone();
-
-    let entry = new_cfg
-        .providers
-        .entry(provider_name.to_string())
-        .or_default();
-    entry.api_key = Some(key.clone());
-    entry.model = Some(chosen_model.clone());
-
-    new_cfg.provider.api_key = Some(key);
-    new_cfg.provider.model = Some(chosen_model);
+    super::route::set_route(&mut new_cfg, &specs)?;
 
     config::write_config_toml(&config_path, &new_cfg)
         .with_context(|| format!("failed to write config to {}", config_path.display()))?;
 
-    println!("\n✓ Key saved to {}.", config_path.display());
+    println!(
+        "\n✓ Exact provider route saved to {}.",
+        config_path.display()
+    );
+    println!("API keys remain in environment variables; Harness did not store a secret.");
+    println!("Run `harness route show` to inspect or change the route.");
     println!("Run `harness` to start a session.");
     Ok(())
 }
@@ -178,17 +167,37 @@ mod tests {
     use clap::Parser;
 
     #[test]
-    fn needs_setup_false_when_provider_api_key_set() {
+    fn needs_setup_true_when_key_exists_without_saved_route() {
         let mut cfg = Config::default();
         cfg.provider.api_key = Some("xai-test-key".into());
+        assert!(needs_setup(&cfg));
+    }
+
+    #[test]
+    fn needs_setup_false_when_route_and_model_are_saved() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("ollama".into());
+        cfg.providers.entry("ollama".into()).or_default().model = Some("qwen".into());
         assert!(!needs_setup(&cfg));
     }
 
     #[test]
-    fn needs_setup_false_when_ollama_provider_entry() {
+    fn needs_setup_true_when_route_contains_duplicate_provider() {
         let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        cfg.router.fallback = Some(vec!["openai".into()]);
+        cfg.providers.entry("openai".into()).or_default().model = Some("model".into());
+        assert!(needs_setup(&cfg));
+    }
+
+    #[test]
+    fn needs_setup_true_when_fallback_model_is_missing() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        cfg.router.fallback = Some(vec!["ollama".into()]);
+        cfg.providers.entry("openai".into()).or_default().model = Some("model".into());
         cfg.providers.entry("ollama".into()).or_default();
-        assert!(!needs_setup(&cfg));
+        assert!(needs_setup(&cfg));
     }
 
     #[test]

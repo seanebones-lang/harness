@@ -13,9 +13,10 @@ pub fn run_init(project: bool, force: bool) -> Result<()> {
         println!("Global config already exists at {}", global_cfg.display());
         println!("Run `harness init --force` to overwrite it.");
     } else {
-        let config_contents = r#"[provider]
-# api_key = "sk-ant-..."   # or set ANTHROPIC_API_KEY env var
-model = "grok-4.3"
+        let config_contents = r#"# Choose providers and models with `harness setup` or `harness route set`.
+# Harness does not choose a vendor, model, or fallback order for you.
+
+[provider]
 max_tokens = 8192
 temperature = 0.7
 
@@ -48,7 +49,7 @@ Guidelines:
         std::fs::write(&global_cfg, config_contents)?;
         println!("Created global config at {}", global_cfg.display());
         println!("Edit it any time: {}", global_cfg.display());
-        println!("Set ANTHROPIC_API_KEY (or XAI_API_KEY / OPENAI_API_KEY) before running harness.");
+        println!("Run `harness setup` to choose the exact provider/model route.");
     }
 
     if project {
@@ -66,7 +67,7 @@ Guidelines:
                 .unwrap_or_else(|| "this project".to_string());
             let project_contents = format!(
                 r#"# Project-level config for {cwd_name}
-# Inherits from ~/.harness/config.toml — only override what you need.
+# Project config is authoritative when present; copy any global route you want to keep.
 
 [agent]
 system_prompt = """

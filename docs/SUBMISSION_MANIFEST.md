@@ -43,7 +43,7 @@ docker build -t harness:latest .
 ## Quick verification
 
 - [x] `cargo build --profile release-lto`
-- [x] `cargo test --bin harness` (live count — see [`TODO.md`](../TODO.md) / [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md); **363** as of 2026-08-09 cont)
+- [x] `cargo test --bin harness` (live count — see [`TODO.md`](../TODO.md) / [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md); **376** as of 2026-08-24)
 - [x] `cargo test -p harness-tools` (**179** Swarm-51)
 - [x] `cargo clippy -p harness --bin harness -- -D warnings`
 - [x] Coverage measured **61.65%**; CI ≥60% **met** ([`COVERAGE.md`](../COVERAGE.md))

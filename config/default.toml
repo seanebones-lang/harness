@@ -2,16 +2,8 @@
 # Run `harness init` to generate this automatically.
 
 [provider]
-# Your Anthropic API key. Can also be set via ANTHROPIC_API_KEY env var.
-# api_key = "sk-ant-..."
-
-# May 2026 model choices:
-#   Anthropic: claude-opus-4-7 | grok-4.3 | claude-haiku-4-5
-#   xAI:       grok-4.3 (flagship) | grok-4.20-0309-reasoning (pinned) | grok-4.1-fast
-#   OpenAI:    gpt-5.5 | gpt-5.4 | gpt-5.4-mini | o4-mini
-#   Ollama:    qwen3-coder:30b | qwen2.5-coder:32b (local, free)
-model = "grok-4.5"
-
+# Shared generation settings. Provider, model, and fallback order are selected
+# explicitly with `harness setup` or `harness route set`.
 max_tokens = 8192
 temperature = 0.7
 
@@ -59,7 +51,7 @@ Guidelines:
 enabled = true
 
 # Embedding model for semantic search.
-# "nomic-embed-text" (local, via Ollama) or "voyage-3.5" (Anthropic recommended, requires VOYAGE_API_KEY)
+# "nomic-embed-text" (local, via Ollama) or "voyage-3.5" (hosted, requires VOYAGE_API_KEY)
 embed_model = "nomic-embed-text"
 
 # Override the SQLite path for the memory store.
@@ -173,33 +165,32 @@ timeout_secs = 60
 # or paste into a sidecar — unknown top-level tables break `harness` today.
 
 [router]
-# Smart defaults when unset: anthropic → xai → openai → mistral → ollama (see CLAUDE.md).
+# Exact user-owned route. The default is primary and fallback is tried verbatim.
+# Harness refuses ambiguous multi-provider configuration when this route is absent.
 # default = "anthropic"
 # fast_model = "anthropic:claude-haiku-4-5"
 # heavy_model = "anthropic:claude-opus-4-7"
 # embed_model = "ollama:nomic-embed-text"
-# fallback = ["anthropic", "xai", "openai", "mistral", "ollama"]
+# fallback = ["openai", "ollama"]
 
-# Multi-provider table (keys = provider kind). Also auto-detected from env keys.
+# Provider entries. API keys should normally stay in the named environment variable.
+# Built-ins: anthropic, bedrock, cerebras, deepseek, fireworks, gemini, groq,
+# huggingface, mistral, mlx, nvidia, ollama, openai, openrouter, perplexity,
+# sambanova, together, xai.
 # [providers.openai]
-# api_key = "sk-..."   # or OPENAI_API_KEY
+# api_key_env = "OPENAI_API_KEY"
 # model = "gpt-5.5"
 # # base_url = "https://api.openai.com/v1"   # optional override
 #
 # [providers.mistral]   # OpenAI-compatible → https://api.mistral.ai/v1
-# api_key = "..."       # or MISTRAL_API_KEY
+# api_key_env = "MISTRAL_API_KEY"
 # model = "mistral-large-latest"
 #
-# [providers.openai-compatible]   # any OpenAI-format /v1 endpoint (requires base_url)
-# api_key = "..."
+# [providers.my-cloud]   # any OpenAI-format endpoint
+# kind = "openai-compatible"
+# api_key_env = "MY_CLOUD_API_KEY"
 # model = "my-model"
-# base_url = "http://127.0.0.1:8000/v1"
-#
-# # Or any custom name with base_url → treated as OpenAI-compatible under that name:
-# [providers.my-proxy]
-# api_key = "..."
-# model = "local"
-# base_url = "http://127.0.0.1:11434/v1"
+# base_url = "https://example.com/v1"
 
 # [observability]
 # enabled = true

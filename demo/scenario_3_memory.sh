@@ -25,10 +25,10 @@ harness memorize architecture \
     "Monorepo: 14-crate Cargo workspace. Provider abstraction in harness-provider-core. Agent loop in src/agent.rs."
 
 harness memorize testing \
-    "Run: cargo test --all. Coverage gate: 60%. No API keys required. 218 tests on Ubuntu + macOS + Windows."
+    "Run: cargo test --workspace --all-features. Coverage gate: 60%. No API keys required; the binary currently has 376 tests."
 
 harness memorize providers \
-    "Supported: Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, Ollama (local), MLX (Apple Silicon). Router auto-selects based on env keys."
+    "Supported: 18 built-in provider names plus custom OpenAI-format endpoints. The user saves the exact primary, model, and fallback order."
 
 echo ""
 echo "Stored memory topics:"

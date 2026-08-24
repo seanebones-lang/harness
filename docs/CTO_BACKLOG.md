@@ -1,7 +1,7 @@
 # CTO Engineering Backlog — NextEleven Harness
 
-**Updated:** 2026-08-05  
-**Perspective:** CTO review + max-opt swarm execution + swarm-50 honesty pass  
+**Updated:** 2026-08-24
+**Perspective:** CTO review + provider-neutral routing completion
 **Ship branch:** **`main`** only (dev folded; single branch)  
 **Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed (incl. Gemini/Bedrock, remote swarm HTTP cutover). Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)**. Coverage climb to 60% **met** (measured **61.65%** Swarm-51 2026-08-09).
 
@@ -43,7 +43,7 @@
 | Gap | Notes |
 |-----|--------|
 | Windows/Linux release artifacts | Install scripts exist; Release matrix incomplete |
-| Provider breadth | **Closed W5.1–W5.3** — Mistral + openai-compat + **Gemini (OpenAI-compat) + Bedrock Converse/SigV4**; keep provider docs current |
+| Provider breadth | **Closed W5.1–W5.3 + W5.8** — native providers plus provider-neutral exact routing, ten hosted OpenAI-compatible presets, and user-defined future endpoints |
 | Editor/desktop | VS Code + Tauri early shells shipped (W6 [x]); packaging/signing residual |
 | i18n | ES manual partial/draft |
 
@@ -111,6 +111,7 @@ Goal: competitive breadth.
 - [x] **W5.5** NotebookTool (`.ipynb` read/edit cells). *(`[tools.notebook]`; 2026-08-03)*
 - [x] **W5.6** DockerTool (allowlisted compose/ps/logs; no unbounded docker.sock). *(`[tools.docker]`; 2026-08-03)*
 - [x] **W5.7** Computer-use / sandbox defaults documented per OS. *(`docs/COMPUTER_USE.md`; 2026-08-03)*
+- [x] **W5.8** Provider-neutral setup/runtime: exact user-owned route, scoped route-management CLI, hosted compatibility presets, custom `api_key_env` endpoints, and no implicit provider/model/fallback preference. *(2026-08-24)*
 
 ### WAVE 6 — Surfaces (desktop / editor) (2–4 weeks)
 Goal: installable shells, not prototypes.

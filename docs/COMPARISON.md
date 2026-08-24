@@ -7,8 +7,8 @@ High-level comparison for evaluators. The real test is your own workflow on your
 | **Language** | Rust | Python | — | Electron |
 | **Terminal-first** | Yes | Yes | Partial | No |
 | **Local / privacy** | Strong (Ollama, MLX) | Strong | Medium | Weak |
-| **Multi-provider** | Excellent (Anthropic, xAI, OpenAI, Ollama, MLX) | Good | Limited | Limited |
-| **Default models (May 2026)** | Claude Sonnet 4.6, Grok 4.3, GPT-5.5, Qwen3-Coder | Varies | Claude-only | Proprietary |
+| **Multi-provider** | 18 built-in names + custom OpenAI-format endpoints | Good | Limited | Limited |
+| **Provider policy** | User chooses exact primary, models, and fallback order | Varies | Vendor-specific | Proprietary |
 | **Sub-agents / parallel swarm** | Yes (SQLite registry) | Limited | No | No |
 | **Cost tracking** | Built-in SQLite dashboard | Basic | No | No |
 | **MCP support** | Yes (2025-03-26: tools, resources, sampling, roots) | No | No | Partial |
@@ -17,7 +17,7 @@ High-level comparison for evaluators. The real test is your own workflow on your
 | **Editor integration** | VS Code extension + daemon (Unix socket / TCP) | No | VS Code plugin | IDE-native |
 | **Desktop app** | Tauri 2 (macOS; CI check) | No | No | Yes |
 | **Prebuilt binaries** | Yes (GitHub Releases: macOS, Linux, Windows) | No | No | N/A |
-| **Open source** | MIT | Apache 2.0 | Proprietary | Proprietary |
+| **Open source** | No — proprietary public POC | Apache 2.0 | Proprietary | Proprietary |
 
 ## Key differentiators
 

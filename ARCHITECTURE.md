@@ -34,9 +34,9 @@ This design means that adding a new provider requires no changes to the agent lo
 | `harness-provider-anthropic` | Claude 4.x with prompt caching and extended thinking |
 | `harness-provider-openai` | GPT-5.x with streaming SSE and strict JSON schema |
 | `harness-provider-xai` | Grok 4.x with native tools and X search |
-| `harness-provider-ollama` | Local Ollama (Qwen3-Coder 30B default) |
+| `harness-provider-ollama` | Local Ollama with a user-selected model |
 | `harness-provider-mlx` | Apple Silicon MLX via `mlx_lm.server` |
-| `harness-provider-router` | Env-key auto-detection and priority-based routing |
+| `harness-provider-router` | Exact user-owned primary/fallback routing and provider catalogue |
 | `harness-tools` | Tool trait and all built-in tools (file, shell, search, git, gh, patch, spawn) |
 | `harness-memory` | SQLite session store and vector memory with cosine search |
 | `harness-mcp` | Full MCP 2025-03-26 protocol client (tools, resources, sampling, roots, progress) |
@@ -93,12 +93,22 @@ User input (TUI / CLI / HTTP)
 
 ### Adding a Provider
 
+For an OpenAI-format API, first try the extension path that requires no Rust change:
+
+```bash
+harness route custom my-provider --base-url https://api.example.com/v1 \
+  --model vendor/model --api-key-env MY_PROVIDER_API_KEY --add
+```
+
+For a provider with a different protocol or authentication scheme:
+
 1. Create `crates/harness-provider-<name>/` with a `Cargo.toml` and `src/lib.rs`.
 2. Implement the `Provider` trait from `harness-provider-core`.
-3. Add a `build_provider` match arm in `crates/harness-provider-router/src/lib.rs`.
-4. Add env-key detection in `ProviderRouter::from_config` so the router can auto-select it.
+3. Add a `build_provider` match arm and alphabetical `ProviderPreset` entry in `crates/harness-provider-router/src/lib.rs`.
+4. Add credential detection for diagnostics only; it must never change route order.
+5. Write provider construction, exact-route, and failure tests.
 
-The new provider is then available via `--model <name>:model-id` and will be picked up by the smart router if its API key is set.
+Users explicitly add the provider and model to their route. Harness never promotes it merely because credentials are present.
 
 ### Adding a Tool
 

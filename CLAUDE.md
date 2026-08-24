@@ -1,8 +1,8 @@
 # NextEleven Harness — Codebase Guide (August 2026)
 
-NextEleven Harness — Rust multi-provider coding agent (binary/crate still `harness`). Anthropic / xAI / OpenAI / Mistral / Gemini / Bedrock / Ollama / MLX. Swarm, MCP, serve, TUI.
+NextEleven Harness — Rust multi-provider coding agent (binary/crate still `harness`). Provider-neutral route across native and OpenAI-compatible cloud/local backends. Swarm, MCP, serve, TUI.
 
-**Release:** Public **beta / POC** GO — version **1.3.0** · **`cargo test --bin harness` → 363 tests** (no API keys), P0 security closed. **Stable** blocked on REL-01 smoke matrix ([`TODO.md`](TODO.md)).  
+**Release:** Public **beta / POC** GO — version **1.3.0** · **`cargo test --bin harness` → 376 tests** (no API keys), P0 security closed. **Stable** blocked on REL-01 smoke matrix ([`TODO.md`](TODO.md)).
 **Ship branch:** **`main`** only.  
 **License:** proprietary NextEleven LLC ([`LICENSE`](LICENSE)). Public repo = proof-of-concept visibility only — **not MIT / not open source**.
 
@@ -34,8 +34,9 @@ Root package is a **binary** — `cargo test --lib` fails. One TESTNAME filter p
 ## Running
 
 ```bash
-# Interactive TUI (claude-sonnet-4-6 is the default)
-ANTHROPIC_API_KEY=sk-ant-... harness
+# First run: choose the exact provider:model route, then start the TUI
+ANTHROPIC_API_KEY=sk-ant-... harness setup
+harness
 
 # With extended thinking
 ANTHROPIC_API_KEY=sk-ant-... harness --think 10000
@@ -69,7 +70,8 @@ harness sync push
 
 # Models picker
 harness models
-harness models --set anthropic:claude-opus-4-7
+harness route set anthropic:claude-opus-4-7 openai:gpt-5.5
+harness route show
 
 # GitHub PR review
 harness pr 123
@@ -156,19 +158,11 @@ harness/
 └── scripts/                        install, smoke_rel01, smoke_linux_docker, vendor
 ```
 
-## Model defaults (2026)
+## Provider and model routing
 
-| Provider  | Default model                    | Notes                         |
-|-----------|----------------------------------|-------------------------------|
-| Anthropic | `claude-sonnet-4-6`              | Prompt caching on by default  |
-| OpenAI    | `gpt-5.5`                        | 1M context, Dec 2025 cutoff   |
-| xAI       | `grok-4.3`                       | 1M context, native tools, flagship |
-| Ollama    | `qwen3-coder:30b`                | Local, 256K ctx, SWE-bench RL |
-| MLX       | `mlx-community/Qwen3-Coder-30B`  | Apple Silicon native          |
-| Embed     | `nomic-embed-text` (Ollama)      | RAG default                   |
+Harness has no preferred provider or chat model. `harness setup` records one or more exact `provider:model` pairs. `[router].default` is primary and `[router].fallback` is attempted verbatim. Multiple detected providers without a route are an error, not an invitation to guess.
 
-Smart router picks the best available provider based on which `*_API_KEY` env vars are set:
-`ANTHROPIC_API_KEY` → `XAI_API_KEY` → `OPENAI_API_KEY` → `ollama` (local).
+Built-ins are alphabetical in setup: Anthropic, Bedrock, Cerebras, DeepSeek, Fireworks, Gemini, Groq, Hugging Face, Mistral, MLX, NVIDIA, Ollama, OpenAI, OpenRouter, Perplexity, SambaNova, Together, and xAI. Custom OpenAI-format services use `harness route custom` with a base URL, model, and credential environment variable.
 
 ## Key types
 
@@ -204,11 +198,7 @@ Structured output: sets `response_format: {type: "json_schema", json_schema: {na
 
 ### `harness-provider-router`
 
-Auto-builds providers from env keys when no `[providers]` block is configured. Smart routing:
-- `default` → anthropic > xai > openai > ollama > mlx
-- `fast` → same priority, uses fast/cheap model
-- `heavy` → same priority, uses opus / grok-4.3 (when xAI is the heavy provider)
-- `embed` → ollama:nomic-embed-text if available
+Builds only providers referenced by the saved route and optional explicit fast/heavy/embed route. It never inserts or reorders fallbacks. A route-less configuration is accepted only when exactly one provider candidate exists, for legacy compatibility.
 
 ### `harness-tools`
 
@@ -372,8 +362,6 @@ SSE event types: `text_chunk`, `tool_start`, `tool_result`, `memory_recall`,
 
 ```toml
 [provider]
-api_key = "sk-ant-..."             # or ANTHROPIC_API_KEY env var
-model = "claude-sonnet-4-6"        # current default
 max_tokens = 8192
 
 [memory]
@@ -415,7 +403,15 @@ default = "anthropic"
 fast_model = "anthropic:claude-haiku-4-5"
 heavy_model = "anthropic:claude-opus-4-7"
 embed_model = "ollama:nomic-embed-text"
-fallback = ["anthropic", "xai", "openai", "ollama"]
+fallback = ["openai", "ollama"]
+
+[providers.anthropic]
+model = "claude-sonnet-4-6"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[providers.openai]
+model = "gpt-5.5"
+api_key_env = "OPENAI_API_KEY"
 
 [observability]
 enabled = true
@@ -473,9 +469,9 @@ Public API crates enforce **`#![deny(missing_docs)]`**: `harness-provider-core`,
 
 ## Adding a new provider
 
-1. Create `crates/harness-provider-<name>/`, implement `Provider` trait from `harness-provider-core`.
-2. Add a new `build_provider` arm in `crates/harness-provider-router/src/lib.rs`.
-3. Add env-key detection in the smart-defaults block of `ProviderRouter::from_config`.
+1. For an OpenAI-format API, use `harness route custom`; no Rust change is required.
+2. For a distinct protocol, create `crates/harness-provider-<name>/` and implement `Provider` from `harness-provider-core`.
+3. Add the adapter to `build_provider` and its neutral metadata to `PROVIDER_PRESETS` in `crates/harness-provider-router/src/lib.rs`.
 
 ## Self-dev mode
 

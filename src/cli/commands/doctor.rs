@@ -18,7 +18,7 @@ pub async fn handle_doctor_command(cfg: &Config) {
         }
         Err(e) => {
             println!("  Resolved model (config): {resolved}");
-            println!("  Provider build skipped: {e}");
+            println!("  Provider build skipped: {e:#}");
         }
     }
     println!();
@@ -32,107 +32,81 @@ pub async fn handle_doctor_command(cfg: &Config) {
         .map(|k| !k.is_empty())
         .unwrap_or(false);
     let provider_entry_key = |name: &str| -> bool {
-        cfg.providers
-            .get(name)
-            .and_then(|e| e.api_key.as_ref())
-            .map(|k| !k.is_empty())
-            .unwrap_or(false)
+        cfg.providers.get(name).is_some_and(|entry| {
+            entry.api_key.as_ref().is_some_and(|key| !key.is_empty())
+                || entry.api_key_env.as_ref().is_some_and(|env_name| {
+                    std::env::var(env_name).is_ok_and(|key| !key.is_empty())
+                })
+        })
     };
     let env_key =
         |env: &str| -> bool { std::env::var(env).map(|k| !k.is_empty()).unwrap_or(false) };
 
-    let checks: &[(&str, &str, &str, &str)] = &[
-        (
-            "ANTHROPIC_API_KEY",
-            "anthropic",
-            "Anthropic Claude 4.x",
-            "claude-sonnet-4-6",
-        ),
-        ("XAI_API_KEY", "xai", "xAI Grok 4.x", "grok-4.5"),
-        ("OPENAI_API_KEY", "openai", "OpenAI GPT-5.x", "gpt-5.5"),
-        (
-            "MISTRAL_API_KEY",
-            "mistral",
-            "Mistral (OpenAI-compatible)",
-            "mistral-large-latest",
-        ),
-    ];
-    println!("  API Keys:");
+    println!("  Provider credentials (alphabetical; availability is not preference):");
     let mut any_key = false;
-    for (env, provider_name, name, model) in checks {
-        let from_env = env_key(env);
-        let from_provider = provider_entry_key(provider_name);
-        // Top-level [provider].api_key is historically used for the active/default provider.
-        let from_top = config_top_key
-            && matches!(
-                provider_name,
-                &"xai" | &"anthropic" | &"openai" | &"mistral"
-            )
-            && cfg
-                .provider
-                .model
-                .as_deref()
-                .map(|m| {
-                    let m = m.to_ascii_lowercase();
-                    match *provider_name {
-                        "xai" => m.contains("grok") || m.starts_with("xai"),
-                        "anthropic" => {
-                            m.contains("claude")
-                                || m.contains("sonnet")
-                                || m.contains("opus")
-                                || m.contains("haiku")
-                        }
-                        "openai" => {
-                            m.starts_with("gpt")
-                                || m.contains("o1")
-                                || m.contains("o3")
-                                || m.contains("o4")
-                        }
-                        "mistral" => {
-                            m.contains("mistral")
-                                || m.contains("mixtral")
-                                || m.contains("codestral")
-                        }
-                        _ => false,
-                    }
+    for preset in harness_provider_router::PROVIDER_PRESETS {
+        if preset.local {
+            println!("  ○ {:<12} local runtime", preset.name);
+            continue;
+        }
+        let envs_set: Vec<&str> = preset
+            .api_key_envs
+            .iter()
+            .copied()
+            .filter(|env_name| env_key(env_name))
+            .collect();
+        let env_ready = if preset.name == "bedrock" {
+            envs_set.len() == preset.api_key_envs.len()
+        } else {
+            !envs_set.is_empty()
+        };
+        let configured = if preset.name == "bedrock" {
+            env_ready
+                || cfg.providers.get("bedrock").is_some_and(|entry| {
+                    entry.api_key.as_deref().is_some_and(|value| {
+                        value.split_once(':').is_some_and(|(access, secret)| {
+                            !access.is_empty() && !secret.is_empty()
+                        })
+                    })
                 })
-                .unwrap_or(false);
-        let set = from_env || from_provider || from_top;
-        if set {
+        } else {
+            provider_entry_key(preset.name) || env_ready
+        };
+        if configured {
             any_key = true;
         }
-        let source = if from_env {
-            format!("env {env}")
-        } else if from_provider {
-            format!("config [providers.{provider_name}]")
-        } else if from_top {
-            "config [provider].api_key".to_string()
+        let source = if !envs_set.is_empty() {
+            envs_set.join(", ")
+        } else if provider_entry_key(preset.name) {
+            format!("config [providers.{}]", preset.name)
         } else {
-            String::new()
+            preset.api_key_envs.join(" or ")
         };
         println!(
-            "  {} {} → {}",
-            if set { "✓" } else { "✗" },
-            name,
-            if set {
-                format!("key set ({source}), will use {model}")
+            "  {} {:<12} {}",
+            if configured { "✓" } else { "✗" },
+            preset.name,
+            if configured {
+                format!("credentials detected ({source})")
             } else {
-                format!("set {env} or config key to enable")
+                format!("set {source}")
             }
         );
     }
     // Any non-empty key in providers map counts even if not in the shortlist above.
     if !any_key {
         any_key = config_top_key
-            || cfg
-                .providers
-                .values()
-                .any(|e| e.api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false));
+            || cfg.providers.values().any(|entry| {
+                entry.api_key.as_ref().is_some_and(|key| !key.is_empty())
+                    || entry.api_key_env.as_ref().is_some_and(|env_name| {
+                        std::env::var(env_name).is_ok_and(|key| !key.is_empty())
+                    })
+            });
     }
     if !any_key {
-        println!("\n  ⚠ No API key found! Set ANTHROPIC_API_KEY / XAI_API_KEY / OPENAI_API_KEY,");
+        println!("\n  ⚠ No hosted-provider credential found.");
         println!(
-            "  or put api_key under [provider] / [providers.<name>] in ~/.harness/config.toml."
+            "  Set the environment variable for your selected provider, or use a local route."
         );
     }
 
@@ -209,8 +183,13 @@ pub async fn handle_doctor_command(cfg: &Config) {
         }
     );
     println!(
-        "  Current model: {}",
-        cfg.provider.model.as_deref().unwrap_or("(auto)")
+        "  Primary model: {}",
+        cfg.router
+            .default
+            .as_deref()
+            .and_then(|name| cfg.providers.get(name))
+            .and_then(|entry| entry.model.as_deref())
+            .unwrap_or("(not configured)")
     );
 
     let mem_path = dirs::home_dir()

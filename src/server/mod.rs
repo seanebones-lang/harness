@@ -67,6 +67,7 @@ struct HealthKeyHints {
     anthropic_env: bool,
     xai_env: bool,
     openai_env: bool,
+    detected: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -88,11 +89,7 @@ struct HealthResponse {
 
 #[derive(Serialize)]
 struct SetupStateResponse {
-    primary: String,
-    model: String,
-    has_anthropic_key: bool,
-    has_xai_key: bool,
-    has_openai_key: bool,
+    route: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -181,38 +178,25 @@ pub async fn serve(state: ServerState, addr: SocketAddr) -> Result<()> {
     Ok(())
 }
 
-fn config_key_nonempty(cfg: &crate::config::Config, name: &str) -> bool {
-    cfg.providers
-        .get(name)
-        .and_then(|e| e.api_key.as_ref())
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false)
-}
-
 async fn setup_state(State(state): State<Arc<ServerState>>) -> Json<SetupStateResponse> {
     let g = state.inner.read().await;
     let cfg = &g.config;
-    let primary = cfg
+    let route = cfg
         .router
         .default
-        .clone()
-        .unwrap_or_else(|| "anthropic".to_string());
-    Json(SetupStateResponse {
-        primary,
-        model: g.model.clone(),
-        has_anthropic_key: config_key_nonempty(cfg, "anthropic")
-            || nonempty_env("ANTHROPIC_API_KEY"),
-        has_xai_key: config_key_nonempty(cfg, "xai")
-            || !cfg
-                .provider
-                .api_key
-                .as_deref()
-                .unwrap_or("")
-                .trim()
-                .is_empty()
-            || nonempty_env("XAI_API_KEY"),
-        has_openai_key: config_key_nonempty(cfg, "openai") || nonempty_env("OPENAI_API_KEY"),
-    })
+        .iter()
+        .cloned()
+        .chain(cfg.router.fallback.clone().unwrap_or_default())
+        .map(|name| {
+            let model = cfg
+                .providers
+                .get(&name)
+                .and_then(|entry| entry.model.as_deref())
+                .unwrap_or("");
+            format!("{name}:{model}")
+        })
+        .collect();
+    Json(SetupStateResponse { route })
 }
 
 async fn persist_setup(
@@ -331,6 +315,11 @@ async fn health(
             anthropic_env: nonempty_env("ANTHROPIC_API_KEY"),
             xai_env: nonempty_env("XAI_API_KEY"),
             openai_env: nonempty_env("OPENAI_API_KEY"),
+            detected: harness_provider_router::PROVIDER_PRESETS
+                .iter()
+                .flat_map(|preset| preset.api_key_envs.iter().copied())
+                .filter(|env_name| nonempty_env(env_name))
+                .collect(),
         },
         config_path: if loopback {
             Some(state.config_active_path.display().to_string())

@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
 
     maybe_run_first_time_wizard(&cfg)?;
 
-    // Detect available API keys (router priority: anthropic > xai > openai > ollama > mlx)
+    // Build the exact provider route saved by the user.
     let has_xai = cfg.provider.api_key.is_some()
         || std::env::var("XAI_API_KEY")
             .map(|k| !k.is_empty())

@@ -1,14 +1,14 @@
 # NextEleven Harness — Rust Coding Agent
 
 [![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
-[![MSRV](https://img.shields.io/badge/MSRV-1.76%2B-orange)](rust-toolchain.toml)
+[![MSRV](https://img.shields.io/badge/MSRV-1.95%2B-orange)](rust-toolchain.toml)
 [![Toolchain](https://img.shields.io/badge/pinned-1.95.0-blue)](rust-toolchain.toml)
 [![Coverage](https://img.shields.io/badge/coverage-~62%25%20(gate%2060%25%20met)-brightgreen)](COVERAGE.md)
 [![Version](https://img.shields.io/badge/version-1.3.0-informational)](Cargo.toml)
 
 **NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
 
-Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls through **Anthropic → xAI → OpenAI → NVIDIA → Mistral → Gemini → Bedrock → Ollama/MLX** based on configured keys and `[providers]` tables.
+**Provider-neutral by design:** Harness does not choose a vendor, model, or fallback order. Setup saves your exact `provider:model` route; the first entry is primary and every later entry is tried in the order you chose. Built-in names are convenience adapters, not a closed catalogue: custom OpenAI-format endpoints can be added from the CLI without changing Rust code.
 
 **Status:** public **beta / POC** (daily-driver capable). Version **1.3.0**. **Stable** is blocked on full REL-01 smoke matrix + release artifact billing (see [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md)).  
 **Branch:** ship on **`main`** only.  
@@ -30,7 +30,7 @@ Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls throug
 
 ## What you get
 
-- **Multi-provider streaming** — Anthropic (caching + thinking), OpenAI / OpenAI-compatible / Mistral, xAI Grok, NVidia (OpenAI-compat), Google Gemini (OpenAI-compat endpoint), AWS Bedrock Converse, local Ollama + MLX
+- **User-owned multi-provider routing** — Anthropic, AWS Bedrock, Cerebras, DeepSeek, Fireworks, Google Gemini, Groq, Hugging Face, Mistral, MLX, NVIDIA, Ollama, OpenAI, OpenRouter, Perplexity, SambaNova, Together, xAI, plus custom OpenAI-compatible endpoints
 - **Agentic tools** — `read_file` / `write_file` / `patch_file` / `apply_patch` / `list_dir` / `search_code` / `shell` / `git` / `gh` / `test_runner` / LSP (`find_definition`, …) / `spawn_agent` / `spawn_swarm`
 - **Config-gated extras** (default **off**) — `database` (SQLite readonly), `notebook` (`.ipynb`), `docker` (allowlisted CLI), `browser` (Chrome CDP), `computer_use` (see [`docs/COMPUTER_USE.md`](docs/COMPUTER_USE.md))
 - **Parallel swarm** — SQLite registry (`~/.harness/swarm.db`), CLI + TUI panel (F2 / `/swarm`), cancel-all, auto-GC, `--json`, worker tool allowlist + wall timeout, optional remote registry hook
@@ -44,7 +44,7 @@ Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls throug
 
 ## Prerequisites
 
-- **Rust** via [rustup](https://rustup.rs) — pinned channel **1.95.0** in `rust-toolchain.toml`; MSRV **1.76** in workspace `Cargo.toml`
+- **Rust** via [rustup](https://rustup.rs) — pinned channel and honest dependency-derived MSRV: **1.95.0**
 - **Git**
 - **macOS / Linux / Windows** — CI runs fmt, clippy, test, build on all three
 
@@ -89,6 +89,7 @@ export PATH="$HOME/.local/bin:$PATH"
 export ANTHROPIC_API_KEY="sk-ant-..."   # or XAI_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / …
 cd /path/to/your/project
 harness init        # optional: seed ~/.harness/config.toml
+harness setup       # choose provider(s), model(s), and exact order
 harness             # interactive TUI
 ```
 
@@ -124,7 +125,9 @@ harness --resume <session-id-prefix> "continue"
 
 harness doctor
 harness models
-harness models --set anthropic:claude-opus-4-7
+harness route show
+harness route set anthropic:claude-opus-4-7 openai:gpt-5.5 ollama:qwen3-coder:30b
+harness route model openai gpt-5.4
 harness cost today
 
 harness swarm run "audit auth" -n 3
@@ -150,27 +153,37 @@ harness completions zsh > ~/.zsh/completions/_harness
 
 | Provider | Typical env | Notes |
 |----------|-------------|--------|
-| Anthropic | `ANTHROPIC_API_KEY` | Default models; prompt cache + thinking |
-| xAI | `XAI_API_KEY` | Grok 4.x flagship / fast |
-| OpenAI | `OPENAI_API_KEY` | GPT-5.x family |
-| Mistral | `MISTRAL_API_KEY` | OpenAI-compatible client |
-| Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | OpenAI-compat Generative Language API — [`docs/PROVIDERS_GEMINI_BEDROCK.md`](docs/PROVIDERS_GEMINI_BEDROCK.md) |
+| Anthropic | `ANTHROPIC_API_KEY` | Prompt cache + thinking |
 | Bedrock | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (+ region / `BEDROCK_MODEL_ID`) | Converse + SigV4 |
-| Ollama | local daemon | Default `qwen3-coder:30b` |
+| Cerebras | `CEREBRAS_API_KEY` | OpenAI-compatible hosted API |
+| DeepSeek | `DEEPSEEK_API_KEY` | OpenAI-compatible hosted API |
+| Fireworks | `FIREWORKS_API_KEY` | OpenAI-compatible hosted API |
+| Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | OpenAI-compat Generative Language API — [`docs/PROVIDERS_GEMINI_BEDROCK.md`](docs/PROVIDERS_GEMINI_BEDROCK.md) |
+| Generic | chosen with `--api-key-env` | Bearer-authenticated OpenAI-format endpoint |
+| Groq | `GROQ_API_KEY` | OpenAI-compatible hosted API |
+| Hugging Face | `HF_TOKEN` | OpenAI-compatible Inference Providers router |
+| Mistral | `MISTRAL_API_KEY` | OpenAI-compatible client |
 | MLX | macOS Apple Silicon | `mlx_lm.server` OpenAI-compat |
 | NVIDIA | `NVIDIA_API_KEY` | OpenAI-compat — deepseek-ai/deepseek-v4-flash-0731, nemotron 3 super/ultra — [`docs/PROVIDERS_OPENAI_COMPAT.md`](docs/PROVIDERS_OPENAI_COMPAT.md) |
-| Generic | any OpenAI-format `base_url` | `[providers.*]` or `openai-compatible` kind |
+| Ollama | local daemon | User-selected local model |
+| OpenAI | `OPENAI_API_KEY` | GPT-5.x family |
+| OpenRouter | `OPENROUTER_API_KEY` | OpenAI-compatible routing API |
+| Perplexity | `PERPLEXITY_API_KEY` | OpenAI-compatible Sonar chat API |
+| SambaNova | `SAMBANOVA_API_KEY` | OpenAI-compatible hosted API |
+| Together | `TOGETHER_API_KEY` | OpenAI-compatible hosted API |
+| xAI | `XAI_API_KEY` | Grok 4.x family |
 
 ```bash
 export GEMINI_API_KEY=...
-harness --model gemini-2.0-flash "ping"
+harness route set gemini:gemini-2.0-flash
+harness "ping"
 
 export AWS_REGION=us-east-1
 export BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
 # AWS_* keys as usual
 ```
 
-Router policy + catalogue tests live in `crates/harness-provider-router`.
+The route is explicit and exact. Use `harness route set` to replace it, `route add/remove/move` to edit its order, `route model` to change one model, and `route custom` to register a future OpenAI-compatible endpoint without changing Harness code. Router policy + catalogue tests live in `crates/harness-provider-router`.
 
 ---
 
@@ -237,7 +250,7 @@ TUI: **F2** or `/swarm` dumps swarm registry lines into the single-panel transcr
 ```bash
 cargo build
 cargo build --profile release-lto
-cargo test --bin harness          # 363 tests (2026-08-09 cont; no API keys)
+cargo test --bin harness          # 376 tests (2026-08-24; no API keys)
 cargo test -p harness-tools       # 179 tests (Swarm-51)
 cargo test -p harness-provider-router
 cargo clippy -p harness --bin harness -- -D warnings

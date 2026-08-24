@@ -6,11 +6,11 @@ This guide explains how to use NextEleven Harness in plain English.
 
 ## What NextEleven Harness Does
 
-NextEleven Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports multiple AI providers (Anthropic Claude, xAI Grok, OpenAI, local Ollama), has a full TUI with syntax highlighting, remembers past sessions semantically, integrates with your language server, and can orchestrate multiple linked repos via **`harness project`** or use an optional **`harness serve`** browser UI alongside the **`browser`** Chrome tool when enabled.
+NextEleven Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports native and OpenAI-compatible cloud/local providers, has a full TUI with syntax highlighting, remembers past sessions semantically, integrates with your language server, and can orchestrate multiple linked repos via **`harness project`** or use an optional **`harness serve`** browser UI alongside the **`browser`** Chrome tool when enabled.
 
-**Default model: `claude-sonnet-4-6`** — 10x cheaper than base price on repeated context thanks to Anthropic prompt caching. Falls back to xAI → OpenAI → local Ollama based on which API keys are set.
+**You choose the route.** Harness has no preferred provider or model. During setup you enter one or more `provider:model` pairs in the exact order you want Harness to try them.
 
-**Operational truth (May 2026):** Public **beta** — **218 automated tests**, P0 security closed ([`docs/THREAT_MODEL.md`](../docs/THREAT_MODEL.md)). Stable release blocked on maintainer manual smoke ([`docs/PUBLIC_RELEASE.md`](../docs/PUBLIC_RELEASE.md)). Canonical backlog + roadmap: **[`TODO.md`](../TODO.md)**. Licensed MIT — see [`LICENSE`](../LICENSE).
+**Operational truth (August 2026):** Public **beta / proof of concept**, version **1.3.0**, P0 security closed ([`docs/THREAT_MODEL.md`](../docs/THREAT_MODEL.md)). Stable release remains blocked on the full REL-01 smoke matrix and release-artifact billing ([`docs/RELEASE_STATUS.md`](../docs/RELEASE_STATUS.md)). Proprietary NextEleven LLC software — **not MIT / not open source**; see [`LICENSE`](../LICENSE).
 
 **More docs:** [`docs/BROWSER_CDP.md`](../docs/BROWSER_CDP.md) · [`docs/COOKBOOK.md`](../docs/COOKBOOK.md) · [`docs/PEER_REVIEW_AUDIT.md`](../docs/PEER_REVIEW_AUDIT.md)
 
@@ -27,11 +27,13 @@ NextEleven Harness is an AI coding assistant you run in your terminal. You type 
 - **macOS / Linux:** **[`README.md`](../README.md)** quick start — manual `cargo build` + copy to `~/.local/bin`, **or** run [`scripts/install.sh`](../scripts/install.sh) from the repo (optional `HARNESS_INSTALL_DIR`).
 - **Windows:** same README — PowerShell copy/paste, or [`scripts/install.ps1`](../scripts/install.ps1).
 
-### Step 2 — Set your API key
+### Step 2 — Set credentials for the provider you want
 
-**Unix shells:** `export ANTHROPIC_API_KEY="sk-ant-..."` (or `XAI_API_KEY` / `OPENAI_API_KEY`).
+**Unix example:** `export ANTHROPIC_API_KEY="sk-ant-..."`
 
 **PowerShell:** `$env:ANTHROPIC_API_KEY = "sk-ant-..."`
+
+Each built-in provider has its own conventional environment variable. Run `harness models` or see [`docs/PROVIDERS_OPENAI_COMPAT.md`](../docs/PROVIDERS_OPENAI_COMPAT.md). Setup does not copy secrets into the config file.
 
 ### Step 3 — Initialize global config (recommended once)
 
@@ -42,6 +44,14 @@ harness init
 ```
 
 Install scripts may already create **`~/.harness/config.toml`** — running **`harness init`** again is safe if you want CLI-generated defaults.
+
+### Step 4 — Choose the exact provider/model route
+
+```bash
+harness setup
+```
+
+Enter provider names in the order you want them tried, then enter one exact model ID for each. The first provider is primary; the rest are fallbacks. One provider is enough.
 
 ---
 
@@ -71,13 +81,13 @@ Find all TODO comments and list them by file.
 
 ---
 
-## May 2026 Models
+## Providers, models, and fallbacks
 
-Pick the right model for the job:
+Harness lists model examples, but it does not select or recommend one:
 
 | Model | Use When |
 |-------|----------|
-| `claude-sonnet-4-6` (default) | Most tasks — fast, cheap with caching |
+| `claude-sonnet-4-6` | Anthropic Sonnet family |
 | `claude-opus-4-7` | Complex architecture, long tasks, adaptive thinking |
 | `claude-haiku-4-5` | Summaries, quick lookups — ultra-fast |
 | `grok-4.3` | xAI flagship — general coding and agents ([xAI models](https://docs.x.ai/docs/models)) |
@@ -86,12 +96,17 @@ Pick the right model for the job:
 | `gpt-5.5` | When you want OpenAI's latest |
 | `qwen3-coder:30b` | Fully local (no API key), 256K context |
 
-Switch models:
+Inspect or change routing:
 ```bash
-harness models                                 # list all available
-harness models --set anthropic:claude-opus-4-7 # set default for this project
-harness models --set xai:grok-4.3              # xAI flagship (needs XAI_API_KEY)
+harness models
+harness route show
+harness route set anthropic:claude-opus-4-7 openai:gpt-5.5
+harness route model openai gpt-5.4
+harness route add ollama:qwen3-coder:30b
+harness route move ollama 2
 ```
+
+Use `--global` or `--project` on route commands when you need to target one config explicitly. A project `.harness/config.toml` is authoritative when present; it does not merge with the global file.
 
 Or mid-session: `/model claude-opus-4-7` or `/model grok-4.3`
 

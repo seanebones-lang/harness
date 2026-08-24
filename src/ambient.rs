@@ -22,6 +22,7 @@ pub struct AmbientProviders {
 
 impl AmbientProviders {
     /// Use the same provider for both summary and embedding.
+    #[cfg(test)]
     pub fn same(provider: ArcProvider) -> Self {
         Self {
             summary: provider.clone(),

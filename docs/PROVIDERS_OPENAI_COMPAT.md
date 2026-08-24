@@ -1,94 +1,120 @@
-# Providers: Mistral + OpenAI-compatible (W5.1)
+# Provider-neutral routing and OpenAI-compatible endpoints
 
-Harness routes through `harness-provider-router`. Cloud OpenAI chat already used the OpenAI HTTP shape; this wave makes **generic OpenAI-compatible endpoints** and **Mistral** first-class.
-
-## Quick start
-
-### Mistral
+Harness treats provider selection as user configuration, not product policy. It never ranks vendors, infers a preferred model, or appends an implicit fallback. The saved route is authoritative:
 
 ```bash
-export MISTRAL_API_KEY=...
-# optional: pin model via config
+harness route set anthropic:claude-sonnet-4-6 openai:gpt-5.5 ollama:qwen3-coder:30b
+harness route show
 ```
 
-```toml
-[providers.mistral]
-# api_key omitted → MISTRAL_API_KEY
-model = "mistral-large-latest"
-# base_url defaults to https://api.mistral.ai/v1
+The first entry is primary. Remaining entries are attempted in the exact order shown. A one-provider route is valid. If multiple providers are available but no route is saved, Harness stops with a setup error instead of choosing for the user.
+
+## Built-in provider names
+
+The setup catalogue is alphabetical and includes:
+
+- `anthropic` — `ANTHROPIC_API_KEY`
+- `bedrock` — standard AWS credentials and region
+- `cerebras` — `CEREBRAS_API_KEY`
+- `deepseek` — `DEEPSEEK_API_KEY`
+- `fireworks` — `FIREWORKS_API_KEY`
+- `gemini` — `GEMINI_API_KEY` or `GOOGLE_API_KEY`
+- `groq` — `GROQ_API_KEY`
+- `huggingface` — `HF_TOKEN`
+- `mistral` — `MISTRAL_API_KEY`
+- `mlx` — local MLX server
+- `nvidia` — `NVIDIA_API_KEY`
+- `ollama` — local Ollama server
+- `openai` — `OPENAI_API_KEY`
+- `openrouter` — `OPENROUTER_API_KEY`
+- `perplexity` — `PERPLEXITY_API_KEY`
+- `sambanova` — `SAMBANOVA_API_KEY`
+- `together` — `TOGETHER_API_KEY`
+- `xai` — `XAI_API_KEY`
+
+Cerebras, DeepSeek, Fireworks, Groq, Hugging Face, NVIDIA, OpenRouter, Perplexity, SambaNova, and Together use Harness's OpenAI-compatible transport with provider-specific base URLs. Model IDs are always selected by the user and are not pinned by the router.
+
+## Route commands
+
+```bash
+# Replace everything. First entry is primary.
+harness route set groq:llama-3.3-70b-versatile openai:gpt-5.5
+
+# Change a model without changing order.
+harness route model groq llama-3.3-70b-versatile
+
+# Add, remove, or move a fallback (positions are one-based).
+harness route add ollama:qwen3-coder:30b
+harness route add anthropic:claude-sonnet-4-6 --position 1
+harness route move ollama 2
+harness route remove openai
+
+# Target a specific scope. Without a flag, Harness edits the active config.
+harness route show --global
+harness route set --project ollama:qwen3-coder:30b
 ```
 
-Or rely on env-only auto-registration when `MISTRAL_API_KEY` is set (same pattern as OpenAI/Anthropic/xAI).
+Project `.harness/config.toml` is authoritative when present; it does not merge with the global file. The explicit `--global` and `--project` flags avoid accidentally editing both.
 
-### Generic OpenAI-compatible proxy / local server
+## Custom and future providers
 
-```toml
-[providers.openai-compatible]
-api_key = "optional-or-empty"
-model = "gpt-4o-mini"
-base_url = "http://127.0.0.1:8000/v1"   # required
+Any service exposing an OpenAI-format chat-completions endpoint can be registered without adding a Rust adapter:
+
+```bash
+harness route custom my-cloud \
+  --base-url https://example.com/v1 \
+  --model vendor/model-id \
+  --api-key-env MY_CLOUD_API_KEY \
+  --add
 ```
 
-Any **custom table name** with `base_url` is also treated as OpenAI-compatible under that name:
+Equivalent TOML:
 
 ```toml
-[providers.my-vllm]
-api_key = ""
-model = "meta-llama/..."
-base_url = "http://127.0.0.1:8000/v1"
-```
+[providers.my-cloud]
+kind = "openai-compatible"
+base_url = "https://example.com/v1"
+model = "vendor/model-id"
+api_key_env = "MY_CLOUD_API_KEY"
 
-`base_url` must be the API root that accepts `/chat/completions` (usually ends with `/v1`).
-
-### NVIDIA (OpenAI-compatible)
-
-NVIDIA's hosted API [build.nvidia.com](https://build.nvidia.com) exposes an OpenAI-format `/v1` endpoint, so route through the `openai-compatible` provider:
-
-```toml
-[providers.openai-compatible]
-api_key = "...your-nvidia-key..."    # or NVIDIA_API_KEY
-model = "deepseek-ai/deepseek-v4-flash-0731"
-base_url = "https://integrate.api.nvidia.com/v1"
-```
-
-Then select as the router default:
-
-```toml
 [router]
-default = "openai-compatible"
+default = "my-cloud"
+fallback = []
 ```
 
-Useful hosted models: `deepseek-ai/deepseek-v4-flash-0731` (fast + reliable), `nvidia/nemotron-3-super-120b-a12b` (120B MoE reasoning), `nvidia/nemotron-3-ultra-550b-a55b` (flagship, can return 503 under load).
+`base_url` is the API root to which Harness appends `/chat/completions`. API keys should remain in environment variables. `api_key` is retained only for compatibility with existing configurations.
 
-### Stock OpenAI
+For an unauthenticated local server (for example, a development-only loopback endpoint), omit `--api-key-env`. Harness validates that custom base URLs are absolute HTTP(S) URLs. Authentication schemes other than an optional bearer token require a native adapter.
+
+Account-specific services such as Cloudflare Workers AI should use this custom-provider path because their base URLs cannot be represented by one global preset. Providers requiring different authentication headers or request schemas still need a native adapter.
+
+## Direct TOML example
 
 ```toml
-[providers.openai]
-api_key = "sk-..."   # or OPENAI_API_KEY
-model = "gpt-5.5"
-# base_url optional override
+[providers.nvidia]
+model = "deepseek-ai/deepseek-v4-flash-0731"
+api_key_env = "NVIDIA_API_KEY"
+
+[providers.mistral]
+model = "mistral-large-latest"
+api_key_env = "MISTRAL_API_KEY"
+
+[providers.ollama]
+model = "qwen3-coder:30b"
+
+[router]
+default = "nvidia"
+fallback = ["mistral", "ollama"]
 ```
 
-## Router notes
+Harness will neither reorder this route nor insert another configured provider into it.
 
-- Kind is the `[providers.<kind>]` key passed to `build_provider`.
-- Kinds: `anthropic`, `xai`, `openai`, `mistral`, `openai-compatible` / `compatible`, `ollama`, `mlx`.
-- Fallback chain default order includes `mistral` after `openai`.
-- Smart default preference: anthropic → xai → openai → **mistral** → ollama → mlx.
-
-## Implementation
-
-| Piece | Path |
-|-------|------|
-| OpenAI HTTP client + `provider_name` | `crates/harness-provider-openai` |
-| `OpenAIConfig::mistral` | same |
-| `build_provider` kinds | `crates/harness-provider-router` |
-| Env auto-insert `mistral` | `ProviderRouter::from_config` |
-| Config examples | `config/default.toml` |
-
-## Tests
+## Verification
 
 ```bash
-cargo test -p harness-provider-router build_provider
-cargo test -p harness-provider-openai
+cargo test -p harness-provider-router
+cargo test --bin harness cli::commands::route
+./target/debug/harness route show --project
 ```
+
+Implementation lives in `crates/harness-provider-router/src/lib.rs` and `src/cli/commands/route.rs`.

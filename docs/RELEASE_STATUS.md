@@ -4,6 +4,29 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-08-24 — Provider-neutral routing and extensibility release gate**
+
+| Item | Result |
+|------|--------|
+| Branch | **`main`** |
+| Runtime policy | Exact user-selected primary + ordered fallbacks; no provider/model ranking and no implicit Ollama insertion |
+| Setup / CLI | `harness setup`; `route show/set/model/add/remove/move/custom`; active/global/project scope |
+| Provider surface | 18 alphabetical built-in names + custom OpenAI-format HTTP(S) endpoints; model always user-selected |
+| Secret posture | Setup and dashboard store credential environment-variable names, not credential values; compatibility load for existing `api_key` remains |
+| `cargo test --bin harness` | **376 passed** |
+| `cargo test -p harness-provider-router` | **15 passed** |
+| `cargo test --workspace --all-features` | **passed** |
+| MSRV audit / `cargo +1.95.0 check --workspace --all-targets` | **passed**; locked dependencies require Rust 1.94.1+, so the stale 1.76 claim and CI job were corrected to 1.95 |
+| `cargo fmt --all -- --check` | **clean** |
+| `cargo clippy --all-targets --all-features -- -D warnings` | **clean** |
+| Route CLI smoke | **passed** — exact set/move/show plus authenticated and unauthenticated custom endpoint config |
+| Browser setup JavaScript | **parsed cleanly** with `node --check` |
+| `scripts/smoke_rel01.sh` | **automated subset passed**; live provider/TUI/browser checks remain separate manual gates |
+
+**Go / no-go:** local release gate **GO**. Remote CI result is recorded in the GitHub Actions run for the release commit. Stable remains blocked on the separate REL-01 smoke matrix and release-artifact billing gates.
+
+---
+
 **2026-08-09 — v1.3.0 public POC cut (proprietary)**
 
 | Item | Result |

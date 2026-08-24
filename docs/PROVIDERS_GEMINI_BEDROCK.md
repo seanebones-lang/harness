@@ -6,7 +6,7 @@ Uses Google’s **OpenAI-compatible** endpoint:
 
 - Base: `https://generativelanguage.googleapis.com/v1beta/openai`
 - Env: `GEMINI_API_KEY` or `GOOGLE_API_KEY`
-- Default model: `gemini-2.0-flash`
+- Example model: `gemini-2.0-flash` (the router does not select one)
 - Router kind: `gemini`
 - Crate: `harness-provider-gemini` (thin wrapper) + `OpenAIConfig::gemini`
 
@@ -19,7 +19,8 @@ model = "gemini-2.0-flash"
 ```bash
 export GEMINI_API_KEY=...
 harness models
-harness --model gemini-2.0-flash "ping"
+harness route set gemini:gemini-2.0-flash
+harness "ping"
 ```
 
 ## Bedrock

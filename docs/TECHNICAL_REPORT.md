@@ -1,13 +1,13 @@
 # Harness: A Multi-Provider Rust Coding Agent with Semantic Memory and Parallel Execution
 
 **Technical Report — International Engineering Competition Submission**
-*May 2026*
+*Updated August 2026*
 
 ---
 
 ## 1. Abstract
 
-Large language model (LLM) coding agents have emerged as productivity multipliers for software engineers, yet existing solutions suffer from one or more critical deficiencies: they are locked to a single LLM provider, consume excessive memory due to runtime overhead, exhibit startup latency incompatible with interactive workflows, or provide insufficient tool composability. Harness addresses these gaps with a public-beta, proprietary source-available coding agent written in Rust. The system implements a trait-based provider abstraction supporting Anthropic Claude 4.x, xAI Grok 4.x, OpenAI GPT-5.x, local Ollama (Qwen3-Coder), and Apple Silicon MLX backends under a single unified interface. A 14-crate Cargo workspace separates concerns cleanly while enabling thin-LTO release builds that start in under 100 milliseconds. The agent loop incorporates cosine-similarity semantic memory retrieval, plan-mode diff review with LCS-based hunks, and a parallel sub-agent swarm backed by SQLite. Full MCP 2025-03-26 protocol support — including sampling, resources, roots advertisement, and progress notifications — enables deep interoperability with any compliant tool server. At this report's May 2026 snapshot, the test suite comprised 218 tests exercised on Ubuntu, macOS, and Windows in continuous integration, with a line coverage gate of at least 60 percent. A P0 security audit was completed with all seven findings closed before public beta release. Current status and gate results are recorded in `docs/RELEASE_STATUS.md`.
+Large language model (LLM) coding agents have emerged as productivity multipliers for software engineers, yet existing solutions suffer from one or more critical deficiencies: they are locked to a single LLM provider, consume excessive memory due to runtime overhead, exhibit startup latency incompatible with interactive workflows, or provide insufficient tool composability. Harness addresses these gaps with a public-beta, proprietary source-available coding agent written in Rust. Its trait-based provider layer supports 18 built-in provider names, local Ollama and Apple Silicon MLX runtimes, and user-defined OpenAI-format endpoints under one interface. Provider choice is user-owned: setup records an exact primary model and ordered fallback chain, with no vendor ranking or silent fallback insertion. A 14-crate Cargo workspace separates concerns cleanly while enabling thin-LTO release builds that start in under 100 milliseconds. The agent loop incorporates cosine-similarity semantic memory retrieval, plan-mode diff review with LCS-based hunks, and a parallel sub-agent swarm backed by SQLite. Full MCP 2025-03-26 protocol support — including sampling, resources, roots advertisement, and progress notifications — enables deep interoperability with any compliant tool server. The binary test suite contains 376 tests exercised locally and across Ubuntu, macOS, and Windows in continuous integration, with a line coverage gate of at least 60 percent. A P0 security audit was completed with all seven findings closed before public beta release. Current status and gate results are recorded in `docs/RELEASE_STATUS.md`.
 
 ---
 
@@ -51,7 +51,7 @@ The common thread across these tools is that none simultaneously satisfies: (1) 
 │  crates/                                                                │
 │  ├── harness-provider-core    (Provider trait, Delta, ChatRequest)      │
 │  ├── harness-provider-*       (one crate per backend)                   │
-│  ├── harness-provider-router  (env-key auto-detection, routing)         │
+│  ├── harness-provider-router  (exact route + provider catalogue)        │
 │  ├── harness-tools            (Tool trait + built-ins)                  │
 │  ├── harness-memory           (SQLite session + vector store)           │
 │  ├── harness-mcp              (MCP 2025-03-26 full protocol)            │
@@ -68,7 +68,7 @@ The workspace separates the provider abstraction, tool execution, memory, and pr
 
 **`harness-provider-core`** defines the canonical `Provider` trait, `ChatRequest` builder, `Delta` stream enum, `Message`, and `ResponseSchema`. All other provider crates depend only on this crate, never on each other.
 
-**`harness-provider-router`** inspects the environment at runtime (checking `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY`, and Ollama reachability) and constructs the best available provider chain, with configurable fallback ordering.
+**`harness-provider-router`** constructs the exact provider chain saved by the user. Environment inspection reports credential availability but never ranks vendors, changes the primary, or inserts a fallback. An alphabetical preset catalogue supplies adapter metadata for 18 built-in names, while custom OpenAI-format endpoints can be registered from the CLI.
 
 **`harness-tools`** defines the `Tool` trait (`definition() -> ToolDefinition` plus `async fn execute(args: Value) -> Result<String>`) and ships all built-in tools. The `ToolDefinition` uses OpenAI-format JSON Schema, which is compatible with all supported providers.
 
@@ -147,9 +147,9 @@ The swarm subsystem (`src/swarm.rs`) maintains a task registry in `~/.harness/sw
 
 `diff_review.rs` implements a `StagingBuffer` that intercepts writes from `WriteFileTool` and `PatchFileTool` when the agent is invoked with `--plan`. Diffs are computed using the Longest Common Subsequence algorithm, producing typed `DiffHunk` values (`Added`, `Removed`, `Context`). The TUI overlays a diff viewer where the user navigates hunks with `[`/`]` and approves or rejects with `y`/`n`. Auto-trust patterns in `~/.harness/diff-trust.toml` allow glob-based bypass for known-safe paths (e.g., test fixtures).
 
-### 4.7 Multi-Provider Router with Environment-Key Auto-Detection
+### 4.7 Provider-Neutral Exact Routing
 
-`harness-provider-router` eliminates configuration boilerplate by inspecting environment variables at startup. The priority chain — `ANTHROPIC_API_KEY` → `XAI_API_KEY` → `OPENAI_API_KEY` → Ollama (reachability probe) → MLX (platform check) — means a binary drop-in on any machine picks the best available provider without touching a config file. The router supports three named routes: `default`, `fast` (cost-optimized models), and `heavy` (highest-capability models), and an `embed` route for vector operations. Routes are resolved at request time, allowing the agent loop and ambient consolidation to use different cost/capability trade-offs from the same binary.
+`harness-provider-router` treats provider policy as user data. `[router].default` identifies the primary provider and `[router].fallback` is attempted verbatim; a one-provider route is valid. Multiple detected providers without a saved route produce a setup error rather than an inferred priority. Optional `fast`, `heavy`, and `embed` routes are also explicit. The `harness route` command family can replace, add, remove, reorder, or retarget models without editing TOML, and `harness route custom` registers future bearer-authenticated or unauthenticated OpenAI-format endpoints without a Rust change. Credential values remain in environment variables and never enter the setup payload.
 
 ---
 
@@ -183,7 +183,7 @@ Task state is managed with SQLite WAL mode and explicit `BEGIN IMMEDIATE` transa
 
 ### 6.1 Test Coverage
 
-At this report's May 2026 snapshot, the workspace shipped 218 tests across four test files and per-crate unit tests:
+At the August 2026 update, the binary shipped 376 tests plus per-crate workspace suites:
 
 | File | Focus |
 |------|-------|

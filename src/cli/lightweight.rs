@@ -9,8 +9,8 @@ use harness_tools::tools::GhTool;
 use crate::cli::args::BridgeAction;
 use crate::cli::{
     delete_session, export_session, handle_doctor_command, handle_models_command,
-    handle_project_command, list_sessions, run_init, run_status, run_update, CheckpointAction, Cli,
-    Commands, CostAction, McpAction, SwarmAction, SyncAction,
+    handle_project_command, handle_route_command, list_sessions, run_init, run_status, run_update,
+    CheckpointAction, Cli, Commands, CostAction, McpAction, SwarmAction, SyncAction,
 };
 use crate::config::Config;
 use crate::provider_build;
@@ -59,6 +59,10 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
         }
 
         Some(Commands::Models { set }) => handle_models_command(set.clone(), cfg).await?,
+
+        Some(Commands::Route { action }) => {
+            handle_route_command(action, cfg, cli.config.as_deref())?
+        }
 
         Some(Commands::Trust { tool, pattern }) => {
             let mut store = crate::trust::TrustStore::load();

@@ -397,25 +397,21 @@ pub fn load(path: Option<&Path>) -> Result<Config> {
     Ok(Config::default())
 }
 
-/// Mirror `[provider].model` into `[providers.{router.default}]` when set.
+/// Migrate legacy `[provider].model` into the selected provider only when that
+/// provider does not already have an explicit model. The named provider entry
+/// is authoritative for new configurations.
 pub fn sync_provider_model(cfg: &mut Config) {
     let Some(model) = cfg.provider.model.clone() else {
         return;
     };
     let default = cfg.router.default.clone().or_else(|| {
-        if cfg.providers.contains_key("xai") {
-            Some("xai".into())
-        } else if cfg.providers.contains_key("anthropic") {
-            Some("anthropic".into())
-        } else if cfg.providers.contains_key("openai") {
-            Some("openai".into())
-        } else {
-            cfg.providers.keys().next().cloned()
-        }
+        (cfg.providers.len() == 1)
+            .then(|| cfg.providers.keys().next().cloned())
+            .flatten()
     });
     if let Some(name) = default {
         let entry = cfg.providers.entry(name).or_default();
-        if entry.model.as_deref() != Some(model.as_str()) {
+        if entry.model.as_deref().unwrap_or("").is_empty() {
             entry.model = Some(model);
         }
     }
@@ -435,69 +431,56 @@ pub fn active_config_toml_path() -> PathBuf {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WebSetupPersist {
-    pub primary: String,
-    pub model: String,
-    #[serde(default)]
-    pub anthropic_api_key: Option<String>,
-    #[serde(default)]
-    pub xai_api_key: Option<String>,
-    #[serde(default)]
-    pub openai_api_key: Option<String>,
+    /// Ordered `provider:model` route; first entry is primary.
+    pub route: Vec<String>,
 }
 
-/// Merge dashboard form into `cfg` (does not write disk).
+/// Replace the dashboard provider route in `cfg` (does not write disk).
 pub fn apply_web_setup_patch(cfg: &mut Config, patch: &WebSetupPersist) -> anyhow::Result<()> {
-    let p = patch.primary.to_lowercase();
-    if !matches!(p.as_str(), "anthropic" | "xai" | "openai") {
-        anyhow::bail!("primary must be anthropic, xai, or openai");
+    if patch.route.is_empty() {
+        anyhow::bail!("route must contain at least one provider:model entry");
     }
-    let model = patch.model.trim();
-    if model.is_empty() {
-        anyhow::bail!("model is required");
-    }
-
-    cfg.router.default = Some(p.clone());
-    // Drop stale fast/heavy route strings (often pin old SKUs like grok-3-fast).
-    cfg.router.fast_model = None;
-    cfg.router.heavy_model = None;
-
-    cfg.provider.model = Some(model.to_string());
-
-    if let Some(ref k) = patch.anthropic_api_key {
-        if !k.trim().is_empty() {
-            cfg.providers
-                .entry("anthropic".to_string())
-                .or_default()
-                .api_key = Some(k.trim().to_string());
+    let mut names = Vec::with_capacity(patch.route.len());
+    let mut seen = std::collections::HashSet::new();
+    for spec in &patch.route {
+        let (name, model) = spec
+            .trim()
+            .split_once(':')
+            .ok_or_else(|| anyhow::anyhow!("'{spec}' must use provider:model format"))?;
+        let name = name.trim().to_ascii_lowercase();
+        let model = model.trim();
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+            || model.is_empty()
+        {
+            anyhow::bail!("invalid route entry '{spec}'");
         }
-    }
-    if let Some(ref k) = patch.xai_api_key {
-        if !k.trim().is_empty() {
-            cfg.providers.entry("xai".to_string()).or_default().api_key =
-                Some(k.trim().to_string());
+        if !seen.insert(name.clone()) {
+            anyhow::bail!("provider route contains duplicate entry '{name}'");
         }
-    }
-    if let Some(ref k) = patch.openai_api_key {
-        if !k.trim().is_empty() {
-            cfg.providers
-                .entry("openai".to_string())
-                .or_default()
-                .api_key = Some(k.trim().to_string());
+        if !cfg.providers.contains_key(&name) {
+            if harness_provider_router::provider_preset(&name).is_none() {
+                anyhow::bail!(
+                    "unknown provider '{name}'; configure custom endpoints with `harness route custom`"
+                );
+            }
+            cfg.providers.insert(
+                name.clone(),
+                harness_provider_router::configured_provider_entry(&name),
+            );
         }
+        cfg.providers.entry(name.clone()).or_default().model = Some(model.to_string());
+        names.push(name);
     }
-
-    let e = cfg.providers.entry(p.clone()).or_default();
-    e.model = Some(model.to_string());
-
-    cfg.provider.api_key = match p.as_str() {
-        "anthropic" => cfg
-            .providers
-            .get("anthropic")
-            .and_then(|x| x.api_key.clone()),
-        "xai" => cfg.providers.get("xai").and_then(|x| x.api_key.clone()),
-        "openai" => cfg.providers.get("openai").and_then(|x| x.api_key.clone()),
-        _ => None,
-    };
+    let primary = names[0].clone();
+    cfg.router.default = Some(primary.clone());
+    cfg.router.fallback = Some(names[1..].to_vec());
+    cfg.provider.model = cfg
+        .providers
+        .get(&primary)
+        .and_then(|entry| entry.model.clone());
 
     Ok(())
 }
@@ -549,5 +532,75 @@ mod tests {
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0], ("shell".into(), "git push".into()));
         assert_eq!(parsed[1], ("write_file".into(), "*".into()));
+    }
+
+    #[test]
+    fn web_setup_saves_exact_route_without_provider_preference() {
+        let mut cfg = Config::default();
+        apply_web_setup_patch(
+            &mut cfg,
+            &WebSetupPersist {
+                route: vec![
+                    "together:meta-llama/model-a".into(),
+                    "xai:grok-model-b".into(),
+                    "ollama:qwen:model-c".into(),
+                ],
+            },
+        )
+        .expect("web route");
+        assert_eq!(cfg.router.default.as_deref(), Some("together"));
+        assert_eq!(
+            cfg.router.fallback.as_deref(),
+            Some(&["xai".into(), "ollama".into()][..])
+        );
+        assert_eq!(
+            cfg.providers
+                .get("ollama")
+                .and_then(|entry| entry.model.as_deref()),
+            Some("qwen:model-c")
+        );
+        assert!(cfg.providers.values().all(|entry| entry.api_key.is_none()));
+    }
+
+    #[test]
+    fn web_setup_rejects_duplicate_provider() {
+        let mut cfg = Config::default();
+        let error = apply_web_setup_patch(
+            &mut cfg,
+            &WebSetupPersist {
+                route: vec!["openai:model-a".into(), "openai:model-b".into()],
+            },
+        )
+        .expect_err("duplicate must fail");
+        assert!(error.to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn explicit_route_model_wins_over_legacy_provider_model() {
+        let mut cfg = Config::default();
+        cfg.provider.model = Some("legacy-model".into());
+        cfg.router.default = Some("openai".into());
+        cfg.providers.entry("openai".into()).or_default().model = Some("explicit-model".into());
+        sync_provider_model(&mut cfg);
+        assert_eq!(
+            cfg.providers
+                .get("openai")
+                .and_then(|entry| entry.model.as_deref()),
+            Some("explicit-model")
+        );
+    }
+
+    #[test]
+    fn legacy_provider_model_fills_missing_selected_model() {
+        let mut cfg = Config::default();
+        cfg.provider.model = Some("legacy-model".into());
+        cfg.router.default = Some("openai".into());
+        sync_provider_model(&mut cfg);
+        assert_eq!(
+            cfg.providers
+                .get("openai")
+                .and_then(|entry| entry.model.as_deref()),
+            Some("legacy-model")
+        );
     }
 }
