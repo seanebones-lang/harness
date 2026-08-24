@@ -2234,6 +2234,7 @@ dependencies = [
  "tracing-subscriber",
  "urlencoding",
  "uuid",
+ "which 6.0.3",
 ]
 
 [[package]]

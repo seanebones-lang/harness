@@ -98,6 +98,7 @@ async-trait = { workspace = true }
 tokio-stream = { workspace = true }
 axum = { workspace = true }
 reqwest = { workspace = true }
+which = { workspace = true }
 bytes = { workspace = true }
 syntect = { workspace = true }
 chrono = { workspace = true }

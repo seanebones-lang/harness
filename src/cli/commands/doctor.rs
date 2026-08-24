@@ -110,17 +110,25 @@ pub async fn handle_doctor_command(cfg: &Config) {
         );
     }
 
-    // `doctor` is a local diagnostic, so an optional Ollama installation must not
-    // hold up the entire command when its background service is unavailable.
-    let ollama_running = tokio::time::timeout(
-        Duration::from_secs(2),
-        tokio::process::Command::new("ollama").arg("list").output(),
-    )
-    .await
-    .ok()
-    .and_then(|result| result.ok())
-    .map(|output| output.status.success())
-    .unwrap_or(false);
+    // Probe the local API directly instead of spawning `ollama list`. On Windows,
+    // starting an optional executable can be slow enough to make a local health
+    // check feel hung, and the HTTP endpoint is the service we actually depend on.
+    let ollama_running = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_millis(500))
+        .build()
+        .ok()
+        .map(|client| async move {
+            client
+                .get("http://127.0.0.1:11434/api/tags")
+                .send()
+                .await
+                .is_ok_and(|response| response.status().is_success())
+        });
+    let ollama_running = match ollama_running {
+        Some(probe) => probe.await,
+        None => false,
+    };
     println!(
         "  {} Ollama local models: {}",
         if ollama_running { "✓" } else { "○" },
@@ -142,7 +150,7 @@ pub async fn handle_doctor_command(cfg: &Config) {
         }
     );
 
-    println!("\n  External tools:");
+    println!("\n  External tools on PATH:");
     let tools: &[(&str, &str)] = &[
         ("git", "version control"),
         ("gh", "GitHub CLI (PR/issues)"),
@@ -152,12 +160,9 @@ pub async fn handle_doctor_command(cfg: &Config) {
         ("sox", "audio recording (voice)"),
     ];
     for (tool, desc) in tools {
-        let found = tokio::process::Command::new(tool)
-            .arg("--version")
-            .output()
-            .await
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+        // Presence on PATH is the useful dependency check here. Executing every
+        // optional tool serially made `doctor` disproportionately slow on Windows.
+        let found = which::which(tool).is_ok();
         println!("  {} {} — {}", if found { "✓" } else { "○" }, tool, desc);
     }
 

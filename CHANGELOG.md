@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Windows debug/integration binaries reserve an 8 MiB main-thread stack so the expanded provider-route CLI does not overflow before `--help`, `--version`, or lightweight commands run
+- `harness doctor` probes Ollama's loopback API with a 500 ms bound and checks optional tools on `PATH` instead of launching every executable serially, keeping Windows startup lightweight
 
 ### Security
 - Unknown provider names without an explicit adapter/base URL now fail closed instead of falling through to xAI
