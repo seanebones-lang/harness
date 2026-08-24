@@ -22,6 +22,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | Route CLI smoke | **passed** — exact set/move/show plus authenticated and unauthenticated custom endpoint config |
 | Browser setup JavaScript | **parsed cleanly** with `node --check` |
 | `scripts/smoke_rel01.sh` | **automated subset passed**; live provider/TUI/browser checks remain separate manual gates |
+| Windows CLI subprocess regression | First remote run exposed the default PE stack limit after the CLI expansion; follow-up reserves 8 MiB for debug/integration reliability while release-LTO was already passing |
 
 **Go / no-go:** local release gate **GO**. Remote CI result is recorded in the GitHub Actions run for the release commit. Stable remains blocked on the separate REL-01 smoke matrix and release-artifact billing gates.
 

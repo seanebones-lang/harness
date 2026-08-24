@@ -69,27 +69,10 @@ async fn main() -> Result<()> {
 
     maybe_run_first_time_wizard(&cfg)?;
 
-    // Build the exact provider route saved by the user.
-    let has_xai = cfg.provider.api_key.is_some()
-        || std::env::var("XAI_API_KEY")
-            .map(|k| !k.is_empty())
-            .unwrap_or(false);
-    let has_anthropic = std::env::var("ANTHROPIC_API_KEY")
-        .map(|k| !k.is_empty())
-        .unwrap_or(false);
-    let has_openai = std::env::var("OPENAI_API_KEY")
-        .map(|k| !k.is_empty())
-        .unwrap_or(false);
-    let has_ollama = cfg.providers.contains_key("ollama");
-
+    // Reload after setup, then build the exact provider route saved by the user.
     cfg = config::load(cli.config.as_deref())?;
     swarm::configure(&cfg.swarm);
     daemon::configure(&cfg.daemon);
-
-    let router_default = cfg.router.default.as_deref().unwrap_or("xai");
-    if !has_xai && router_default == "xai" && (has_anthropic || has_openai || has_ollama) {
-        eprintln!("Note: xAI key not found. Using another configured provider.");
-    }
 
     let model = provider_build::resolved_model(&cfg, cli.model.as_deref());
 

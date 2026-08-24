@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runtime no longer chooses a provider priority, inserts implicit fallbacks, or silently falls back to Ollama
 - Browser setup edits the same exact route as the CLI and no longer collects API keys
 - `harness models --set` updates only the active config; route commands provide explicit `--global` and `--project` targeting
+- Removed the final xAI-specific startup branch; runtime messaging follows only the saved route
+
+### Fixed
+- Windows debug/integration binaries reserve an 8 MiB main-thread stack so the expanded provider-route CLI does not overflow before `--help`, `--version`, or lightweight commands run
 
 ### Security
 - Unknown provider names without an explicit adapter/base URL now fail closed instead of falling through to xAI
