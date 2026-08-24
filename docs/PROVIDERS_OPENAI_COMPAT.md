@@ -40,6 +40,26 @@ base_url = "http://127.0.0.1:8000/v1"
 
 `base_url` must be the API root that accepts `/chat/completions` (usually ends with `/v1`).
 
+### NVIDIA (OpenAI-compatible)
+
+NVIDIA's hosted API [build.nvidia.com](https://build.nvidia.com) exposes an OpenAI-format `/v1` endpoint, so route through the `openai-compatible` provider:
+
+```toml
+[providers.openai-compatible]
+api_key = "...your-nvidia-key..."    # or NVIDIA_API_KEY
+model = "deepseek-ai/deepseek-v4-flash-0731"
+base_url = "https://integrate.api.nvidia.com/v1"
+```
+
+Then select as the router default:
+
+```toml
+[router]
+default = "openai-compatible"
+```
+
+Useful hosted models: `deepseek-ai/deepseek-v4-flash-0731` (fast + reliable), `nvidia/nemotron-3-super-120b-a12b` (120B MoE reasoning), `nvidia/nemotron-3-ultra-550b-a55b` (flagship, can return 503 under load).
+
 ### Stock OpenAI
 
 ```toml

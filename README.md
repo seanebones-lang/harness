@@ -8,7 +8,7 @@
 
 **NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
 
-Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls through **Anthropic → xAI → OpenAI → Mistral → Gemini → Bedrock → Ollama/MLX** based on configured keys and `[providers]` tables.
+Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls through **Anthropic → xAI → OpenAI → NVIDIA → Mistral → Gemini → Bedrock → Ollama/MLX** based on configured keys and `[providers]` tables.
 
 **Status:** public **beta / POC** (daily-driver capable). Version **1.3.0**. **Stable** is blocked on full REL-01 smoke matrix + release artifact billing (see [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md)).  
 **Branch:** ship on **`main`** only.  
@@ -30,7 +30,7 @@ Default chat model: **claude-sonnet-4-6** (Anthropic). Smart router falls throug
 
 ## What you get
 
-- **Multi-provider streaming** — Anthropic (caching + thinking), OpenAI / OpenAI-compatible / Mistral, xAI Grok, Google Gemini (OpenAI-compat endpoint), AWS Bedrock Converse, local Ollama + MLX
+- **Multi-provider streaming** — Anthropic (caching + thinking), OpenAI / OpenAI-compatible / Mistral, xAI Grok, NVidia (OpenAI-compat), Google Gemini (OpenAI-compat endpoint), AWS Bedrock Converse, local Ollama + MLX
 - **Agentic tools** — `read_file` / `write_file` / `patch_file` / `apply_patch` / `list_dir` / `search_code` / `shell` / `git` / `gh` / `test_runner` / LSP (`find_definition`, …) / `spawn_agent` / `spawn_swarm`
 - **Config-gated extras** (default **off**) — `database` (SQLite readonly), `notebook` (`.ipynb`), `docker` (allowlisted CLI), `browser` (Chrome CDP), `computer_use` (see [`docs/COMPUTER_USE.md`](docs/COMPUTER_USE.md))
 - **Parallel swarm** — SQLite registry (`~/.harness/swarm.db`), CLI + TUI panel (F2 / `/swarm`), cancel-all, auto-GC, `--json`, worker tool allowlist + wall timeout, optional remote registry hook
@@ -158,6 +158,7 @@ harness completions zsh > ~/.zsh/completions/_harness
 | Bedrock | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (+ region / `BEDROCK_MODEL_ID`) | Converse + SigV4 |
 | Ollama | local daemon | Default `qwen3-coder:30b` |
 | MLX | macOS Apple Silicon | `mlx_lm.server` OpenAI-compat |
+| NVIDIA | `NVIDIA_API_KEY` | OpenAI-compat — deepseek-ai/deepseek-v4-flash-0731, nemotron 3 super/ultra — [`docs/PROVIDERS_OPENAI_COMPAT.md`](docs/PROVIDERS_OPENAI_COMPAT.md) |
 | Generic | any OpenAI-format `base_url` | `[providers.*]` or `openai-compatible` kind |
 
 ```bash
