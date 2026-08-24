@@ -1,5 +1,7 @@
 # NextEleven Harness — Public Beta Promotion Report
 
+> **Historical launch report:** the dated tables below preserve the May 2026 beta decision. They are not the current product description. As of 2026-08-24, Harness uses an exact user-owned `provider:model` route with 18 built-in names plus custom OpenAI chat-completions-compatible endpoints; it has no preferred vendor, model, credential-derived priority, or implicit Ollama fallback. The current binary suite has 376 tests, and all 11 cross-platform CI jobs passed in [run 32784381876](https://github.com/seanebones-lang/harness/actions/runs/32784381876). See [`RELEASE_STATUS.md`](RELEASE_STATUS.md).
+
 **Date:** 2026-05-24  
 **Verdict:** **GO** for public beta promotion now. **Stable** remains blocked on maintainer-only REL-01 manual smoke (§3) per target OS and post-tag Homebrew tap publish (P2-10).
 
@@ -7,11 +9,11 @@
 
 ---
 
-NextEleven Harness is a fast, safety-focused, Rust-native terminal coding agent with multi-provider support, MCP, cost tracking, semantic memory, and solid CI across macOS, Linux, and Windows. Automated quality gates are green; security P0 items from the May 2026 audit are closed. The repository is well-documented and ready for public discovery.
+NextEleven Harness is a fast, safety-focused, Rust-native terminal coding agent with user-controlled multi-provider routing, MCP, cost tracking, semantic memory, and CI across macOS, Linux, and Windows. Automated quality gates are green; security P0 items from the May 2026 audit are closed. The repository is public for proof-of-concept visibility under a proprietary NextEleven LLC license.
 
 **Recommended messaging:**
 
-> NextEleven Harness — a fast, Rust-native terminal coding agent by NextEleven LLC. Multi-provider (Claude, Grok, GPT, Ollama), workspace sandbox, MCP, cost tracking. Public beta; stable after manual QA on macOS, Linux, and Windows.
+> NextEleven Harness — a provider-neutral Rust coding agent by NextEleven LLC. Users choose the exact primary model and fallback order across 18 built-in provider configurations or custom OpenAI-compatible endpoints. It includes sandboxed repository tools, MCP, sessions, cost tracking, and parallel workers. Proprietary public POC; stable remains gated on manual REL-01 and release artifacts.
 
 ---
 
@@ -37,7 +39,7 @@ NextEleven Harness is a fast, safety-focused, Rust-native terminal coding agent 
 
 ### Tier 0 — Ship beta now (no blockers)
 
-- [x] Public repo with MIT license, threat model, install docs
+- [x] Public proof-of-concept repo with proprietary NextEleven LLC license, threat model, and install docs
 - [x] One-liner install (`scripts/install.sh` / `install.ps1`)
 - [x] Automated CI on Ubuntu, macOS, Windows
 - [x] README feature list + comparison link + screenshots
@@ -66,9 +68,9 @@ NextEleven Harness is a fast, safety-focused, Rust-native terminal coding agent 
 
 | Task | Priority | Notes |
 |------|----------|-------|
-| MCP sampling interactive TUI approval | High | Plan/smart currently deny inbound sampling |
-| DatabaseTool / DockerTool / NotebookTool | Medium | See CONTRIBUTING → New tools |
-| Mistral / Gemini providers | Medium | Four-step provider guide in CONTRIBUTING |
+| MCP sampling interactive TUI approval | Shipped | Continue interoperability and error-path testing |
+| DatabaseTool / DockerTool / NotebookTool | Shipped | Config-gated and default off; continue safety hardening |
+| Provider breadth | Shipped | 18 built-in names + custom compatible endpoints; add native adapters only for distinct protocols |
 | VS Code + Tauri packaging | Medium | Icons, Windows/Linux bundles |
 | Community channel (Discord / Matrix) | Low | Optional for beta |
 
@@ -84,7 +86,7 @@ These items appeared on external promotion checklists but are **closed** in the 
 | Session display names (first-message fallback) | P2-2 |
 | Generic ambient provider (`AmbientProviders` + `[ambient]`) | R2-10 (`806d0a8`) |
 | TUI model label sync with live provider | `6d57faa` |
-| MIT Round 2 security + CI hardening | `95108dd` |
+| May 2026 security + CI hardening | `95108dd` |
 | README TUI + web UI screenshots | `0.1.1-beta` |
 
 ---

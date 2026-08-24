@@ -1,18 +1,20 @@
 # Peer Review Audit — harness (May 2026)
 
+> **Historical audit snapshot:** findings and test counts below describe the May 2026 review point. They are retained as an audit trail, not as the current product description. The 2026-08-24 state uses an exact user-owned provider/model route, 18 built-in provider names plus custom compatible endpoints, a 376-test binary suite, and an 11-job green cross-platform CI run. See [`RELEASE_STATUS.md`](RELEASE_STATUS.md) for current evidence.
+
 **Audience:** Core maintainers, security reviewers, and prospective contributors  
 **Scope:** Full-workspace read of ~136 Rust/TOML/CI sources; automated gate verification; security surface analysis  
 **Auditor posture:** Pre-release peer review — findings are actionable, severity-ranked, and tied to file references  
 **Verdict:** **Public beta GO** — **stable** blocked on **REL-01** (manual smoke §3). P0 closed; **218 tests**; threat model published.
 
-### Current application state (May 2026)
+### May 2026 application state
 
 | Layer | What ships today |
 |-------|------------------|
 | **CLI / TUI** | Multi-provider chat, plan mode, extended thinking, sessions, export, cost tracking, swarm CLI |
 | **Agent** | Tool loop (cap 50), memory RAG, compaction + `ContextCompacted` event, project facts (`.harness/memory/`) |
 | **Security** | Workspace sandbox; HTTP/daemon bearer tokens; confirm gate; sync tar-slip fix — see [`THREAT_MODEL.md`](THREAT_MODEL.md) |
-| **Providers** | Anthropic, xAI, OpenAI, Ollama, MLX; smart router + fallback |
+| **Providers** | Anthropic, xAI, OpenAI, Ollama, MLX; the then-current automatic router (superseded by the explicit user-owned route in August 2026) |
 | **Tools** | Filesystem, shell, git, search, apply_patch, MCP, browser (CDP), LSP, gh, test_runner, computer-use (gated) |
 | **Integrations** | VS Code daemon (framed JSON + token); HTTP `serve` + Web UI; Tauri macOS shell |
 | **Swarm** | `cancel`/`wait` CLI; `[swarm]` config; SQLite persistence |

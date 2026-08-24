@@ -1,5 +1,7 @@
 # Release notes — v0.1.2-beta (draft)
 
+> **Historical release behavior:** this note describes the planned `v0.1.2-beta` cut. Its automatic provider priority and Ollama fallback are intentionally preserved below as release history, but they are not current `main` behavior. Since 2026-08-24, users save an exact `provider:model` primary/fallback order; Harness does not rank detected credentials or insert a fallback. See [`MIGRATION.md`](MIGRATION.md) and [`RELEASE_STATUS.md`](RELEASE_STATUS.md).
+
 Use this body when creating the GitHub Release after tagging. Update the date and test counts if they change at cut time.
 
 ---

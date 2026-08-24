@@ -8,7 +8,7 @@
 
 **NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
 
-**Provider-neutral by design:** Harness does not choose a vendor, model, or fallback order. Setup saves your exact `provider:model` route; the first entry is primary and every later entry is tried in the order you chose. Built-in names are convenience adapters, not a closed catalogue: custom OpenAI-format endpoints can be added from the CLI without changing Rust code.
+**Provider-neutral by design:** Harness does not choose, recommend, or rank a vendor, model, or fallback order. Setup saves your exact `provider:model` route; the first entry is primary and every later entry is tried in the order you chose. Eighteen alphabetized built-in names are convenience configurations, not a closed catalogue: custom OpenAI chat-completions-compatible HTTP(S) endpoints can be added from the CLI without changing Rust code.
 
 **Status:** public **beta / POC** (daily-driver capable). Version **1.3.0**. **Stable** is blocked on full REL-01 smoke matrix + release artifact billing (see [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md)).  
 **Branch:** ship on **`main`** only.  
@@ -30,7 +30,7 @@
 
 ## What you get
 
-- **User-owned multi-provider routing** — Anthropic, AWS Bedrock, Cerebras, DeepSeek, Fireworks, Google Gemini, Groq, Hugging Face, Mistral, MLX, NVIDIA, Ollama, OpenAI, OpenRouter, Perplexity, SambaNova, Together, xAI, plus custom OpenAI-compatible endpoints
+- **User-owned multi-provider routing** — 18 built-in names: Anthropic, AWS Bedrock, Cerebras, DeepSeek, Fireworks, Google Gemini, Groq, Hugging Face, Mistral, MLX, NVIDIA, Ollama, OpenAI, OpenRouter, Perplexity, SambaNova, Together, and xAI; plus custom OpenAI chat-completions-compatible endpoints
 - **Agentic tools** — `read_file` / `write_file` / `patch_file` / `apply_patch` / `list_dir` / `search_code` / `shell` / `git` / `gh` / `test_runner` / LSP (`find_definition`, …) / `spawn_agent` / `spawn_swarm`
 - **Config-gated extras** (default **off**) — `database` (SQLite readonly), `notebook` (`.ipynb`), `docker` (allowlisted CLI), `browser` (Chrome CDP), `computer_use` (see [`docs/COMPUTER_USE.md`](docs/COMPUTER_USE.md))
 - **Parallel swarm** — SQLite registry (`~/.harness/swarm.db`), CLI + TUI panel (F2 / `/swarm`), cancel-all, auto-GC, `--json`, worker tool allowlist + wall timeout, optional remote registry hook
@@ -151,6 +151,8 @@ harness completions zsh > ~/.zsh/completions/_harness
 
 ## Providers & keys
 
+Provider discovery is informational only. Credentials never determine route priority. Every selected provider has an explicit model, and Harness follows the saved order exactly. If more than one provider is available but no route has been saved, startup fails closed and directs the user to setup instead of guessing.
+
 | Provider | Typical env | Notes |
 |----------|-------------|--------|
 | Anthropic | `ANTHROPIC_API_KEY` | Prompt cache + thinking |
@@ -183,7 +185,7 @@ export BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
 # AWS_* keys as usual
 ```
 
-The route is explicit and exact. Use `harness route set` to replace it, `route add/remove/move` to edit its order, `route model` to change one model, and `route custom` to register a future OpenAI-compatible endpoint without changing Harness code. Router policy + catalogue tests live in `crates/harness-provider-router`.
+The route is explicit and exact. Use `harness route set` to replace it, `route add/remove/move` to edit its order, `route model` to change one model, and `route custom` to register a future OpenAI chat-completions-compatible endpoint without changing Harness code. Custom services using a different request schema or authentication protocol need a native adapter. Router policy + catalogue tests live in `crates/harness-provider-router`.
 
 ---
 
@@ -313,7 +315,7 @@ Developer narrative: [`CLAUDE.md`](CLAUDE.md) · architecture: [`ARCHITECTURE.md
 | Item | State |
 |------|--------|
 | Public beta | **GO** |
-| Stable 0.2.0 | Blocked — REL-01 full OS smoke + prebuilt matrix |
+| Supported stable release | Blocked — REL-01 full OS smoke + verified prebuilt matrix; choose the next version only at release time |
 | Coverage CI gate | **Met** — measured **61.65%** lines (llvm-cov 2026-08-09 Swarm-51); badge ~62% |
 | Billing / full Release matrix | 📌 pinned (maintainer) |
 | Branch | **`main`** |

@@ -6,16 +6,21 @@ Branch:     main
 License:    Proprietary NextEleven LLC (see LICENSE) — NOT MIT / NOT open source
 
 NextEleven Harness is a fast, low-memory, multi-agent coding assistant written in Rust.
-Providers: Anthropic, xAI, OpenAI, Mistral, Gemini, Bedrock, Ollama, MLX.
+Routing: exact user-selected provider:model primary and fallback order; no preferred vendor,
+model ranking, credential-derived priority, or implicit local fallback.
+Providers: 18 built-in names (Anthropic, Bedrock, Cerebras, DeepSeek, Fireworks, Gemini,
+Groq, Hugging Face, Mistral, MLX, NVIDIA, Ollama, OpenAI, OpenRouter, Perplexity,
+SambaNova, Together, xAI) plus custom OpenAI chat-completions-compatible endpoints.
 Features: MCP, age-encrypted sync, ambient memory, parallel swarm, plan-mode TUI,
 config-gated database/notebook/docker tools, offline harness bench pack.
 
 Build:   cargo build --profile release-lto
-Test:    cargo test --bin harness
+Test:    cargo test --bin harness   (376 passed on the 2026-08-24 release gate)
 Demo:    docker compose up   (Ollama path; no API key required)
 Docs:    README.md · docs/ · CLAUDE.md
 Report:  docs/TECHNICAL_REPORT.md
-Status:  Public beta GO · coverage CI 60% met (see COVERAGE.md) · stable blocked on REL-01
+Status:  Public beta / POC · 11-job cross-platform CI green · coverage CI 60% met
+         (see COVERAGE.md) · stable blocked on full REL-01 + release artifacts
 
 Contact: legal@nexteleven.com (licensing)
 Do not put API keys in issues, PRs, or commits.

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Browser setup edits the same exact route as the CLI and no longer collects API keys
 - `harness models --set` updates only the active config; route commands provide explicit `--global` and `--project` targeting
 - Removed the final xAI-specific startup branch; runtime messaging follows only the saved route
+- Current product, contributor, roadmap, translated quick-start, audit, release, and competition documents now distinguish the exact user-owned route from superseded automatic-router behavior and separate current `main` evidence from tagged-release history
 
 ### Fixed
 - Windows debug/integration binaries reserve an 8 MiB main-thread stack so the expanded provider-route CLI does not overflow before `--help`, `--version`, or lightweight commands run

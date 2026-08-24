@@ -54,6 +54,6 @@ Priority extract (stable APIs, no behavior change):
 
 After feature freeze of W5 tools + providers; update `SECURITY.md` checklist.
 
-## W7.6 Stable 0.2.0
+## W7.6 Supported stable cut (historical working name: 0.2.0)
 
-Gates: Waves 0–2 complete + W1 smoke matrix (W1.4 billing still 📌 may block prebuilts; stable can wait).
+Gates: Waves 0–2 complete + W1 smoke matrix (W1.4 billing still 📌 may block prebuilts; stable can wait). The repository later moved to version 1.3.0 as a public POC, so do not use the old 0.2.0 working name for the next release.

@@ -1,5 +1,7 @@
 # Competition Submission — Meticulous Preparation Checklist
 
+> **Historical planning backlog:** this file preserves an earlier competition-readiness plan. It is not the current product description or execution backlog. Current routing is user-owned and provider-neutral (18 built-in names plus custom compatible endpoints), the binary suite has 376 tests, and stable remains governed by [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) and [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md).
+
 > **Context:** International engineering competition submission.  
 > **Prepared by:** Harness Core Team (May 2026)  
 > **Baseline:** Public beta GO, 218 tests passing, P0 security closed.  

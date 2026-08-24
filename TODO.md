@@ -21,7 +21,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 | Gate | Status |
 |------|--------|
 | Version | **1.3.0** |
-| `cargo test --bin harness` | **363** pass (2026-08-09 cont) |
+| `cargo test --bin harness` | **376** pass (2026-08-24 provider-neutral release gate) |
 | `cargo test -p harness-tools` | **179** pass (Swarm-51) |
 | Clippy `-D warnings` (bin) | green on ship commits |
 | Coverage measured | **61.65%** lines — [`COVERAGE.md`](COVERAGE.md); CI ≥60% **met** |
@@ -44,7 +44,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 | W1.4 | GitHub Actions billing / full Release prebuilts | [ ] 📌 PINNED |
 | W1.5 | Homebrew SHA all platforms | [ ] 📌 PINNED (needs W1.4) |
 | REL-02 | Tag + verify prebuilts | [~] macOS arm64 history only |
-| W7.6 | Stable **0.2.0** | [ ] after Waves 0–2 smoke matrix |
+| Stable release label | Publish a supported stable cut only after the full smoke and artifact gates; choose the version at release time | [ ] |
 
 ### Tier 2 — Shipped polish (recent)
 
@@ -60,6 +60,7 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 | Threat model v2 | [x] W7.5 |
 | agent/ + server/ module splits | [x] W7.4 |
 | VS Code + Tauri packaging waves | [x] W6 |
+| User-owned provider/model routing | [x] W5.8 — exact order, scoped route CLI, 18 built-ins + custom compatible endpoints |
 
 ### Tier 3 — Still open eng
 

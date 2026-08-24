@@ -115,6 +115,10 @@ Voice input auto-enables focus mode during recording.
 | `harness trace [id]` | Dump last / named OTEL-ish trace |
 | `harness doctor` | Health: keys, bridges, MCP, observability |
 | `harness models [--set …]` | Provider/model catalogue |
+| `harness route show [--global\|--project]` | Show the exact saved provider/model route |
+| `harness route set provider:model […]` | Replace the route; first entry is primary, the rest are ordered fallbacks |
+| `harness route model\|add\|remove\|move` | Edit the selected models and order without vendor defaults |
+| `harness route custom …` | Register a custom OpenAI chat-completions-compatible endpoint |
 
 ## MCP CLI (resources / roots)
 

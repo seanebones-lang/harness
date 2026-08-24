@@ -398,6 +398,7 @@ enabled = false   # DANGER: only with claude-opus-4-7+
 [agent]
 system_prompt = "..."
 
+# Illustrative user-owned route only. Harness does not ship or recommend this order.
 [router]
 default = "anthropic"
 fast_model = "anthropic:claude-haiku-4-5"

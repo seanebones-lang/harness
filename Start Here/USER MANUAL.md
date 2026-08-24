@@ -85,16 +85,16 @@ Find all TODO comments and list them by file.
 
 Harness lists model examples, but it does not select or recommend one:
 
-| Model | Use When |
-|-------|----------|
-| `claude-sonnet-4-6` | Anthropic Sonnet family |
-| `claude-opus-4-7` | Complex architecture, long tasks, adaptive thinking |
-| `claude-haiku-4-5` | Summaries, quick lookups — ultra-fast |
-| `grok-4.3` | xAI flagship — general coding and agents ([xAI models](https://docs.x.ai/docs/models)) |
-| `grok-4.20-0309-reasoning` | Pinned snapshot if you need the older 2M-ctx SKU |
-| `grok-4-1-fast-reasoning` | Real-time low-latency tasks |
-| `gpt-5.5` | When you want OpenAI's latest |
-| `qwen3-coder:30b` | Fully local (no API key), 256K context |
+| Example model ID | Provider / runtime family |
+|------------------|---------------------------|
+| `claude-sonnet-4-6` | Anthropic Sonnet |
+| `claude-opus-4-7` | Anthropic Opus |
+| `claude-haiku-4-5` | Anthropic Haiku |
+| `grok-4.3` | xAI Grok ([xAI models](https://docs.x.ai/docs/models)) |
+| `grok-4.20-0309-reasoning` | xAI Grok pinned snapshot |
+| `grok-4-1-fast-reasoning` | xAI Grok fast/reasoning family |
+| `gpt-5.5` | OpenAI GPT |
+| `qwen3-coder:30b` | Local Ollama model tag |
 
 Inspect or change routing:
 ```bash

@@ -1,5 +1,7 @@
 # Release notes — v1.3.0
 
+> **Tagged release record:** the 363-test figure below is the verified `v1.3.0` tag result and remains here as release history. Current `main` after the tag has an exact user-owned provider/model route, 18 built-in provider names plus custom compatible endpoints, a 376-test binary suite, and an 11-job green CI run. See [`RELEASE_STATUS.md`](RELEASE_STATUS.md) and [`CHANGELOG.md`](../CHANGELOG.md); do not assume post-tag behavior exists in the `v1.3.0` binaries.
+
 **Date:** 2026-08-09  
 **Branch:** `main`  
 **Tag:** `v1.3.0`  

@@ -44,7 +44,7 @@ Pick a pathway below. Each maps to a **`good first issue`** label on GitHub when
 |---------|----------|-------------|--------------|
 | **Tools** | Rust + CLI ergonomics | [`crates/harness-tools/`](crates/harness-tools/) | Unit test or smoke in `cargo test --all` |
 | **Providers** | HTTP/SSE, API integration | [`crates/harness-provider-*/`](crates/) | Mock-server unit test |
-| **Tests & coverage** | No API keys needed | [`tests/`](tests/), crate `#[cfg(test)]` | Uplift toward CI target 60% ([`COVERAGE.md`](COVERAGE.md) ~23%) |
+| **Tests & coverage** | No API keys needed | [`tests/`](tests/), crate `#[cfg(test)]` | Preserve the measured 60%+ line gate and deepen low-I/O paths ([`COVERAGE.md`](COVERAGE.md)) |
 | **Docs** | Writing, screenshots | [`docs/`](docs/), [`README.md`](README.md) | Spell-check + link check |
 | **Platform** | Windows, VS Code, Tauri | [`extensions/vscode/`](extensions/vscode/), [`apps/desktop/`](apps/desktop/) | CI matrix green |
 | **MCP / LSP** | Protocol work | [`crates/harness-mcp/`](crates/harness-mcp/), [`crates/harness-lsp/`](crates/harness-lsp/) | Framing + handshake tests |
@@ -53,9 +53,9 @@ Pick a pathway below. Each maps to a **`good first issue`** label on GitHub when
 
 These are well-scoped, self-contained, and unblock the next person reviewing the code. Ask maintainers to label your chosen issue **`good first issue`**.
 
-- **New tools** — `DatabaseTool`, `NotebookTool`, `DockerTool` (see below)
-- **New providers** — Mistral, Gemini, Bedrock (four-step guide below)
-- **MCP sampling TUI approval** — interactive prompt when MCP servers request `sampling/createMessage`
+- **Provider adapters** — add a native adapter only when an API cannot use the custom OpenAI-format route
+- **Route UX** — improve validation, migration diagnostics, and setup tests without introducing a preferred vendor or model
+- **Tool depth** — harden the existing config-gated database, notebook, Docker, browser, and computer-use paths
 - **Demo GIF** — 15–30s TUI recording for README (see [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md))
 - **Coverage uplift** — voice/mlx/lsp client integration paths (Round 2 added unit tests for detect/availability; deeper paths still welcome)
 
@@ -76,13 +76,11 @@ OpenAI-format services can be registered with `harness route custom` and do not 
 
 Interesting native-adapter targets include providers whose APIs are not faithfully OpenAI-compatible. Keep routing policy in the user's config.
 
-### New tools
+### Tools
 
-See `CLAUDE.md` → *Adding a new tool*. The pattern is: implement `Tool` in `crates/harness-tools/src/tools/`, export it, register in `src/cli/wiring.rs`. Ideas:
+See `CLAUDE.md` → *Adding a new tool*. The pattern is: implement `Tool` in `crates/harness-tools/src/tools/`, export it, register in `src/cli/wiring.rs`.
 
-- **`DatabaseTool`** — query SQLite or Postgres, return results as markdown tables
-- **`NotebookTool`** — read/write Jupyter `.ipynb` cells
-- **`DockerTool`** — list containers, exec, logs
+- **`DatabaseTool`**, **`NotebookTool`**, and **`DockerTool`** already ship behind config gates and default off. Contributions should improve their tests, platform behavior, error reporting, and documentation without widening their default authority.
 
 (`GitTool` — structured git ops — already shipped.)
 
@@ -101,7 +99,7 @@ See `CLAUDE.md` → *Adding a new tool*. The pattern is: implement `Tool` in `cr
 
 ### Coverage and property tests
 
-The **≥ 60% line coverage gate** is configured on **pull requests only** via [`.github/workflows/coverage.yml`](.github/workflows/coverage.yml) — it is a **target**, not current measured coverage. Last measured baseline is in [`COVERAGE.md`](COVERAGE.md) (~23% lines). Local: `cargo llvm-cov --workspace --all-features --summary-only`.
+The **≥ 60% line coverage gate** is configured on **pull requests** via [`.github/workflows/coverage.yml`](.github/workflows/coverage.yml). The latest recorded measurement in [`COVERAGE.md`](COVERAGE.md) is **61.65%** (2026-08-09), so the gate is met; do not silently replace that dated measurement with an unverified number. Local: `cargo llvm-cov --workspace --all-features --summary-only`.
 
 Proptest/fuzzing targets:
 - MCP message framing (`crates/harness-mcp/`)

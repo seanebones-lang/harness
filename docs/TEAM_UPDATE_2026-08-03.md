@@ -1,7 +1,7 @@
 # Team update — 2026-08-03
 
 > **Historical snapshot** (max-opt day). **Current gates:** [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) · [`COVERAGE.md`](../COVERAGE.md) · [`TODO.md`](../TODO.md)  
-> As of 2026-08-09: bin tests **363**, tools **179**, coverage **61.65%** (CI 60% **met**), tip on `main`.
+> As of 2026-08-24: bin tests **376**, router tests **15**, tools **179**, coverage **61.65%** at its last measurement (CI 60% **met**), exact user-owned provider/model routing, tip on `main`.
 
 ## Headline
 
@@ -41,7 +41,7 @@ cargo clippy -p harness --bin harness -- -D warnings
 - W1.4–W1.5 📌 billing / Homebrew multi-arch
 - Coverage → 60% CI gate — **closed / met** (61.65%)
 - Remote swarm HTTP client + public cutover — **closed** (W7.1)
-- Stable 0.2.0 cut
+- Supported stable cut after the manual smoke and artifact gates; choose the version at release time
 
 ## Process
 

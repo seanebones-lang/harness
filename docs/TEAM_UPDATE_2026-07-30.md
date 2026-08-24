@@ -1,5 +1,7 @@
 # NextEleven Team Update — harness (2026-07-30)
 
+> **Historical snapshot:** provider lists, router language, branches, counts, and open items below describe 2026-07-30. Current behavior is an exact user-owned provider/model route with no preferred vendor or implicit fallback. See [`RELEASE_STATUS.md`](RELEASE_STATUS.md), [`ROADMAP.md`](ROADMAP.md), and the root [`README.md`](../README.md).
+
 **Audience:** NextEleven HQ / engineering  
 **Project:** [seanebones-lang/harness](https://github.com/seanebones-lang/harness) — Rust multi-provider coding agent  
 **Branch:** `dev` @ `0c7d59e` (pushed to `origin/dev`)  

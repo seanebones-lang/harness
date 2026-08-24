@@ -24,7 +24,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | `scripts/smoke_rel01.sh` | **automated subset passed**; live provider/TUI/browser checks remain separate manual gates |
 | Windows CLI subprocess regression | First remote run exposed the default PE stack limit after the CLI expansion; follow-up reserves 8 MiB for debug/integration reliability, then replaced slow serial optional-process probes in `doctor` with bounded loopback/PATH checks |
 
-**Go / no-go:** local release gate **GO**. Remote CI result is recorded in the GitHub Actions run for the release commit. Stable remains blocked on the separate REL-01 smoke matrix and release-artifact billing gates.
+**Go / no-go:** local release gate **GO**. All 11 remote jobs passed in [GitHub Actions run 32784381876](https://github.com/seanebones-lang/harness/actions/runs/32784381876) for commit `df13e87`. Stable remains blocked on the separate REL-01 smoke matrix and release-artifact billing gates.
 
 ---
 

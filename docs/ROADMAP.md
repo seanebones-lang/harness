@@ -1,6 +1,6 @@
 # harness — Roadmap to Maximum Capability & Compatibility
 
-**Last updated:** 2026-08-03  
+**Last updated:** 2026-08-24
 **Status base:** public beta GO · stable blocked (REL-01 + prebuilt matrix) · ship on **`main`**  
 **Companion:** [`TEAM_UPDATE_2026-08-03.md`](TEAM_UPDATE_2026-08-03.md) · ordered work [`CTO_BACKLOG.md`](CTO_BACKLOG.md)
 
@@ -25,13 +25,13 @@ A single binary (plus optional desktop/editor shells) that:
 | Surface | Today | Target |
 |---------|--------|--------|
 | OS install | Scripts + CI all OS; prebuilts partial | Full prebuilts + Homebrew all arch (billing 📌) |
-| Providers | Anthropic, xAI, OpenAI, Mistral, Gemini, Bedrock, Ollama, MLX, openai-compat | Keep depth + eval |
+| Providers | Exact user-owned route; 18 built-in names + custom OpenAI-format endpoints | Keep compatibility metadata current; add native adapters only for genuinely different protocols |
 | Editors | VS Code + Tauri waves landed | Signed packages polish |
 | Protocols | MCP sampling UX + resources CLI; CDP browser | Robust reconnect polish |
-| Multi-agent | Local SQLite swarm + allowlist/wall + TUI | Remote HTTP registry client beyond stub |
+| Multi-agent | Local SQLite swarm + allowlist/wall + TUI; remote HTTP registry cutover shipped | Operability, isolation, aggregation, and cost attribution polish |
 | Headless | CLI, serve, swarm, doctor, bench | Stable OpenAPI; k8s health |
 | Local models | Ollama + MLX | Documented GPU/CPU paths |
-| Coverage | ~45% measured | ≥60% CI gate green |
+| Coverage | 61.65% measured; ≥60% CI gate met | Maintain the gate and deepen high-risk/low-I/O paths |
 
 ---
 
@@ -43,12 +43,13 @@ A single binary (plus optional desktop/editor shells) that:
 - Self-dev mode remains opt-in and safe.
 
 ### B. Multi-agent (swarm)
-- **Done (2026-07-30):** rich CLI, GC, TUI panel, aliases, demo fix.  
-- Next: per-task model/tool allowlists; result aggregation UI; cancel-all; metrics export; optional process isolation.
+- **Done:** rich CLI, GC, TUI panel, aliases, remote-registry cutover, per-worker model/tool allowlists, wall timeouts, cancel-all, and JSON output.
+- Next: result aggregation UX, cost attribution, metrics export, and optional process isolation.
 
 ### C. Tools & world interface
 - Shell, git, gh, filesystem, search, browser, computer-use, voice.  
-- Next: DatabaseTool, NotebookTool, DockerTool; clearer browser errors; sandbox defaults per OS.
+- Database, notebook, and Docker tools ship behind config gates and default off.
+- Next: clearer errors, stronger cross-platform tests, and narrower authority where a tool can mutate external state.
 
 ### D. Interop
 - MCP sampling interactive approval in TUI.  
@@ -69,19 +70,19 @@ A single binary (plus optional desktop/editor shells) that:
 
 | ID | Item | Why | Done when |
 |----|------|-----|-----------|
-| H0-1 | PR / merge `dev` swarm work to `main` | Ship today’s gains | CI green on PR |
-| H0-2 | REL-01 macOS full pass with API keys | Unblocks stable narrative | Logged in RELEASE_STATUS |
-| H0-3 | COOKBOOK swarm section (run/list/status/gc/TUI) | Users discover GC/panel | ≥1 worked example |
-| H0-4 | `cargo test --all` + clippy on CI for `dev` | No regressions | Green checks |
-| H0-5 | Decide H1 priority (coverage vs MCP UX vs TUI polish) | Focus | Written in TODO |
+| H0-1 | REL-01 manual provider/TUI/browser smoke on each target OS | Unblocks stable narrative | Exact results logged in RELEASE_STATUS |
+| H0-2 | Resolve release-artifact billing and rebuild the full prebuilt matrix | Makes install claims reproducible | Every advertised artifact downloaded and verified |
+| H0-3 | Exercise setup and route editing on clean macOS/Linux/Windows profiles | Protects the new provider-neutral contract | Setup + show/set/model/add/remove/move/custom smoke recorded |
+| H0-4 | Keep public descriptions synchronized with code | Prevents stale provider/default claims | README, manuals, site, and release status agree |
+| H0-5 | Cut the next version only after H0-1 through H0-3 | Avoids relabeling `main` as a shipped tag | Versioned notes describe only included commits |
 
 ### H1 — Operability & polish (2–4 weeks)
 
 | ID | Item | Capability | Compatibility |
 |----|------|------------|---------------|
-| H1-1 | Coverage ≥ 60% (auth, bridges, MCP, browser, swarm edge) | Trust | CI gate real |
+| H1-1 | Maintain coverage ≥ 60% and deepen auth, bridges, MCP, browser, route, and swarm edges | Trust | CI gate stays green |
 | H1-2 | TUI scrollbar + follow-scroll; session names | Daily driver | All TUI platforms |
-| H1-3 | MCP sampling interactive approval | Interop | Any MCP server |
+| H1-3 | MCP sampling and resource interoperability polish | Interop | Representative MCP servers |
 | H1-4 | Browser tool error surfacing | Reliability | CDP Chrome/Chromium docs |
 | H1-5 | Notification kinds polish | UX | macOS/Linux/Windows notify |
 | H1-6 | Unwrap burn-down on hot paths | Safety | — |
@@ -91,11 +92,11 @@ A single binary (plus optional desktop/editor shells) that:
 
 | ID | Item | Notes |
 |----|------|-------|
-| H2-1 | Providers: Mistral, Gemini, Bedrock | Router + env keys + models picker |
+| H2-1 | Native adapters for non-compatible protocols only | Preserve user choice without duplicating compatible clients |
 | H2-2 | VS Code extension packaging | Marketplace or sideload docs |
 | H2-3 | Tauri desktop icons + Windows/Linux packages | Auto-update optional |
-| H2-4 | Database / Notebook / Docker tools | Behind config flags |
-| H2-5 | Swarm: model override per worker, cancel-all, export JSON | Power users |
+| H2-4 | Database / Notebook / Docker hardening | Existing config-gated tools; improve safety and platform coverage |
+| H2-5 | Swarm result aggregation and cost attribution | Existing model override, cancel-all, and JSON paths are shipped |
 | H2-6 | Windows REL-01 + install.ps1 verification | Compatibility |
 | H2-7 | i18n expansion beyond partial ES manual | Global users |
 
@@ -108,7 +109,7 @@ A single binary (plus optional desktop/editor shells) that:
 | H3-3 | Formal plugin/extension API freeze | Ecosystem |
 | H3-4 | Collab multi-user sessions production | Server mode |
 | H3-5 | Security audit refresh post-feature freeze | Threat model v2 |
-| H3-6 | Stable 0.2.0 cut | Only after H0–H1 release gates |
+| H3-6 | Supported stable cut | Choose the version only after H0–H1 release gates; do not backslide from the current 1.3.0 POC version |
 
 ---
 
@@ -141,9 +142,9 @@ A single binary (plus optional desktop/editor shells) that:
 | Metric | Beta (now) | Stable target | Max capability |
 |--------|------------|---------------|----------------|
 | Platforms with smoke log | 1 partial | 3 | 3 + CI artifacts |
-| Line coverage | ~39% | ≥60% | ≥70% critical crates |
-| Provider count (first-class) | 5 | 5 | 8+ |
-| Swarm operability | CLI+TUI+GC | + auto-gc + costs | + remote |
+| Line coverage | 61.65% measured | Maintain ≥60% | ≥70% critical crates |
+| Provider surface | 18 built-in names + custom compatible endpoints | Clean-route smoke on 3 OSes | Protocol depth without vendor preference |
+| Swarm operability | CLI+TUI+GC+remote registry | + auto-gc + costs | + optional worker isolation |
 | Time-to-first-success (new user) | docs-dependent | <10 min install+doctor | <5 min wizard |
 | P0 security open | 0 | 0 | 0 |
 
