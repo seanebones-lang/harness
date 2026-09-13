@@ -225,3 +225,100 @@ mod tests {
         assert!(!command_needs_agent_runtime(&bench));
     }
 }
+
+#[cfg(test)]
+mod tests_extended {
+    use super::*;
+    use crate::cli::Cli;
+    use crate::config::Config;
+    use clap::Parser;
+
+    #[test]
+    fn needs_setup_true_when_no_route_no_key() {
+        let cfg = Config::default();
+        assert!(needs_setup(&cfg));
+    }
+
+    #[test]
+    fn needs_setup_true_when_primary_missing_model() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        assert!(needs_setup(&cfg));
+    }
+
+    #[test]
+    fn needs_setup_true_when_primary_empty_string() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("".into());
+        assert!(needs_setup(&cfg));
+    }
+
+    #[test]
+    fn needs_setup_true_when_fallback_empty_string() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        cfg.providers.entry("openai".into()).or_default().model = Some("model".into());
+        cfg.router.fallback = Some(vec!["".into()]);
+        assert!(needs_setup(&cfg));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_connect_false() {
+        let cli = Cli::try_parse_from(["harness", "connect", "--url", "http://localhost:8787", "hi"]).expect("connect");
+        assert!(!command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_pr_with_comment_false() {
+        let cli = Cli::try_parse_from(["harness", "pr", "123", "--comment", "LGTM"]).expect("pr comment");
+        assert!(!command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_pr_without_comment_true() {
+        let cli = Cli::try_parse_from(["harness", "pr", "123"]).expect("pr");
+        assert!(command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_voice_send_true() {
+        let cli = Cli::try_parse_from(["harness", "voice", "--duration", "5", "--send"]).expect("voice send");
+        assert!(command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_voice_realtime_false() {
+        let cli = Cli::try_parse_from(["harness", "voice", "--realtime"]).expect("voice realtime");
+        assert!(!command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_voice_record_only_false() {
+        let cli = Cli::try_parse_from(["harness", "voice", "--duration", "5"]).expect("voice record");
+        assert!(!command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_runbg_false() {
+        let cli = Cli::try_parse_from(["harness", "run-bg", "do it"]).expect("run-bg");
+        assert!(!command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_selfdev_true() {
+        let cli = Cli::try_parse_from(["harness", "self-dev", "--model", "claude-sonnet-4-6"]).expect("self-dev");
+        assert!(command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_daemon_true() {
+        let cli = Cli::try_parse_from(["harness", "daemon"]).expect("daemon");
+        assert!(command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn command_needs_agent_runtime_serve_true() {
+        let cli = Cli::try_parse_from(["harness", "serve", "--addr", "127.0.0.1:8787"]).expect("serve");
+        assert!(command_needs_agent_runtime(&cli));
+    }
+}

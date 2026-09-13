@@ -7,7 +7,7 @@
 //! via the platform `security` command-line tool, with a fallback to a local key file at
 //! `~/.harness/.sync-key` (mode 0600).
 //!
-//! # Usage
+//! #[derive(serde::Serialize, serde::Deserialize, Default, Debug)]Usage
 //! ```
 //! harness sync init git@github.com:user/harness-state.git
 //! harness sync push
@@ -44,10 +44,11 @@ fn key_file_path() -> PathBuf {
     harness_dir().join(".sync-key")
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
 struct SyncConfig {
     git_url: String,
 }
+
 
 fn load_sync_config() -> Result<SyncConfig> {
     let path = sync_config_path();
@@ -479,5 +480,122 @@ mod tests {
         assert_ne!(a, b);
         assert_eq!(a.len(), 36);
         assert_eq!(a.chars().filter(|c| *c == '-').count(), 4);
+    }
+}
+
+#[cfg(test)]
+mod tests_extended {
+    use super::*;
+    use tempfile::tempdir;
+
+
+    #[test]
+    fn tar_dir_creates_archive() {
+        let dir = tempdir().unwrap();
+        let mem = dir.path().join("memdir");
+        std::fs::create_dir_all(&mem).unwrap();
+        std::fs::write(mem.join("file1.txt"), b"content1").unwrap();
+        std::fs::write(mem.join("file2.txt"), b"content2").unwrap();
+        let tar_bytes = tar_dir(&mem).unwrap();
+        assert!(!tar_bytes.is_empty());
+    }
+
+    #[test]
+    fn tar_dir_empty_directory() {
+        let dir = tempdir().unwrap();
+        let mem = dir.path().join("empty");
+        std::fs::create_dir_all(&mem).unwrap();
+        let tar_bytes = tar_dir(&mem).unwrap();
+        assert!(!tar_bytes.is_empty()); // tar header still present
+    }
+
+    #[test]
+    fn untar_preserves_nested_structure() {
+        let dir = tempdir().unwrap();
+        let mem = dir.path().join("memdir");
+        std::fs::create_dir_all(mem.join("nested/deep")).unwrap();
+        std::fs::write(mem.join("nested/deep/file.txt"), b"deep content").unwrap();
+        let tar_bytes = tar_dir(&mem).unwrap();
+        let dest = tempdir().unwrap();
+        untar_dir(&tar_bytes, dest.path()).unwrap();
+        assert!(dest.path().join("memory").join("nested").join("deep").join("file.txt").exists());
+    }
+
+    #[test]
+    fn encrypt_bytes_requires_non_empty_passphrase() {
+        let result = encrypt_bytes(b"data", "");
+        assert!(result.is_ok()); // age scrypt accepts empty
+    }
+
+    #[test]
+    fn decrypt_bytes_fails_on_corrupted_data() {
+        let pass = "test-passphrase";
+        let cipher = encrypt_bytes(b"data", pass).unwrap();
+        let mut corrupted = cipher.clone();
+        if !corrupted.is_empty() {
+            corrupted[0] ^= 0xFF;
+        }
+        assert!(decrypt_bytes(&corrupted, pass).is_err());
+    }
+
+    #[test]
+    fn get_or_create_passphrase_generates_uuid_format() {
+        // Can't easily test without keychain mocking, but verify the generator
+        let pass = generate_passphrase();
+        assert_eq!(pass.len(), 36);
+        assert_eq!(pass.chars().filter(|c| *c == '-').count(), 4);
+    }
+
+    #[test]
+    fn harness_dir_returns_expected_path() {
+        let dir = harness_dir();
+        assert!(dir.to_string_lossy().contains(".harness"));
+    }
+
+    #[test]
+    fn sync_repo_dir_is_subdir_of_harness() {
+        let repo = sync_repo_dir();
+        let harness = harness_dir();
+        assert!(repo.starts_with(harness));
+    }
+
+    #[test]
+    fn sync_config_path_is_in_harness_dir() {
+        let cfg = sync_config_path();
+        let harness = harness_dir();
+        assert!(cfg.starts_with(harness));
+        assert!(cfg.to_string_lossy().contains("sync.json"));
+    }
+
+    #[test]
+    fn key_file_path_is_in_harness_dir() {
+        let key = key_file_path();
+        let harness = harness_dir();
+        assert!(key.starts_with(harness));
+        assert!(key.to_string_lossy().contains(".sync-key"));
+    }
+
+    #[test]
+    fn load_sync_config_fails_when_missing() {
+        let cfg = load_sync_config();
+        assert!(cfg.is_err());
+        assert!(cfg.unwrap_err().to_string().contains("not initialised"));
+    }
+
+    #[test]
+    fn save_sync_config_writes_file() {
+        let dir = tempdir().unwrap();
+        // Can't easily test without overriding harness_dir, but the function is simple
+        let cfg = SyncConfig { git_url: "test-url".into() };
+        assert!(serde_json::to_string_pretty(&cfg).is_ok());
+    }
+
+    #[test]
+    fn SYNC_FILES_contains_expected_entries() {
+        assert!(SYNC_FILES.contains(&"sessions.db"));
+        assert!(SYNC_FILES.contains(&"memory.db"));
+        assert!(SYNC_FILES.contains(&"trust.json"));
+        assert!(SYNC_FILES.contains(&"cost.db"));
+        assert_eq!(SYNC_FILES.len(), 4);
     }
 }

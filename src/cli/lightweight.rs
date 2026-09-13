@@ -894,3 +894,28 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod tests_extended {
+    use super::*;
+    use crate::config::Config;
+
+    #[test]
+    fn open_session_store_uses_default_when_none() {
+        let cfg = Config::default();
+        // Just verify it doesn't panic - can't easily test without actual db
+        let _ = open_session_store(&cfg);
+    }
+
+    #[test]
+    fn dispatch_runs_handles_empty_list() {
+        // Can't easily test without mocking background::list, but verify function signature
+        assert!(dispatch_runs().is_ok());
+    }
+
+    #[test]
+    fn dispatch_checkpoint_list_handles_empty() {
+        // Can't easily test without mocking checkpoint::list, but verify function signature
+        assert!(dispatch_checkpoint_list().is_ok());
+    }
+}

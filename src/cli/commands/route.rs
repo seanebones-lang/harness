@@ -470,3 +470,189 @@ mod tests {
         assert_eq!(cfg.router.default.as_deref(), Some("local-server"));
     }
 }
+
+#[cfg(test)]
+mod tests_extended {
+    use super::*;
+    use crate::config::Config;
+
+    #[test]
+    fn route_names_returns_empty_for_default_config() {
+        let cfg = Config::default();
+        assert!(route_names(&cfg).is_empty());
+    }
+
+    #[test]
+    fn route_names_returns_primary_and_fallbacks() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        cfg.router.fallback = Some(vec!["anthropic".into(), "ollama".into()]);
+        assert_eq!(route_names(&cfg), ["openai", "anthropic", "ollama"]);
+    }
+
+    #[test]
+    fn write_route_names_updates_legacy_provider_model() {
+        let mut cfg = Config::default();
+        cfg.providers.entry("openai".into()).or_default().model = Some("gpt-4".into());
+        write_route_names(&mut cfg, &["openai".into(), "anthropic".into()]).expect("write");
+        assert_eq!(cfg.provider.model.as_deref(), Some("gpt-4"));
+    }
+
+    #[test]
+    fn parse_provider_model_splits_correctly() {
+        let (provider, model) = parse_provider_model("openai:gpt-4").expect("parse");
+        assert_eq!(provider, "openai");
+        assert_eq!(model, "gpt-4");
+    }
+
+    #[test]
+    fn parse_provider_model_handles_model_with_colons() {
+        let (provider, model) = parse_provider_model("ollama:qwen2.5-coder:7b").expect("parse");
+        assert_eq!(provider, "ollama");
+        assert_eq!(model, "qwen2.5-coder:7b");
+    }
+
+    #[test]
+    fn parse_provider_model_rejects_no_colon() {
+        assert!(parse_provider_model("openai").is_err());
+        assert!(parse_provider_model("").is_err());
+    }
+
+    #[test]
+    fn parse_provider_model_rejects_empty_model() {
+        assert!(parse_provider_model("openai:").is_err());
+        assert!(parse_provider_model("openai:  ").is_err());
+    }
+
+    #[test]
+    fn normalize_provider_name_lowercases_and_validates() {
+        assert_eq!(normalize_provider_name("OPENAI").expect("norm"), "openai");
+        assert_eq!(normalize_provider_name("Anthropic").expect("norm"), "anthropic");
+        assert_eq!(normalize_provider_name("my-provider_123").expect("norm"), "my-provider_123");
+    }
+
+    #[test]
+    fn normalize_provider_name_rejects_invalid_chars() {
+        assert!(normalize_provider_name("openai!").is_err());
+        assert!(normalize_provider_name("open ai").is_err());
+        assert!(normalize_provider_name("").is_err());
+    }
+
+    #[test]
+    fn ensure_provider_creates_entry_for_known_preset() {
+        let mut cfg = Config::default();
+        let entry = ensure_provider(&mut cfg, "openai").expect("ensure");
+        assert!(entry.model.is_none());
+        assert!(cfg.providers.contains_key("openai"));
+    }
+
+    #[test]
+    fn ensure_provider_rejects_unknown_without_preset() {
+        let mut cfg = Config::default();
+        assert!(ensure_provider(&mut cfg, "unknown-provider").is_err());
+    }
+
+    #[test]
+    fn set_route_rejects_duplicate_provider() {
+        let mut cfg = Config::default();
+        assert!(set_route(&mut cfg, &["openai:gpt".into(), "openai:gpt2".into()]).is_err());
+    }
+
+    #[test]
+    fn set_model_rejects_provider_not_in_route() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        assert!(set_model(&mut cfg, "anthropic", "claude").is_err());
+    }
+
+    #[test]
+    fn add_to_route_rejects_existing_provider() {
+        let mut cfg = Config::default();
+        set_route(&mut cfg, &["openai:gpt".into()]).expect("set");
+        assert!(add_to_route(&mut cfg, "openai:gpt2", None).is_err());
+    }
+
+    #[test]
+    fn add_to_route_position_handles_bounds() {
+        let mut cfg = Config::default();
+        set_route(&mut cfg, &["openai:gpt".into()]).expect("set");
+        assert!(add_to_route(&mut cfg, "anthropic:claude", Some(0)).is_err());
+        assert!(add_to_route(&mut cfg, "anthropic:claude", Some(10)).is_err());
+        add_to_route(&mut cfg, "anthropic:claude", Some(2)).expect("add end");
+        assert_eq!(route_names(&cfg), ["openai", "anthropic"]);
+    }
+
+    #[test]
+    fn remove_from_route_rejects_only_provider() {
+        let mut cfg = Config::default();
+        set_route(&mut cfg, &["openai:gpt".into()]).expect("set");
+        assert!(remove_from_route(&mut cfg, "openai").is_err());
+    }
+
+    #[test]
+    fn remove_from_route_removes_provider() {
+        let mut cfg = Config::default();
+        set_route(&mut cfg, &["openai:gpt".into(), "anthropic:claude".into()]).expect("set");
+        remove_from_route(&mut cfg, "openai").expect("remove");
+        assert_eq!(route_names(&cfg), ["anthropic"]);
+    }
+
+    #[test]
+    fn move_in_route_validates_position() {
+        let mut cfg = Config::default();
+        set_route(&mut cfg, &["openai:gpt".into(), "anthropic:claude".into()]).expect("set");
+        assert!(move_in_route(&mut cfg, "openai", 0).is_err());
+        assert!(move_in_route(&mut cfg, "openai", 3).is_err());
+        move_in_route(&mut cfg, "openai", 2).expect("move");
+        assert_eq!(route_names(&cfg), ["anthropic", "openai"]);
+    }
+
+    #[test]
+    fn configure_custom_provider_validates_url() {
+        let mut cfg = Config::default();
+        assert!(configure_custom_provider(&mut cfg, "test", "not-a-url", "model", &None, false).is_err());
+        assert!(configure_custom_provider(&mut cfg, "test", "ftp://example.com", "model", &None, false).is_err());
+        assert!(configure_custom_provider(&mut cfg, "test", "http://", "model", &None, false).is_err());
+    }
+
+    #[test]
+    fn configure_custom_provider_validates_api_key_env() {
+        let mut cfg = Config::default();
+        assert!(configure_custom_provider(&mut cfg, "test", "https://example.com", "model", &Some("INVALID-KEY!".into()), false).is_err());
+        assert!(configure_custom_provider(&mut cfg, "test", "https://example.com", "model", &Some("VALID_KEY_123".into()), false).is_ok());
+    }
+
+    #[test]
+    fn configure_custom_provider_trims_trailing_slash() {
+        let mut cfg = Config::default();
+        configure_custom_provider(&mut cfg, "test", "https://example.com/v1/", "model", &None, false).expect("custom");
+        assert_eq!(cfg.providers.get("test").and_then(|e| e.base_url.as_deref()), Some("https://example.com/v1"));
+    }
+
+    #[test]
+    fn show_route_handles_empty_config() {
+        let cfg = Config::default();
+        // Just verify it doesn't panic - output goes to stdout
+        show_route(std::path::Path::new("/test"), &cfg);
+    }
+
+    #[test]
+    fn credential_status_local_provider() {
+        let mut cfg = Config::default();
+        cfg.providers.entry("ollama".into()).or_default();
+        let status = credential_status("ollama", cfg.providers.get("ollama"));
+        assert_eq!(status, "local runtime");
+    }
+
+    #[test]
+    fn credential_status_bedrock_env_credentials() {
+        std::env::set_var("AWS_ACCESS_KEY_ID", "test");
+        std::env::set_var("AWS_SECRET_ACCESS_KEY", "test");
+        let mut cfg = Config::default();
+        cfg.providers.entry("bedrock".into()).or_default();
+        let status = credential_status("bedrock", cfg.providers.get("bedrock"));
+        assert_eq!(status, "AWS credentials detected");
+        std::env::remove_var("AWS_ACCESS_KEY_ID");
+        std::env::remove_var("AWS_SECRET_ACCESS_KEY");
+    }
+}

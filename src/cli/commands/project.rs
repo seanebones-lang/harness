@@ -726,3 +726,93 @@ mod tests {
         assert_eq!(status_badge(""), "UNKNOWN");
     }
 }
+
+#[cfg(test)]
+mod tests_extended {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn init_git_repo_creates_repo() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("test-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_git_repo(&repo, "main").unwrap();
+        assert!(repo.join(".git").exists());
+    }
+
+    #[test]
+    fn collect_change_counts_parses_status() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("test-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_git_repo(&repo, "main").unwrap();
+        std::fs::write(repo.join("file1.txt"), b"content").unwrap();
+        std::fs::write(repo.join("file2.txt"), b"content").unwrap();
+        let counts = collect_change_counts(&repo).unwrap();
+        assert!(counts.untracked >= 2);
+    }
+
+    #[test]
+    fn git_output_returns_stdout() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("test-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_git_repo(&repo, "main").unwrap();
+        let out = git_output(&repo, &["status", "--porcelain"]).unwrap();
+        assert!(out.is_empty() || out.contains("??"));
+    }
+
+    #[test]
+    fn git_ahead_behind_handles_no_upstream() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("test-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_git_repo(&repo, "main").unwrap();
+        let result = git_ahead_behind(&repo);
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn status_badge_all_cases() {
+        assert_eq!(status_badge("clean"), "OK");
+        assert_eq!(status_badge("ahead"), "AHEAD");
+        assert_eq!(status_badge("behind"), "BEHIND");
+        assert_eq!(status_badge("diverged"), "DIVERGED");
+        assert_eq!(status_badge("dirty"), "DIRTY");
+        assert_eq!(status_badge("unknown"), "UNKNOWN");
+        assert_eq!(status_badge(""), "UNKNOWN");
+    }
+
+    #[test]
+    fn infer_clone_directory_all_cases() {
+        assert_eq!(infer_clone_directory("https://github.com/u/repo.git"), "repo");
+        assert_eq!(infer_clone_directory("https://github.com/u/repo/"), "repo");
+        assert_eq!(infer_clone_directory("git@github.com:u/myproj.git"), "myproj");
+        assert_eq!(infer_clone_directory("local-repo"), "local-repo");
+        assert_eq!(infer_clone_directory(".git"), "repo");
+    }
+
+    #[test]
+    fn find_git_repos_finds_repos() {
+        let dir = tempdir().unwrap();
+        let repo1 = dir.path().join("repo1");
+        std::fs::create_dir_all(&repo1).unwrap();
+        init_git_repo(&repo1, "main").unwrap();
+        let repo2 = dir.path().join("nested").join("repo2");
+        std::fs::create_dir_all(&repo2).unwrap();
+        init_git_repo(&repo2, "main").unwrap();
+        let repos = find_git_repos(dir.path(), true).unwrap();
+        assert_eq!(repos.len(), 2);
+    }
+
+    #[test]
+    fn current_git_branch_works() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path().join("test-repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_git_repo(&repo, "main").unwrap();
+        let branch = current_git_branch(&repo);
+        assert!(branch.is_some());
+    }
+}

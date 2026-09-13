@@ -207,4 +207,126 @@ mod tests {
         assert!(!looks_like_local_ollama_model("grok-4.5"));
         assert!(!looks_like_local_ollama_model("claude-sonnet-4-6"));
     }
+
+    #[test]
+    fn resolved_model_prefers_cli_over_config() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        cfg.providers.entry("openai".into()).or_default().model = Some("config-model".into());
+        let model = resolved_model(&cfg, Some("cli-model"));
+        assert_eq!(model, "cli-model");
+    }
+
+    #[test]
+    fn resolved_model_falls_back_to_route_primary() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        cfg.providers.entry("openai".into()).or_default().model = Some("route-model".into());
+        let model = resolved_model(&cfg, None);
+        assert_eq!(model, "route-model");
+    }
+
+    #[test]
+    fn resolved_model_falls_back_to_legacy_provider() {
+        let mut cfg = Config::default();
+        cfg.provider.model = Some("legacy-model".into());
+        let model = resolved_model(&cfg, None);
+        assert_eq!(model, "legacy-model");
+    }
+
+    #[test]
+    fn resolved_model_returns_placeholder_when_none() {
+        let cfg = Config::default();
+        let model = resolved_model(&cfg, None);
+        assert_eq!(model, "<model not configured>");
+    }
+
+    #[test]
+    fn build_router_uses_legacy_xai_when_no_providers() {
+        let mut cfg = Config::default();
+        cfg.provider.api_key = Some("test-key".into());
+        cfg.provider.model = Some("xai-model".into());
+        let router = build_router(&cfg).expect("router");
+        let provider = router.default_provider().expect("default provider");
+        assert_eq!(provider.name(), "xai");
+    }
+
+    #[test]
+    fn build_router_prefers_explicit_providers_over_legacy() {
+        let mut cfg = Config::default();
+        cfg.provider.api_key = Some("legacy-key".into());
+        cfg.providers.entry("anthropic".into()).or_default().model = Some("explicit-model".into());
+        cfg.router.default = Some("anthropic".into());
+        let router = build_router(&cfg).expect("router");
+        let provider = router.default_provider().expect("default provider");
+        assert_eq!(provider.name(), "anthropic");
+    }
+
+    #[test]
+    fn with_cli_model_updates_provider_and_legacy() {
+        let mut cfg = Config::default();
+        cfg.router.default = Some("openai".into());
+        cfg.providers.entry("openai".into()).or_default().model = Some("old-model".into());
+        cfg.provider.model = Some("legacy-old".into());
+        
+        let new_cfg = with_cli_model(&cfg, Some("new-model"));
+        assert_eq!(new_cfg.provider.model.as_deref(), Some("new-model"));
+        assert_eq!(
+            new_cfg.providers.get("openai").and_then(|e| e.model.as_deref()),
+            Some("new-model")
+        );
+    }
+
+    #[test]
+    fn split_provider_model_handles_all_known_prefixes() {
+        for prefix in ["anthropic", "openai", "xai", "ollama", "mistral", "gemini", "bedrock", "mlx", "groq", "cerebras"] {
+            let spec = format!("{}:my-model", prefix);
+            let (provider, model) = split_provider_model(&spec);
+            assert_eq!(provider, Some(prefix));
+            assert_eq!(model, "my-model");
+        }
+    }
+
+    #[test]
+    fn split_provider_model_rejects_unknown_prefix() {
+        let (provider, model) = split_provider_model("unknown:model");
+        assert_eq!(provider, None);
+        assert_eq!(model, "unknown:model");
+    }
+
+    #[test]
+    fn looks_like_local_ollama_model_detects_variants() {
+        assert!(looks_like_local_ollama_model("qwen2.5-coder:7b"));
+        assert!(looks_like_local_ollama_model("llama3.1:8b"));
+        assert!(looks_like_local_ollama_model("mistral-nemo"));
+        assert!(looks_like_local_ollama_model("deepseek-coder:33b"));
+        assert!(looks_like_local_ollama_model("nomic-embed-text"));
+        assert!(looks_like_local_ollama_model("gemma2:2b"));
+        assert!(looks_like_local_ollama_model("phi3:mini"));
+    }
+
+    #[test]
+    fn looks_like_local_ollama_model_rejects_cloud_models() {
+        assert!(!looks_like_local_ollama_model("grok-4.5"));
+        assert!(!looks_like_local_ollama_model("claude-opus-4-7"));
+        assert!(!looks_like_local_ollama_model("gpt-5"));
+        assert!(!looks_like_local_ollama_model("o1-preview"));
+    }
+
+    #[test]
+    fn build_worker_provider_ollama_uses_base_url() {
+        let mut cfg = Config::default();
+        cfg.providers.entry("ollama".into()).or_default().base_url = Some("http://custom:11434".into());
+        
+        let (provider, model) = build_worker_provider(&cfg, "ollama:qwen2.5-coder:7b").expect("provider");
+        assert_eq!(model, "qwen2.5-coder:7b");
+        assert_eq!(provider.name(), "ollama");
+    }
+
+    #[test]
+    fn split_provider_model_ollama_keeps_full_tag() {
+        let (provider, model) = split_provider_model("ollama:my-model:latest:v2");
+        assert_eq!(provider, Some("ollama"));
+        assert_eq!(model, "my-model:latest:v2");
+    }
 }
