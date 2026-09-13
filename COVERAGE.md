@@ -5,9 +5,9 @@
 | Field | Value |
 |-------|-------|
 | **Tool** | cargo-llvm-cov |
-| **Measured lines** | **62.28%** (17044 covered / 27368 lines) |
-| **Regions** | 63.97% · **Functions** 68.31% |
-| **Date** | 2026-09-12 (manual remeasure) |
+|| **Measured lines** | **62.28%** (17044 covered / 27368 lines) ||
+|| **Regions** | 63.97% · **Functions** 68.31% ||
+|| **Date** | 2026-09-13 (manual remeasure) ||
 | **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **met (measured)** |
 | **Near-term target** | ≥ 70% workspace lines — **in progress** |
 

@@ -3,7 +3,7 @@
 [![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95%2B-orange)](rust-toolchain.toml)
 [![Toolchain](https://img.shields.io/badge/pinned-1.95.0-blue)](rust-toolchain.toml)
-[![Coverage](https://img.shields.io/badge/coverage-~62%25%20(gate%2060%25%20met)-brightgreen)](COVERAGE.md)
+[![Coverage](https://img.shields.io/badge/coverage-62.28%25%20(gate%2060%25%20met)-brightgreen)](COVERAGE.md)
 [![Version](https://img.shields.io/badge/version-1.3.0-informational)](Cargo.toml)
 
 **NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
@@ -316,7 +316,7 @@ Developer narrative: [`CLAUDE.md`](CLAUDE.md) · architecture: [`ARCHITECTURE.md
 |------|--------|
 | Public beta | **GO** |
 | Supported stable release | Blocked — REL-01 full OS smoke + verified prebuilt matrix; choose the next version only at release time |
-| Coverage CI gate | **Met** — measured **61.65%** lines (llvm-cov 2026-08-09 Swarm-51); badge ~62% |
+|| Coverage CI gate | **Met** — measured **62.28%** lines (llvm-cov 2026-09-12); badge 62.28% |
 | Billing / full Release matrix | 📌 pinned (maintainer) |
 | Branch | **`main`** |
 

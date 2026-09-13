@@ -18,7 +18,7 @@
 |-----|----------|------|
 | Stable blocked | REL-01 incomplete; Linux/Windows smoke missing | Cannot claim production-ready |
 | Prebuilt matrix partial | macOS arm64 only; CI billing history (W1.4–1.5 📌) | Broken install story outside one arch |
-| Coverage lag | `COVERAGE.md` **61.65%** lines (llvm-cov 2026-08-09 Swarm-51; 16497/26757); badge ~62%; CI 60% **met** | Keep residual climb optional; gate green |
+|| Coverage lag | `COVERAGE.md` **62.28%** lines (llvm-cov 2026-09-12; 17044/27368); badge 62.28%; CI 60% **met** | Keep residual climb optional; gate green |
 | Doc/status drift | Exec findings refreshed 2026-08-05 (swarm-50); vault Index → main | Keep checkboxes honest on ship days |
 | Vault | Index on `main`; Swarm-50 notes under `Vault/Swarm-50/` + `docs/swarm-50-2026-08-05/` | Maintain on each ship day |
 

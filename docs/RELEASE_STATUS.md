@@ -38,7 +38,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | Notes | [`RELEASE_NOTES_v1.3.0.md`](RELEASE_NOTES_v1.3.0.md) · [`CHANGELOG.md`](../CHANGELOG.md) |
 | License | **Proprietary** NextEleven LLC — **not MIT**; `deny.toml` MIT allow = third-party deps only |
 | `cargo test --bin harness` | **363** (prior cont) — re-run on tag commit |
-| Coverage | **61.65%** · CI 60% **met** |
+| Coverage | **62.28%** · CI 60% **met** |
 | CLAUDE.md | refreshed (363 / 61.65% / 1.3.0) |
 
 **Go / no-go:** **GO** public POC. **Stable** still blocked on REL-01 + billing 📌. Prebuilt multi-arch may still need Actions billing.
