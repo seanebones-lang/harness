@@ -222,7 +222,13 @@ impl Tool for ShellTool {
         cmd.stderr(std::process::Stdio::piped());
         cmd.current_dir(&effective_cwd);
 
+        // Dropping a timed-out/cancelled tool must stop its owned process.
+        cmd.kill_on_drop(true);
+        #[cfg(unix)]
+        cmd.process_group(0);
         let child = cmd.spawn()?;
+        #[cfg(unix)]
+        let mut process_group = ProcessGroupGuard(child.id().map(|id| id as i32));
 
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
@@ -231,6 +237,10 @@ impl Tool for ShellTool {
         .await
         .map_err(|_| anyhow::anyhow!("command timed out after {timeout_secs}s"))??;
 
+        #[cfg(unix)]
+        {
+            process_group.0 = None;
+        }
         let exit_code = output.status.code().unwrap_or(-1);
         let mut result = String::new();
 
@@ -477,5 +487,70 @@ mod tests {
         let c = default_confirm_required();
         assert!(c.iter().any(|p| p == "git push"));
         assert!(c.iter().any(|p| p == "rm -rf"));
+    }
+}
+
+#[cfg(unix)]
+struct ProcessGroupGuard(Option<i32>);
+
+#[cfg(unix)]
+impl Drop for ProcessGroupGuard {
+    fn drop(&mut self) {
+        if let Some(pgid) = self.0 {
+            // SAFETY: pgid is the positive PID of our spawned child, which was
+            // placed in its own process group. Negative PID targets only that group.
+            unsafe {
+                libc::kill(-pgid, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod cancellation_tests {
+    use super::*;
+    use crate::{SandboxMode, WorkspaceRoot};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    async fn cancelled_command_leaves_no_late_write(tool_timeout: bool) {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace =
+            Arc::new(WorkspaceRoot::new(directory.path().to_path_buf(), SandboxMode::Off).unwrap());
+        let tool = ShellTool::new(ShellConfig::default(), workspace);
+        // The writer is a grandchild. Killing only the shell does not stop it.
+        let args = serde_json::json!({
+            "command": "sh -c 'sleep 2; printf escaped > escaped.txt' & wait",
+            "timeout_secs": if tool_timeout { 1 } else { 10 }
+        });
+        if tool_timeout {
+            assert!(tool
+                .execute(args)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("timed out"));
+        } else {
+            assert!(
+                tokio::time::timeout(Duration::from_millis(500), tool.execute(args))
+                    .await
+                    .is_err()
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(2200)).await;
+        assert!(
+            !directory.path().join("escaped.txt").exists(),
+            "Cancelled descendant wrote to the workspace"
+        );
+    }
+
+    #[tokio::test]
+    async fn timeout_kills_shell_process_group() {
+        cancelled_command_leaves_no_late_write(true).await;
+    }
+
+    #[tokio::test]
+    async fn dropping_tool_future_kills_shell_process_group() {
+        cancelled_command_leaves_no_late_write(false).await;
     }
 }

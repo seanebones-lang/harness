@@ -268,18 +268,32 @@ mod tests {
         cfg.router.default = Some("openai".into());
         cfg.providers.entry("openai".into()).or_default().model = Some("old-model".into());
         cfg.provider.model = Some("legacy-old".into());
-        
+
         let new_cfg = with_cli_model(&cfg, Some("new-model"));
         assert_eq!(new_cfg.provider.model.as_deref(), Some("new-model"));
         assert_eq!(
-            new_cfg.providers.get("openai").and_then(|e| e.model.as_deref()),
+            new_cfg
+                .providers
+                .get("openai")
+                .and_then(|e| e.model.as_deref()),
             Some("new-model")
         );
     }
 
     #[test]
     fn split_provider_model_handles_all_known_prefixes() {
-        for prefix in ["anthropic", "openai", "xai", "ollama", "mistral", "gemini", "bedrock", "mlx", "groq", "cerebras"] {
+        for prefix in [
+            "anthropic",
+            "openai",
+            "xai",
+            "ollama",
+            "mistral",
+            "gemini",
+            "bedrock",
+            "mlx",
+            "groq",
+            "cerebras",
+        ] {
             let spec = format!("{}:my-model", prefix);
             let (provider, model) = split_provider_model(&spec);
             assert_eq!(provider, Some(prefix));
@@ -316,9 +330,11 @@ mod tests {
     #[test]
     fn build_worker_provider_ollama_uses_base_url() {
         let mut cfg = Config::default();
-        cfg.providers.entry("ollama".into()).or_default().base_url = Some("http://custom:11434".into());
-        
-        let (provider, model) = build_worker_provider(&cfg, "ollama:qwen2.5-coder:7b").expect("provider");
+        cfg.providers.entry("ollama".into()).or_default().base_url =
+            Some("http://custom:11434".into());
+
+        let (provider, model) =
+            build_worker_provider(&cfg, "ollama:qwen2.5-coder:7b").expect("provider");
         assert_eq!(model, "qwen2.5-coder:7b");
         assert_eq!(provider.name(), "ollama");
     }

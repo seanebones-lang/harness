@@ -37,3 +37,11 @@ id_ed25519*
 Vault/
 IMPROVEMENTS_TODO.md
 IMPROVEMENTS_TODO.md.bak
+
+# JavaScript build outputs
+node_modules/
+/extensions/vscode/out/
+*.vsix
+
+__pycache__/
+*.pyc

@@ -1,9 +1,9 @@
 # CTO Engineering Backlog — NextEleven Harness
 
-**Updated:** 2026-08-24
-**Perspective:** CTO review + provider-neutral routing completion
+**Updated:** 2026-09-13
+**Perspective:** Production hardening; current acceptance evidence in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md)
 **Ship branch:** **`main`** only (dev folded; single branch)  
-**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed (incl. Gemini/Bedrock, remote swarm HTTP cutover). Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)**. Coverage climb to 60% **met** (measured **61.65%** Swarm-51 2026-08-09).
+**Verdict:** Multi-provider agent core is strong; Waves 0–6 and most of 5/7 eng items closed (incl. Gemini/Bedrock, remote swarm HTTP cutover). Remaining blockers for **stable** are **REL-01 smoke matrix + billing/prebuilts (W1.4–W1.5 📌)**. Coverage climb to 60% **met** (measured **64.39%** 2026-09-13).
 
 **Pointers:** [`README.md`](../README.md) · [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) · [`docs/TEAM_UPDATE_2026-08-03.md`](TEAM_UPDATE_2026-08-03.md) · historical PR https://github.com/seanebones-lang/harness/pull/5
 
@@ -18,7 +18,7 @@
 |-----|----------|------|
 | Stable blocked | REL-01 incomplete; Linux/Windows smoke missing | Cannot claim production-ready |
 | Prebuilt matrix partial | macOS arm64 only; CI billing history (W1.4–1.5 📌) | Broken install story outside one arch |
-|| Coverage lag | `COVERAGE.md` **62.28%** lines (llvm-cov 2026-09-12; 17044/27368); badge 62.28%; CI 60% **met** | Keep residual climb optional; gate green |
+| Coverage lag | `COVERAGE.md` **64.39%** lines (llvm-cov 2026-09-13; 18112/28130); CI 60% **met** | Keep residual climb optional; gate green |
 | Doc/status drift | Exec findings refreshed 2026-08-05 (swarm-50); vault Index → main | Keep checkboxes honest on ship days |
 | Vault | Index on `main`; Swarm-50 notes under `Vault/Swarm-50/` + `docs/swarm-50-2026-08-05/` | Maintain on each ship day |
 

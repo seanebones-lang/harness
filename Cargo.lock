@@ -2475,6 +2475,7 @@ dependencies = [
  "dirs",
  "harness-provider-core",
  "ignore",
+ "libc",
  "path-clean",
  "regex",
  "rusqlite",

@@ -49,19 +49,27 @@ struct SyncConfig {
     git_url: String,
 }
 
-
 fn load_sync_config() -> Result<SyncConfig> {
-    let path = sync_config_path();
+    load_sync_config_from(&sync_config_path())
+}
+
+fn load_sync_config_from(path: &Path) -> Result<SyncConfig> {
     if !path.exists() {
         anyhow::bail!("Sync not initialised. Run: harness sync init <git-url>");
     }
-    let text = std::fs::read_to_string(&path)?;
+    let text = std::fs::read_to_string(path)?;
     Ok(serde_json::from_str(&text)?)
 }
 
 fn save_sync_config(cfg: &SyncConfig) -> Result<()> {
-    let _ = std::fs::create_dir_all(harness_dir());
-    std::fs::write(sync_config_path(), serde_json::to_string_pretty(cfg)?)?;
+    save_sync_config_to(&sync_config_path(), cfg)
+}
+
+fn save_sync_config_to(path: &Path, cfg: &SyncConfig) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, serde_json::to_string_pretty(cfg)?)?;
     Ok(())
 }
 
@@ -488,7 +496,6 @@ mod tests_extended {
     use super::*;
     use tempfile::tempdir;
 
-
     #[test]
     fn tar_dir_creates_archive() {
         let dir = tempdir().unwrap();
@@ -518,7 +525,13 @@ mod tests_extended {
         let tar_bytes = tar_dir(&mem).unwrap();
         let dest = tempdir().unwrap();
         untar_dir(&tar_bytes, dest.path()).unwrap();
-        assert!(dest.path().join("memory").join("nested").join("deep").join("file.txt").exists());
+        assert!(dest
+            .path()
+            .join("memory")
+            .join("nested")
+            .join("deep")
+            .join("file.txt")
+            .exists());
     }
 
     #[test]
@@ -577,7 +590,8 @@ mod tests_extended {
 
     #[test]
     fn load_sync_config_fails_when_missing() {
-        let cfg = load_sync_config();
+        let dir = tempdir().unwrap();
+        let cfg = load_sync_config_from(&dir.path().join("missing.json"));
         assert!(cfg.is_err());
         assert!(cfg.unwrap_err().to_string().contains("not initialised"));
     }
@@ -585,13 +599,16 @@ mod tests_extended {
     #[test]
     fn save_sync_config_writes_file() {
         let dir = tempdir().unwrap();
-        // Can't easily test without overriding harness_dir, but the function is simple
-        let cfg = SyncConfig { git_url: "test-url".into() };
-        assert!(serde_json::to_string_pretty(&cfg).is_ok());
+        let path = dir.path().join("nested/sync.json");
+        let cfg = SyncConfig {
+            git_url: "test-url".into(),
+        };
+        save_sync_config_to(&path, &cfg).unwrap();
+        assert_eq!(load_sync_config_from(&path).unwrap().git_url, "test-url");
     }
 
     #[test]
-    fn SYNC_FILES_contains_expected_entries() {
+    fn sync_files_contains_expected_entries() {
         assert!(SYNC_FILES.contains(&"sessions.db"));
         assert!(SYNC_FILES.contains(&"memory.db"));
         assert!(SYNC_FILES.contains(&"trust.json"));

@@ -14,11 +14,50 @@ on:
         required: false
         default: ""
 
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate existing tag and version
+        id: version
+        env:
+          REQUESTED_TAG: ${{ github.event.inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-$GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "An existing version tag is required"; exit 1; }
+          sha=$(git rev-parse --verify "refs/tags/$tag^{commit}")
+          git merge-base --is-ancestor "$sha" origin/main
+          git checkout --detach "$sha"
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+          [[ "$tag" == "v$version" ]] || { echo "Tag does not match Cargo version"; exit 1; }
+          for workflow in ci.yml coverage.yml; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?head_sha=$sha&event=push&branch=main&per_page=1" --jq '.workflow_runs[0].conclusion == "success"' | grep -qx true
+          done
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: validate
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -27,22 +66,21 @@ jobs:
         include:
           # Linux
           - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             artifact: harness-linux-x86_64
             smoke: native
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
             artifact: harness-linux-aarch64
-            cross: true
-            smoke: verify
+            smoke: native
 
           # macOS — pin Intel runner for x86_64; Apple Silicon runner for arm64
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-15-intel
             artifact: harness-macos-x86_64
             smoke: native
           - target: aarch64-apple-darwin
-            runner: macos-14
+            runner: macos-15
             artifact: harness-macos-aarch64
             smoke: native
 
@@ -54,28 +92,25 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.95.0
           targets: ${{ matrix.target }}
-
-      - name: Install cross (for aarch64 Linux)
-        if: matrix.cross
-        run: cargo install cross --locked --version 0.2.5
 
       - name: Cache
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
 
-      - name: Build release binary (cross)
-        if: matrix.cross
-        run: cross build --profile release-lto --target ${{ matrix.target }}
-
       - name: Build release binary
-        if: "!matrix.cross"
-        run: cargo build --profile release-lto --target ${{ matrix.target }}
+        run: cargo build --locked --profile release-lto --target ${{ matrix.target }}
+
+      - name: Test release candidate
+        run: cargo test --locked --workspace --all-features --target ${{ matrix.target }}
 
       - name: Rename binary (Unix)
         if: runner.os != 'Windows'
@@ -84,6 +119,7 @@ jobs:
           chmod +x ${{ matrix.artifact }}
 
       - name: Rename binary (Windows)
+        shell: pwsh
         if: runner.os == 'Windows'
         run: |
           cp target/${{ matrix.target }}/release-lto/harness.exe ${{ matrix.artifact }}
@@ -96,19 +132,21 @@ jobs:
           "./${{ matrix.artifact }}" --version
           "./${{ matrix.artifact }}" --help >/dev/null
 
-      - name: Verify binary artifact (cross-built)
-        if: runner.os != 'Windows' && matrix.smoke == 'verify'
-        run: |
-          test -f "${{ matrix.artifact }}"
-          test -s "${{ matrix.artifact }}"
-          file "${{ matrix.artifact }}"
-
       - name: Smoke test binary (Windows)
+        shell: pwsh
         if: runner.os == 'Windows'
         run: |
           if (!(Test-Path -LiteralPath '${{ matrix.artifact }}')) { throw 'artifact missing' }
           & ".\${{ matrix.artifact }}" --version
+          if ($LASTEXITCODE -ne 0) { throw "Version smoke failed" }
           & ".\${{ matrix.artifact }}" --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Help smoke failed" }
+
+      - name: Isolated runtime smoke
+        run: python3 scripts/smoke_runtime.py ${{ matrix.artifact }}
+
+      - name: Agent and HTTP integration smoke
+        run: python3 scripts/smoke_agent.py ${{ matrix.artifact }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -119,40 +157,26 @@ jobs:
 
   release:
     name: Attach GitHub Release assets
-    needs: build
-    # Publish whatever matrix legs succeeded (one-click degrades gracefully per OS)
-    if: always() && needs.build.result != 'cancelled'
+    needs: [validate, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve tag
-        id: tag
-        run: |
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=v1.3.0" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
           merge-multiple: true
-        continue-on-error: true
 
       - name: Generate checksums
         run: |
           cd artifacts
           shopt -s nullglob
           files=(harness-*)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No release artifacts found" >&2
+          if [ ${#files[@]} -ne 5 ]; then
+            echo "Expected all five platform artifacts" >&2
             exit 1
           fi
           ls -la
@@ -162,10 +186,10 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.name }}
-          name: Harness ${{ steps.tag.outputs.name }}
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: Harness ${{ needs.validate.outputs.tag }}
           files: |
             artifacts/*
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           generate_release_notes: false
-          draft: false
+          draft: true

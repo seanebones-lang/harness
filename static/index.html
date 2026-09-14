@@ -1137,6 +1137,7 @@
   const setupRouteInput = document.getElementById("setup-route");
   const setupPersistForm = document.getElementById("setup-persist-form");
   const setupPersistMsg = document.getElementById("setup-persist-msg");
+  let resumeLastSession = localStorage.getItem(RESUME_LAST_KEY) !== "false";
   let autoRefreshEnabled = localStorage.getItem(AUTO_REFRESH_KEY) !== "false";
   let sessionId = resumeLastSession ? localStorage.getItem(SESSION_KEY) : null;
   let sessions = [];

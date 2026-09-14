@@ -5,7 +5,7 @@ Native wrapper around the Harness web UI (`harness serve` on `http://127.0.0.1:8
 ## Prerequisites
 
 - Rust toolchain
-- Node.js 18+ (for `@tauri-apps/cli`)
+- Node.js 22+ (for `@tauri-apps/cli`)
 - **`harness` on `PATH`** (install from repo root: `cargo build --profile release-lto` then copy the binary)
 - For development: the app auto-spawns **`harness serve --addr 127.0.0.1:8787`** on launch if `/api/health` is not already reachable
 
@@ -21,7 +21,7 @@ npx --prefix .. tauri icon app-icon.png
 ## Commands
 
 ```bash
-npm install
+npm ci
 npm run dev      # tauri dev
 npm run build    # release .app / installers
 ```
@@ -35,3 +35,16 @@ Global shortcut: **Cmd+Shift+H** (Windows/Linux: **Ctrl+Shift+H**) toggles the w
 - [`TODO.md`](../../TODO.md) — severity-ranked backlog; Windows/Linux packaging (REL-03)
 
 This crate is **not** part of the repo-root Cargo workspace; it uses its own `Cargo.lock` under `src-tauri/`.
+
+## Startup and dependency policy
+
+The wrapper requires the separately installed CLI. It checks standard `~/.local/bin` and `~/.cargo/bin` locations before falling back to PATH, waits up to 15 seconds for a Harness health response, and reloads the window after readiness. A failed startup displays recovery instructions. The unused broad asset-protocol access is disabled.
+
+Dependency validation is independent of the root workspace:
+
+```sh
+cargo check --locked --manifest-path src-tauri/Cargo.toml
+cargo deny --manifest-path src-tauri/Cargo.toml --config src-tauri/deny.toml check advisories
+```
+
+The policy records six transitive upstream maintenance advisories with no patched versions, and continues to reject vulnerability advisories. Developer-ID signing, notarization, fresh-machine GUI acceptance, and Windows/Linux package validation remain release gates; a local `.app` build alone does not establish those properties.

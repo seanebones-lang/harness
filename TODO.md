@@ -16,15 +16,17 @@ Release readiness: [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · latest 
 
 ## Public beta / POC (current)
 
+Production hardening and exact remaining gates: [PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md).
+
 **Verdict:** **GO** for public POC visibility. **Stable** blocked on REL-01 full OS matrix + prebuilt billing (W1.4–W1.5 📌).
 
 | Gate | Status |
 |------|--------|
 | Version | **1.3.0** |
-| `cargo test --bin harness` | **376** pass (2026-08-24 provider-neutral release gate) |
+| `cargo test --bin harness` | **454** pass (2026-09-13 production hardening) |
 | `cargo test -p harness-tools` | **179** pass (Swarm-51) |
 | Clippy `-D warnings` (bin) | green on ship commits |
-| Coverage measured | **61.65%** lines — [`COVERAGE.md`](COVERAGE.md); CI ≥60% **met** |
+| Coverage measured | **64.39%** lines — [`COVERAGE.md`](COVERAGE.md); CI ≥60% **met** |
 | License | Proprietary NextEleven LLC ([`LICENSE`](LICENSE)) — public = POC only |
 
 ### Tier 0 — Beta shipped

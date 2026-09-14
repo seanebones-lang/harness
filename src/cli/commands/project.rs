@@ -786,9 +786,15 @@ mod tests_extended {
 
     #[test]
     fn infer_clone_directory_all_cases() {
-        assert_eq!(infer_clone_directory("https://github.com/u/repo.git"), "repo");
+        assert_eq!(
+            infer_clone_directory("https://github.com/u/repo.git"),
+            "repo"
+        );
         assert_eq!(infer_clone_directory("https://github.com/u/repo/"), "repo");
-        assert_eq!(infer_clone_directory("git@github.com:u/myproj.git"), "myproj");
+        assert_eq!(
+            infer_clone_directory("git@github.com:u/myproj.git"),
+            "myproj"
+        );
         assert_eq!(infer_clone_directory("local-repo"), "local-repo");
         assert_eq!(infer_clone_directory(".git"), "repo");
     }

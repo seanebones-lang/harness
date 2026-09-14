@@ -31,7 +31,7 @@ fn main() {
     let hotkey: Shortcut = "CmdOrCtrl+Shift+H"
         .parse()
         .expect("global shortcut must parse");
-    let hotkey_handler = hotkey.clone();
+    let hotkey_handler = hotkey;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

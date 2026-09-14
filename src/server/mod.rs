@@ -156,6 +156,7 @@ pub fn router(state: ServerState) -> Router {
         .route("/api/setup/state", get(setup_state))
         .route("/ws/session/:id", get(collab_ws))
         .merge(protected)
+        .layer(middleware::from_fn(auth::browser_boundary))
         .with_state(shared)
 }
 
@@ -512,6 +513,30 @@ fn error_sse(msg: impl std::fmt::Display) -> Sse<BoxSseStream> {
     Sse::new(s).keep_alive(KeepAlive::default())
 }
 
+/// Keep resumed provider conversations valid after cancellation midway through
+/// a tool batch: every announced tool call must have a corresponding result.
+fn complete_cancelled_tool_results(session: &mut Session) {
+    let completed: std::collections::HashSet<&str> = session
+        .messages
+        .iter()
+        .filter_map(|message| message.tool_call_id.as_deref())
+        .collect();
+    let unfinished: Vec<String> = session
+        .messages
+        .iter()
+        .filter(|message| message.role == harness_provider_core::Role::Assistant)
+        .filter_map(|message| message.content.as_str().strip_prefix("__tool_calls__:"))
+        .filter_map(|json| serde_json::from_str::<Vec<harness_provider_core::ToolCall>>(json).ok())
+        .flatten()
+        .filter(|call| !completed.contains(call.id.as_str()))
+        .map(|call| call.id.clone())
+        .collect();
+    for id in unfinished {
+        session.push(Message::tool_result(&id,
+            "Cancelled before a result was recorded. Effects may be partial; inspect the workspace before retrying."));
+    }
+}
+
 async fn chat(
     State(state): State<Arc<ServerState>>,
     headers: axum::http::HeaderMap,
@@ -556,23 +581,33 @@ async fn chat(
     let session_id_str = session.id.clone();
 
     tokio::spawn(async move {
-        if let Err(e) = agent::drive_agent_full(
-            &provider,
-            &tools,
-            mem.as_ref(),
-            em.as_deref(),
-            &mut session,
-            &sys,
-            Some(&tx),
-            None,
-            native_web,
-            native_code,
-            native_x,
-            None,
-        )
-        .await
-        {
-            try_emit(Some(&tx), AgentEvent::Error(format!("Agent error: {e}")));
+        // The browser's Stop action aborts its SSE fetch. Dropping the receiver
+        // cancels this turn before it can continue issuing provider/tool calls.
+        let completed = tokio::select! {
+            biased;
+            _ = tx.closed() => false,
+            result = agent::drive_agent_full(
+                &provider, &tools, mem.as_ref(), em.as_deref(), &mut session,
+                &sys, Some(&tx), None, native_web, native_code, native_x, None,
+            ) => {
+                if let Err(e) = result {
+                    try_emit(Some(&tx), AgentEvent::Error(format!("Agent error: {e}")));
+                }
+                true
+            }
+        };
+        if !completed {
+            complete_cancelled_tool_results(&mut session);
+        }
+        if let Err(e) = store.save(&session) {
+            try_emit(
+                Some(&tx),
+                AgentEvent::Error(format!("Session could not be saved: {e}")),
+            );
+            return;
+        }
+        if !completed {
+            return;
         }
 
         if let Some(title) = agent::suggest_session_name(&provider, &session).await {
@@ -686,12 +721,23 @@ mod tests {
     ) {
         let provider =
             OllamaProvider::new(OllamaConfig::new("qwen3-coder:30b")).expect("build test provider");
+        spawn_test_server_with_provider(Arc::new(provider)).await
+    }
+
+    async fn spawn_test_server_with_provider(
+        provider: harness_provider_core::ArcProvider,
+    ) -> (
+        String,
+        tokio::task::JoinHandle<()>,
+        Arc<SessionStore>,
+        TempDir,
+    ) {
         let session_dir = tempdir().expect("temp session dir");
         let session_db = session_dir.path().join("sessions.db");
         let session_store = Arc::new(SessionStore::open(&session_db).expect("open session db"));
 
         let inner = ServeRuntimeState {
-            provider: Arc::new(provider),
+            provider,
             tools: ToolExecutor::new(ToolRegistry::new()),
             model: "test-model".to_string(),
             system_prompt: "You are a test assistant.".to_string(),
@@ -724,6 +770,98 @@ mod tests {
         });
 
         (format!("http://{addr}"), handle, session_store, session_dir)
+    }
+
+    #[test]
+    fn cancellation_completes_unfinished_tool_protocol_without_replacing_results() {
+        use harness_provider_core::{ToolCall, ToolCallFunction};
+        let calls = ["finished", "interrupted"].map(|id| ToolCall {
+            id: id.into(),
+            kind: "function".into(),
+            function: ToolCallFunction {
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+        });
+        let mut session = Session::new("test-model");
+        session.push(harness_provider_core::tool_calls_to_message(&calls));
+        session.push(Message::tool_result("finished", "original result"));
+        complete_cancelled_tool_results(&mut session);
+        complete_cancelled_tool_results(&mut session);
+        assert_eq!(session.messages.len(), 3);
+        assert_eq!(session.messages[1].content.as_str(), "original result");
+        assert_eq!(
+            session.messages[2].tool_call_id.as_deref(),
+            Some("interrupted")
+        );
+        assert!(session.messages[2].content.as_str().contains("Cancelled"));
+    }
+
+    struct PendingProvider {
+        started: Arc<tokio::sync::Notify>,
+        dropped: Arc<tokio::sync::Notify>,
+    }
+
+    struct NotifyOnDrop(Arc<tokio::sync::Notify>);
+    impl Drop for NotifyOnDrop {
+        fn drop(&mut self) {
+            self.0.notify_one();
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl harness_provider_core::Provider for PendingProvider {
+        fn name(&self) -> &str {
+            "pending"
+        }
+        fn model(&self) -> &str {
+            "pending-model"
+        }
+        async fn stream_chat(
+            &self,
+            _request: harness_provider_core::ChatRequest,
+        ) -> std::result::Result<
+            harness_provider_core::DeltaStream,
+            harness_provider_core::ProviderError,
+        > {
+            let _guard = NotifyOnDrop(self.dropped.clone());
+            self.started.notify_one();
+            std::future::pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn http_disconnect_cancels_provider_and_saves_session() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let dropped = Arc::new(tokio::sync::Notify::new());
+        let provider = Arc::new(PendingProvider {
+            started: started.clone(),
+            dropped: dropped.clone(),
+        });
+        let (base, handle, store, _tmp) = spawn_test_server_with_provider(provider).await;
+        let response = reqwest::Client::new()
+            .post(format!("{base}/api/chat"))
+            .bearer_auth("test-token")
+            .json(&serde_json::json!({ "prompt": "cancel this turn" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        tokio::time::timeout(std::time::Duration::from_secs(3), started.notified())
+            .await
+            .unwrap();
+        drop(response);
+        tokio::time::timeout(std::time::Duration::from_secs(3), dropped.notified())
+            .await
+            .expect("Disconnected HTTP client must cancel its in-flight provider request");
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while store.list(10).unwrap().is_empty() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("Cancelled session must be persisted");
+        handle.abort();
     }
 
     #[tokio::test]
@@ -771,6 +909,44 @@ mod tests {
 
         handle.abort();
         let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn http_rejects_dns_rebinding_and_cross_origin_bootstrap() {
+        let (base, handle, _store, _tmp) = spawn_test_server().await;
+        let client = reqwest::Client::new();
+        for path in [
+            "/api/health",
+            "/api/setup/state",
+            "/api/sessions",
+            "/ws/session/test",
+        ] {
+            let response = client
+                .get(format!("{base}{path}"))
+                .header("Host", "attacker.example")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+            let response = client
+                .get(format!("{base}{path}"))
+                .header("Origin", "https://attacker.example")
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{path}");
+        }
+        let response = client
+            .get(format!("{base}/api/health"))
+            .header("Origin", &base)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        let payload: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(payload["auth_token"], "test-token");
+        handle.abort();
     }
 
     #[tokio::test]

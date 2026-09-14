@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Isolated real-binary CLI and synthetic provider/HTTP release smoke, including tool execution, exact model routing, session persistence, and export
+- Installer and Homebrew checksum contract tests with failure-preservation checks
 - Provider-neutral `harness route show|set|model|add|remove|move|custom` commands with explicit global/project scope
 - First-class presets for Cerebras, DeepSeek, Fireworks, Groq, Hugging Face, NVIDIA, OpenRouter, Perplexity, SambaNova, and Together through the OpenAI-compatible transport
 - `api_key_env` and `kind = "openai-compatible"` configuration for future bearer-authenticated endpoints without source changes
@@ -21,10 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Current product, contributor, roadmap, translated quick-start, audit, release, and competition documents now distinguish the exact user-owned route from superseded automatic-router behavior and separate current `main` evidence from tagged-release history
 
 ### Fixed
+- Browser disconnect/Stop cancels backend turns; interrupted tool batches remain resumable and session-save failures are reported
+- Shell cancellation and timeouts terminate the owned child and its Unix process group, preventing delayed descendant writes
+- Browser startup initializes the saved resume preference before reading it; DOM regressions cover fresh profiles and authenticated streaming chat
+- Release builds now use the validated tag commit, require all five native platform jobs, and stage a draft with complete checksums
+- Installers reject unverified downloads and preserve version-pinned source fallbacks; Git Bash installs the correct executable filename
+- Smoke scripts honor the explicitly selected binary and fail on broken offline commands
+- Sync config tests use temporary paths and verify real disk round trips; strict formatting and lint restored
+- Desktop lockfile synchronized; VS Code packaging is locked, audited, and includes only intended runtime files and license
+- Docker uses the pinned toolchain, required embedded/build inputs, an unprivileged runtime, and excludes local state from its build context
+- Homebrew refresh preserves checksum lines and updates existing values only after every artifact validates
 - Windows debug/integration binaries reserve an 8 MiB main-thread stack so the expanded provider-route CLI does not overflow before `--help`, `--version`, or lightweight commands run
 - `harness doctor` probes Ollama's loopback API with a 500 ms bound and checks optional tools on `PATH` instead of launching every executable serially, keeping Windows startup lightweight
 
 ### Security
+- HTTP browser boundary rejects foreign loopback Host headers and cross-origin requests, with no-store responses for the local token bootstrap
+- Desktop Tauri dependencies updated to remove vulnerable XML parser versions; six upstream maintenance advisories are explicitly tracked in the desktop policy
+- VS Code packaging dependencies updated to remove reported npm vulnerabilities
 - Unknown provider names without an explicit adapter/base URL now fail closed instead of falling through to xAI
 - Setup keeps credentials in environment variables instead of writing newly entered secrets to config
 

@@ -1,14 +1,12 @@
-# Quick start: docker compose up
-
+# First run: docker compose run --rm harness setup
+# Chat after setup: docker compose run --rm harness
 services:
   harness:
     build: .
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
+    command: []
     volumes:
-      - type: bind
-        source: ${HOME}/.harness
-        target: /root/.harness
+      - harness-state:/home/harness/.harness
+      - .:/workspace
     depends_on:
       - ollama
     stdin_open: true
@@ -17,9 +15,10 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama-models:/root/.ollama
 
 volumes:
+  harness-state:
   ollama-models:

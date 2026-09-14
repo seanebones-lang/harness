@@ -4,6 +4,25 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-09-13 — Production hardening candidate (not stable)**
+
+Integrated upstream documentation commit `820f902`; its 62.28% remeasure is retained in COVERAGE.md history and superseded by the candidate measurement below.
+
+Root validation: **775 tests passed**, including **454** binary tests; strict workspace fmt/clippy passed; dependency policy passed; measured coverage **64.39%** lines (18112/28130). The optimized macOS arm64 CLI passed isolated offline smoke, real tool/provider/HTTP integration against a synthetic backend, and a bounded one-shot request on the configured live provider route. The source installer produced an identical optimized binary.
+
+Browser validation exposed and repaired an initialization ReferenceError. The real browser then reached ready state and completed a synthetic chat; two DOM regressions now guard startup/preferences and authenticated streaming. Installer/Homebrew regression tests: **4 passed**. Actionlint and ShellCheck passed.
+
+VS Code TypeScript compilation and restricted VSIX packaging passed with zero npm vulnerabilities. The separate Tauri lockfile was updated to remove vulnerable XML parser versions; locked compilation and local macOS `.app` bundling passed. Desktop maintenance-only exceptions are explicitly listed in its advisory policy. Developer-ID signing, notarization, fresh-machine GUI acceptance, and non-macOS packages are not established by that bundle.
+
+**Go/no-go:** local candidate **GO for further acceptance**; supported stable release **NO-GO**. GitHub's starting-commit CI run [34740550198](https://github.com/seanebones-lang/harness/actions/runs/34740550198) did not start because of an account billing lock. Docker daemon is unavailable locally. Full platform CI, installer/package rehearsal, remaining interactive acceptance, and complete immutable release assets remain open. No stable release or replacement tag was published.
+
+Cancellation regressions also pass: closing SSE cancels a pending provider request, interrupted tool batches remain resumable, and Unix shell descendants cannot write after timeout/cancellation.
+
+Detailed repairs, evidence, risk decisions, and restart order: [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
+
+---
+
+
 **2026-08-24 — Provider-neutral routing and extensibility release gate**
 
 | Item | Result |
@@ -38,7 +57,7 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 | Notes | [`RELEASE_NOTES_v1.3.0.md`](RELEASE_NOTES_v1.3.0.md) · [`CHANGELOG.md`](../CHANGELOG.md) |
 | License | **Proprietary** NextEleven LLC — **not MIT**; `deny.toml` MIT allow = third-party deps only |
 | `cargo test --bin harness` | **363** (prior cont) — re-run on tag commit |
-| Coverage | **62.28%** · CI 60% **met** |
+| Coverage | **61.65%** · CI 60% **met** |
 | CLAUDE.md | refreshed (363 / 61.65% / 1.3.0) |
 
 **Go / no-go:** **GO** public POC. **Stable** still blocked on REL-01 + billing 📌. Prebuilt multi-arch may still need Actions billing.

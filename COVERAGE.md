@@ -5,13 +5,15 @@
 | Field | Value |
 |-------|-------|
 | **Tool** | cargo-llvm-cov |
-|| **Measured lines** | **62.28%** (17044 covered / 27368 lines) ||
-|| **Regions** | 63.97% · **Functions** 68.31% ||
-|| **Date** | 2026-09-13 (manual remeasure) ||
+| **Measured lines** | **64.39%** (18112 covered / 28130 lines) |
+| **Regions** | 66.19% · **Functions** 70.98% |
+| **Date** | 2026-09-13 (production hardening, pinned Rust 1.95.0) |
 | **CI target** | ≥ 60% lines on PRs (`.github/workflows/coverage.yml` via `cargo llvm-cov --fail-under-lines 60`) — **met (measured)** |
 | **Near-term target** | ≥ 70% workspace lines — **in progress** |
 
 Prior measures:
+- Upstream remeasure recorded on 2026-09-13: **62.28%** lines (17044 / 27368), before this hardening candidate.
+- llvm-cov 2026-09-13: **64.39%** lines (18112 / 28130), 775 passing tests, `--locked --workspace --all-features --summary-only --fail-under-lines 60`
 - llvm-cov 2026-09-12 (manual remeasure): **62.28%** lines (17044 / 27368)
 - llvm-cov 2026-08-09 Swarm-51: **61.65%** lines (16497 / 26757)
 - llvm-cov 2026-08-07 cont6: **57.13%** lines (14212 / 24878)

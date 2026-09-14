@@ -1,6 +1,8 @@
 name: Coverage
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -12,13 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.95.0
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       - name: Generate coverage
-        run: cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 60
+        run: cargo llvm-cov --locked --workspace --all-features --summary-only --fail-under-lines 60
       - name: Upload lcov
-        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+        run: cargo llvm-cov report --lcov --output-path lcov.info
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

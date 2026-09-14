@@ -4,10 +4,10 @@ Use this before tagging a release or declaring the repo “ready for anyone to b
 
 ## 1) Legal and docs
 
-- [ ] `LICENSE` is the intended public license (MIT).
+- [ ] `LICENSE` is the intended proprietary NextEleven LLC evaluation license.
 - [ ] `README.md` **License** section matches `LICENSE`.
-- [ ] No leftover proprietary wording in docs: search for `proprietary`, `All Rights Reserved`, `no license granted`.
-- [ ] Root [`Cargo.toml`](../Cargo.toml) `workspace.package.license` is `MIT`.
+- [ ] No first-party MIT or open-source grant claims; third-party dependency licenses remain separate.
+- [ ] Root [`Cargo.toml`](../Cargo.toml) `workspace.package.license` is `LicenseRef-NextEleven-Proprietary`.
 
 ## 2) Automated gates (local)
 

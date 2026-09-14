@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-IMAGE="${HARNESS_LINUX_SMOKE_IMAGE:-rust:1.85-bookworm}"
+IMAGE="${HARNESS_LINUX_SMOKE_IMAGE:-rust:1.95.0-bookworm}"
 info() { printf '\033[32m[linux-smoke]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[linux-smoke]\033[0m %s\n' "$*"; }
 die() { printf '\033[31m[linux-smoke]\033[0m %s\n' "$*"; exit 1; }
@@ -22,19 +22,14 @@ docker run --rm \
   bash -lc '
 set -euo pipefail
 apt-get update -qq
-apt-get install -y -qq pkg-config libssl-dev cmake >/dev/null
+apt-get install -y -qq pkg-config libssl-dev cmake clang python3 >/dev/null
 # copy writable tree (source is ro)
-cp -a /src/. .
+tar -C /src --exclude=target --exclude=.git --exclude=".env*" --exclude=.harness --exclude=.obsidian --exclude=Vault --exclude="*.pem" --exclude="*.key" --exclude="*.p12" --exclude="*.keystore" --exclude="*.db*" --exclude=node_modules --exclude=apps/desktop/src-tauri/target -cf - . | tar -xf -
 # drop host target artifacts that may be wrong arch
 rm -rf target
-cargo build -q --bin harness
-BIN=./target/debug/harness
-"$BIN" --version
-"$BIN" doctor || true
-"$BIN" swarm list || true
-"$BIN" swarm gc --dry-run || true
-"$BIN" mcp roots || true
-"$BIN" models --help >/dev/null
+cargo build --locked -q --bin harness
+python3 scripts/smoke_runtime.py target/debug/harness
+python3 scripts/smoke_agent.py target/debug/harness
 echo LINUX_OFFLINE_SMOKE_OK
 '
 

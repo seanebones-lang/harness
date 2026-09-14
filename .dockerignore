@@ -1,0 +1,15 @@
+.git
+.env*
+.harness
+.obsidian
+Vault
+target
+**/target
+**/node_modules
+**/out
+*.db*
+*.pem
+*.key
+*.p12
+*.keystore
+IMPROVEMENTS_TODO.md*

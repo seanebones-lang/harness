@@ -527,8 +527,14 @@ mod tests_extended {
     #[test]
     fn normalize_provider_name_lowercases_and_validates() {
         assert_eq!(normalize_provider_name("OPENAI").expect("norm"), "openai");
-        assert_eq!(normalize_provider_name("Anthropic").expect("norm"), "anthropic");
-        assert_eq!(normalize_provider_name("my-provider_123").expect("norm"), "my-provider_123");
+        assert_eq!(
+            normalize_provider_name("Anthropic").expect("norm"),
+            "anthropic"
+        );
+        assert_eq!(
+            normalize_provider_name("my-provider_123").expect("norm"),
+            "my-provider_123"
+        );
     }
 
     #[test]
@@ -610,23 +616,65 @@ mod tests_extended {
     #[test]
     fn configure_custom_provider_validates_url() {
         let mut cfg = Config::default();
-        assert!(configure_custom_provider(&mut cfg, "test", "not-a-url", "model", &None, false).is_err());
-        assert!(configure_custom_provider(&mut cfg, "test", "ftp://example.com", "model", &None, false).is_err());
-        assert!(configure_custom_provider(&mut cfg, "test", "http://", "model", &None, false).is_err());
+        assert!(
+            configure_custom_provider(&mut cfg, "test", "not-a-url", "model", &None, false)
+                .is_err()
+        );
+        assert!(configure_custom_provider(
+            &mut cfg,
+            "test",
+            "ftp://example.com",
+            "model",
+            &None,
+            false
+        )
+        .is_err());
+        assert!(
+            configure_custom_provider(&mut cfg, "test", "http://", "model", &None, false).is_err()
+        );
     }
 
     #[test]
     fn configure_custom_provider_validates_api_key_env() {
         let mut cfg = Config::default();
-        assert!(configure_custom_provider(&mut cfg, "test", "https://example.com", "model", &Some("INVALID-KEY!".into()), false).is_err());
-        assert!(configure_custom_provider(&mut cfg, "test", "https://example.com", "model", &Some("VALID_KEY_123".into()), false).is_ok());
+        assert!(configure_custom_provider(
+            &mut cfg,
+            "test",
+            "https://example.com",
+            "model",
+            &Some("INVALID-KEY!".into()),
+            false
+        )
+        .is_err());
+        assert!(configure_custom_provider(
+            &mut cfg,
+            "test",
+            "https://example.com",
+            "model",
+            &Some("VALID_KEY_123".into()),
+            false
+        )
+        .is_ok());
     }
 
     #[test]
     fn configure_custom_provider_trims_trailing_slash() {
         let mut cfg = Config::default();
-        configure_custom_provider(&mut cfg, "test", "https://example.com/v1/", "model", &None, false).expect("custom");
-        assert_eq!(cfg.providers.get("test").and_then(|e| e.base_url.as_deref()), Some("https://example.com/v1"));
+        configure_custom_provider(
+            &mut cfg,
+            "test",
+            "https://example.com/v1/",
+            "model",
+            &None,
+            false,
+        )
+        .expect("custom");
+        assert_eq!(
+            cfg.providers
+                .get("test")
+                .and_then(|e| e.base_url.as_deref()),
+            Some("https://example.com/v1")
+        );
     }
 
     #[test]

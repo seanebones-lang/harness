@@ -65,6 +65,7 @@ artifact_name() {
 }
 
 ARTIFACT=$(artifact_name "$TARGET")
+[[ "$TARGET" != *windows* ]] || BINARY="harness.exe"
 
 # Try to install a prebuilt binary from the latest release
 install_prebuilt() {
@@ -79,46 +80,38 @@ install_prebuilt() {
     fi
 
     tmp=$(mktemp -d)
-
     info "Downloading prebuilt binary ($version)..."
-    if curl -fsSL "$url" -o "$tmp/harness" 2>/dev/null; then
-        # Try to verify checksum if available
-        checksum_url="${url%/*}/checksums.txt"
-        if curl -fsSL "$checksum_url" -o "$tmp/checksums.txt" 2>/dev/null; then
-            local expected actual
-            expected=$(grep " ${ARTIFACT}$" "$tmp/checksums.txt" | awk '{print $1}' | head -1)
-            if [[ -n "$expected" ]]; then
-                if command -v sha256sum >/dev/null; then
-                    actual=$(sha256sum "$tmp/harness" | awk '{print $1}')
-                elif command -v shasum >/dev/null; then
-                    actual=$(shasum -a 256 "$tmp/harness" | awk '{print $1}')
-                else
-                    warn "No sha256sum/shasum; skipping checksum verify"
-                    actual=""
-                fi
-                if [[ -n "$actual" && "$actual" != "$expected" ]]; then
-                    error "Checksum mismatch for ${ARTIFACT}"
-                fi
-                if [[ -n "$actual" ]]; then
-                    info "Checksum verified"
-                fi
-            else
-                warn "No checksum entry for ${ARTIFACT} in checksums.txt"
-            fi
-        fi
-        mkdir -p "$INSTALL_DIR"
-        if [[ "$TARGET" == *"windows"* ]]; then
-            install -m 755 "$tmp/harness.exe" "$INSTALL_DIR/harness.exe"
-        else
-            chmod +x "$tmp/harness"
-            install -m 755 "$tmp/harness" "$INSTALL_DIR/harness"
-        fi
-        info "Installed prebuilt binary to $INSTALL_DIR"
-        return 0
-    else
-        warn "No prebuilt binary found for $version (release may not exist yet)"
+    if ! curl -fsSL "$url" -o "$tmp/harness"; then
+        rm -rf "$tmp"
+        warn "Prebuilt download unavailable; trying the requested source revision"
         return 1
     fi
+    local expected actual
+    if ! curl -fsSL "${url%/*}/checksums.txt" -o "$tmp/checksums.txt"; then
+        rm -rf "$tmp"
+        error "Missing release checksums; refusing to install an unverified binary"
+    fi
+    expected=$(awk -v artifact="$ARTIFACT" '$2 == artifact {print $1}' "$tmp/checksums.txt")
+    if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
+        rm -rf "$tmp"
+        error "Expected exactly one SHA-256 checksum for $ARTIFACT"
+    fi
+    if command -v sha256sum >/dev/null; then
+        actual=$(sha256sum "$tmp/harness" | awk '{print $1}')
+    elif command -v shasum >/dev/null; then
+        actual=$(shasum -a 256 "$tmp/harness" | awk '{print $1}')
+    else
+        rm -rf "$tmp"
+        error "SHA-256 verification requires sha256sum or shasum"
+    fi
+    if [[ "$actual" != "$expected" ]]; then
+        rm -rf "$tmp"
+        error "Checksum mismatch for $ARTIFACT"
+    fi
+    mkdir -p "$INSTALL_DIR"
+    install -m 755 "$tmp/harness" "$INSTALL_DIR/$BINARY"
+    rm -rf "$tmp"
+    info "Checksum verified; installed $INSTALL_DIR/$BINARY"
 }
 # Fallback: build from source
 build_from_source() {
@@ -128,24 +121,25 @@ build_from_source() {
 
     info "Building from source (this may take a few minutes)..."
 
-    local src_dir
-    if [[ -f "Cargo.toml" ]]; then
+    local src_dir scratch="" version="${1:-latest}"
+    if [[ "$version" == "latest" && -f "Cargo.toml" && -f "crates/harness-provider-core/Cargo.toml" ]]; then
         src_dir="."
     else
-        src_dir=$(mktemp -d)
-        trap 'rm -rf "$src_dir"' EXIT
-        git clone --depth=1 "https://github.com/$REPO.git" "$src_dir/harness"
-        src_dir="$src_dir/harness"
+        scratch=$(mktemp -d)
+        src_dir="$scratch/harness"
+        if [[ "$version" == "latest" ]]; then
+            git clone --depth=1 "https://github.com/$REPO.git" "$src_dir" || { rm -rf "$scratch"; error "Source clone failed"; }
+        else
+            git clone --depth=1 --branch "$version" "https://github.com/$REPO.git" "$src_dir" || { rm -rf "$scratch"; error "Requested version not found: $version"; }
+        fi
     fi
-
-    (cd "$src_dir" && cargo build --profile release-lto)
-
+    if ! (cd "$src_dir" && cargo build --locked --profile release-lto); then
+        [[ -z "$scratch" ]] || rm -rf "$scratch"
+        error "Source build failed"
+    fi
     mkdir -p "$INSTALL_DIR"
-    if [[ "$TARGET" == *"windows"* ]]; then
-        install -m 755 "$src_dir/target/release-lto/harness.exe" "$INSTALL_DIR/harness.exe"
-    else
-        install -m 755 "$src_dir/target/release-lto/harness" "$INSTALL_DIR/harness"
-    fi
+    install -m 755 "$src_dir/target/release-lto/$BINARY" "$INSTALL_DIR/$BINARY"
+    [[ -z "$scratch" ]] || rm -rf "$scratch"
 
     info "Built and installed from source"
 }
@@ -164,11 +158,11 @@ if command -v harness >/dev/null 2>&1; then
     fi
 fi
 if [[ -x "$HOME/.cargo/bin/harness" && "$INSTALL_DIR" != "$HOME/.cargo/bin" ]]; then
-    warn "~/.cargo/bin/harness also exists — cargo install and this script use different paths."
+    warn "$HOME/.cargo/bin/harness also exists — cargo install and this script use different paths."
 fi
 
-if ! install_prebuilt "${1:-latest}"; then
-    build_from_source
+if [[ "${HARNESS_INSTALL_SOURCE:-0}" == "1" ]] || ! install_prebuilt "${1:-latest}"; then
+    build_from_source "${1:-latest}"
 fi
 
 # PATH warning
@@ -177,47 +171,7 @@ if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
     warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
-# Create default config
-mkdir -p "$HOME/.harness"
-if [[ ! -f "$HOME/.harness/config.toml" ]]; then
-    info "Creating default config at ~/.harness/config.toml"
-    cat >"$HOME/.harness/config.toml" <<'EOF'
-[provider]
-# api_key = "sk-ant-..."   # or set ANTHROPIC_API_KEY env var
-model = "claude-sonnet-4-6"
-max_tokens = 8192
-temperature = 0.7
-
-[memory]
-enabled = true
-embed_model = "nomic-embed-text"
-
-[agent]
-system_prompt = """
-You are a powerful coding assistant running in a terminal.
-
-Available tools:
-  read_file, write_file     — read or overwrite files
-  patch_file                — surgical old→new text replacement (prefer this over write_file for edits)
-  list_dir                  — list directory contents
-  shell                     — run shell commands (build, test, git, etc.)
-  search_code               — regex search across the codebase
-  spawn_agent               — run a sub-agent with base tools for parallel tasks
-  browser (when enabled)    — Chrome CDP: navigate, screenshot, click, fill forms
-  MCP tools (when loaded)   — any tools registered via .harness/mcp.json
-
-Guidelines:
-  - Prefer patch_file over write_file for targeted edits.
-  - Always run tests or build commands after changes to verify correctness.
-  - Be concise. Prefer making changes over explaining them.
-  - When editing multiple files, use spawn_agent for parallelism.
-  - In plan mode (--plan flag), destructive calls pause for user approval.
-"""
-EOF
-fi
-
-VERSION=$("$INSTALL_DIR/harness" --version 2>/dev/null || echo "unknown")
+# Setup owns route selection and config creation.
+VERSION=$("$INSTALL_DIR/$BINARY" --version)
 info "Installed $VERSION"
-info "Run: harness"
-info "Update: re-run this install script or add: alias harness-update=\"curl -fsSL ... | bash\""
-info "Or:  ANTHROPIC_API_KEY=sk-ant-... harness \"your prompt\""
+info "Run: harness setup"

@@ -1,59 +1,10 @@
 #!/usr/bin/env bash
-# REL-01 automated subset — run locally before manual API-key smoke (docs/PUBLIC_RELEASE.md §3).
+# Offline release smoke. An explicit HARNESS_BIN always wins.
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
-
 HARNESS="${HARNESS_BIN:-$ROOT/target/release-lto/harness}"
-if [[ ! -x "$HARNESS" ]]; then
-  HARNESS="${HARNESS_BIN:-$ROOT/target/debug/harness}"
-fi
-if [[ ! -x "$HARNESS" ]]; then
-  echo "Build harness first: cargo build --profile release-lto"
-  exit 1
-fi
-
-# Prefer a freshly built workspace binary over stale ~/.local/bin installs.
-if [[ -x "$ROOT/target/debug/harness" ]]; then
+if [[ -z "${HARNESS_BIN:-}" && ! -x "$HARNESS" ]]; then
   HARNESS="$ROOT/target/debug/harness"
 fi
-
-info() { printf "\033[32m[smoke]\033[0m %s\n" "$*"; }
-warn() { printf "\033[33m[smoke]\033[0m %s\n" "$*"; }
-
-info "harness --version"
-"$HARNESS" --version
-
-info "harness doctor"
-"$HARNESS" doctor || warn "doctor reported issues (keys may be missing)"
-
-info "harness update"
-"$HARNESS" update
-
-info "harness swarm list / gc --dry-run (offline)"
-"$HARNESS" swarm list || warn "swarm list failed"
-"$HARNESS" swarm gc --dry-run || warn "swarm gc dry-run failed"
-
-info "harness mcp roots (offline; empty config ok)"
-"$HARNESS" mcp roots || warn "mcp roots failed (no config ok)"
-
-info "harness sessions (empty ok)"
-"$HARNESS" sessions
-
-info "harness setup --help path"
-"$HARNESS" setup --help >/dev/null
-
-if curl -fsS "http://127.0.0.1:8787/api/health" >/dev/null 2>&1; then
-  info "serve already up — /api/health ok"
-else
-  warn "harness serve not running — start manually for web UI smoke"
-fi
-
-warn "Manual steps still required (need API keys):"
-warn "  - one-shot: harness \"Reply with exactly: OK\""
-warn "  - TUI: harness"
-warn "  - serve + browser chat"
-warn "  - harness export <id>"
-
-info "Automated REL-01 subset complete."
+[[ -x "$HARNESS" ]] || { echo "Build harness or set HARNESS_BIN to an executable" >&2; exit 1; }
+exec python3 "$ROOT/scripts/smoke_runtime.py" "$HARNESS"

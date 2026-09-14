@@ -22,3 +22,6 @@ chrono = { workspace = true }
 dirs = { workspace = true }
 tempfile = "3"
 rusqlite = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

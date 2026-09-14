@@ -1,65 +1,31 @@
-# Release Process
+# Release process
 
-This document describes how to cut a new release of NextEleven Harness.
+Harness is distributed under the proprietary NextEleven LLC evaluation license. Stable release acceptance is recorded in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) and [RELEASE_STATUS.md](RELEASE_STATUS.md).
 
-**License:** proprietary NextEleven LLC — public GitHub = POC visibility only. **Not MIT.**
+## Prepare a candidate
 
-## Prerequisites
+1. Work on `main`, preserve unrelated work, and pass the local and remote gates in [PUBLIC_RELEASE.md](PUBLIC_RELEASE.md).
+2. Select a new version at release time and align the workspace, desktop, extension, release notes, and image metadata. Never move an existing release tag to newer code.
+3. Require green CI and Coverage for the exact candidate commit on `main`, including the installer contracts and synthetic agent/HTTP smoke. Synthetic provider tests do not replace real-provider and interactive acceptance.
+4. Create an annotated `vX.Y.Z` tag matching the Cargo workspace version and push it only after the release checklist is satisfied.
 
-- All CI checks on `main` must be green
-- `docs/PUBLIC_RELEASE.md` checks must pass
-- Workspace `version` in root `Cargo.toml` matches the tag (no `v` prefix in Cargo; tag is `vX.Y.Z`)
-- You have write access to the repository
+## Build and stage artifacts
 
-## Steps
+The Release workflow accepts an existing tag, checks that it belongs to `main`, verifies its Cargo version and successful latest CI and Coverage runs for that commit, and checks out its immutable commit for every build. A manual dispatch must supply that existing tag; it does not silently attach current `main` binaries to an older version.
 
-1. **Ensure `main` is ready**
+Each of five native runners builds the pinned, locked optimized candidate and runs workspace tests plus binary, isolated CLI, and synthetic provider/HTTP checks. The runners cover macOS arm64/x86_64, Linux arm64/x86_64, and Windows x86_64. The matrix uses supported labels from [GitHub's runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
-   ```bash
-   git checkout main
-   git pull origin main
-   cargo fmt --all -- --check
-   cargo clippy -p harness --bin harness -- -D warnings
-   cargo test --bin harness
-   ```
+Only a completely successful matrix stages a **draft** GitHub Release with all five artifacts and `checksums.txt`. Missing platform artifacts prevent staging. GitHub Actions billing must be enabled; a job that never starts supplies no validation evidence.
 
-2. **Create and push a version tag**
+## Publish after acceptance
 
-   ```bash
-   git tag -a v1.3.0 -m "v1.3.0 - Public POC proprietary cut"
-   git push origin v1.3.0
-   ```
+1. Verify all draft downloads and SHA-256 checksums, real provider round trips, interactive TUI/browser/editor behavior, and clean-machine install on the supported systems.
+2. Include final release notes and explicit limitations; publish the draft when those gates pass.
+3. Run `bash scripts/update-homebrew-sha.sh vX.Y.Z`. This verifies all four Unix downloads against the release manifest before updating every formula checksum and version. Review and commit the formula.
+4. Rehearse the public installers against the published version. Both require valid checksums. A version-pinned source fallback clones that tag, never unrelated current-directory code.
 
-3. **GitHub Actions will automatically** (when billing/workflows enabled):
-   - Build binaries for macOS (arm64 + x86_64), Linux (x86_64 + aarch64), and Windows
-   - Create a GitHub Release with all binaries attached
-   - Generate release notes from commits
-
-4. **After the release is published**:
-   - Verify the binaries are downloadable
-   - Attach / link [`docs/RELEASE_NOTES_v1.3.0.md`](RELEASE_NOTES_v1.3.0.md)
-   - Test the install script when prebuilts exist:
-     ```bash
-     curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.sh | bash
-     ```
-   - Run `bash scripts/update-homebrew-sha.sh v1.3.0` after multi-arch artifacts exist
-   - Announce the release (restate proprietary / POC terms)
-
-## Versioning
-
-We follow semantic versioning:
-- `v0.x.y` / early `v1.x` POC — breaking changes allowed under proprietary license
-- First **stable** product cut tracked separately (REL-01 + prebuilts); not the same as “open source 1.0”
-
-## Current release (v1.3.0)
-
-Workspace version is **`1.3.0`**. Notes: [`RELEASE_NOTES_v1.3.0.md`](RELEASE_NOTES_v1.3.0.md).  
-Prior beta tag history includes `v0.1.2-beta` (macOS arm64 partial artifacts only).
+For CI or a local current-checkout install, use `HARNESS_INSTALL_SOURCE=1` and a disposable `HARNESS_INSTALL_DIR`. Leave provider selection to `harness setup`; installers do not seed a preferred vendor or model.
 
 ## Rollback
 
-If a release has issues, create a new patch release (`v1.3.1`) rather than deleting the tag.
-
-## Future: cargo-dist
-
-We are considering migrating to [cargo-dist](https://github.com/axodotdev/cargo-dist) for release automation, Homebrew taps, and installer generation. The `dist-workspace.toml` file is already present as a starting point.
+Retain the preceding version and its checksums. If a release is faulty, stop promotion and ship a new patch version after validation. Never overwrite an existing version with a different binary or silently replace a tag.

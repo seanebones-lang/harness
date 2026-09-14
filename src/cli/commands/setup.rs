@@ -264,13 +264,16 @@ mod tests_extended {
 
     #[test]
     fn command_needs_agent_runtime_connect_false() {
-        let cli = Cli::try_parse_from(["harness", "connect", "--url", "http://localhost:8787", "hi"]).expect("connect");
+        let cli =
+            Cli::try_parse_from(["harness", "connect", "--url", "http://localhost:8787", "hi"])
+                .expect("connect");
         assert!(!command_needs_agent_runtime(&cli));
     }
 
     #[test]
     fn command_needs_agent_runtime_pr_with_comment_false() {
-        let cli = Cli::try_parse_from(["harness", "pr", "123", "--comment", "LGTM"]).expect("pr comment");
+        let cli =
+            Cli::try_parse_from(["harness", "pr", "123", "--comment", "LGTM"]).expect("pr comment");
         assert!(!command_needs_agent_runtime(&cli));
     }
 
@@ -282,7 +285,8 @@ mod tests_extended {
 
     #[test]
     fn command_needs_agent_runtime_voice_send_true() {
-        let cli = Cli::try_parse_from(["harness", "voice", "--duration", "5", "--send"]).expect("voice send");
+        let cli = Cli::try_parse_from(["harness", "voice", "--duration", "5", "--send"])
+            .expect("voice send");
         assert!(command_needs_agent_runtime(&cli));
     }
 
@@ -294,7 +298,8 @@ mod tests_extended {
 
     #[test]
     fn command_needs_agent_runtime_voice_record_only_false() {
-        let cli = Cli::try_parse_from(["harness", "voice", "--duration", "5"]).expect("voice record");
+        let cli =
+            Cli::try_parse_from(["harness", "voice", "--duration", "5"]).expect("voice record");
         assert!(!command_needs_agent_runtime(&cli));
     }
 
@@ -306,7 +311,8 @@ mod tests_extended {
 
     #[test]
     fn command_needs_agent_runtime_selfdev_true() {
-        let cli = Cli::try_parse_from(["harness", "self-dev", "--model", "claude-sonnet-4-6"]).expect("self-dev");
+        let cli = Cli::try_parse_from(["harness", "self-dev", "--model", "claude-sonnet-4-6"])
+            .expect("self-dev");
         assert!(command_needs_agent_runtime(&cli));
     }
 
@@ -318,7 +324,8 @@ mod tests_extended {
 
     #[test]
     fn command_needs_agent_runtime_serve_true() {
-        let cli = Cli::try_parse_from(["harness", "serve", "--addr", "127.0.0.1:8787"]).expect("serve");
+        let cli =
+            Cli::try_parse_from(["harness", "serve", "--addr", "127.0.0.1:8787"]).expect("serve");
         assert!(command_needs_agent_runtime(&cli));
     }
 }

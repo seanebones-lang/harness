@@ -1,48 +1,44 @@
 #!/usr/bin/env bash
-# Refresh SHA256 placeholders in homebrew/harness.rb from the latest GitHub Release.
+# Refresh every formula checksum only after verifying the complete Unix artifact set.
 set -euo pipefail
-
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="seanebones-lang/harness"
-FORMULA="homebrew/harness.rb"
+FORMULA="${HARNESS_HOMEBREW_FORMULA:-$ROOT/homebrew/harness.rb}"
 VERSION="${1:-}"
-
 if [[ -z "$VERSION" ]]; then
-  VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
+  VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')
 fi
-
-info() { printf "\033[32m[homebrew]\033[0m %s\n" "$*"; }
-
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid release tag" >&2; exit 1; }
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
-
-fetch_sha() {
-  local artifact="$1"
-  local url="https://github.com/$REPO/releases/download/${VERSION}/${artifact}"
-  info "Downloading $artifact …"
-  curl -fsSL "$url" -o "$tmpdir/$artifact"
-  shasum -a 256 "$tmpdir/$artifact" | awk '{print $1}'
-}
-
-MAC_ARM=$(fetch_sha "harness-macos-aarch64")
-MAC_X64=$(fetch_sha "harness-macos-x86_64")
-LINUX_ARM=$(fetch_sha "harness-linux-aarch64")
-LINUX_X64=$(fetch_sha "harness-linux-x86_64")
-
-info "Updating $FORMULA for $VERSION"
-sed -i.bak \
-  -e "s/version \".*\"/version \"${VERSION#v}\"/" \
-  "$FORMULA"
-
-# Replace SHA lines in order: mac arm, mac x64, linux arm, linux x64
-awk -v v="$VERSION" -v a="$MAC_ARM" -v b="$MAC_X64" -v c="$LINUX_ARM" -v d="$LINUX_X64" '
-  /on_macos/ { mac=1; linux=0 }
-  /on_linux/ { linux=1; mac=0 }
-  mac && /sha256/ && !done_arm { sub(/REPLACE_WITH_ACTUAL_SHA/, a); done_arm=1; next }
-  mac && /sha256/ && done_arm && !done_x64 { sub(/REPLACE_WITH_ACTUAL_SHA/, b); done_x64=1; next }
-  linux && /sha256/ && !larm { sub(/REPLACE_WITH_ACTUAL_SHA/, c); larm=1; next }
-  linux && /sha256/ && larm && !lx64 { sub(/REPLACE_WITH_ACTUAL_SHA/, d); lx64=1; next }
-  { print }
-' "$FORMULA" > "$FORMULA.tmp" && mv "$FORMULA.tmp" "$FORMULA"
-
-rm -f "$FORMULA.bak"
-info "Done. Review git diff and commit homebrew/harness.rb"
+base="https://github.com/$REPO/releases/download/$VERSION"
+curl -fsSL "$base/checksums.txt" -o "$tmpdir/checksums.txt"
+for artifact in harness-macos-aarch64 harness-macos-x86_64 harness-linux-aarch64 harness-linux-x86_64; do
+  echo "[homebrew] Verifying $artifact" >&2
+  curl -fsSL "$base/$artifact" -o "$tmpdir/$artifact"
+done
+python3 - "$FORMULA" "$VERSION" "$tmpdir" <<'PY'
+import hashlib
+from pathlib import Path
+import re
+import sys
+formula, version, downloads = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
+manifest = (downloads / 'checksums.txt').read_text().splitlines()
+text = formula.read_text()
+for artifact in ['harness-macos-aarch64', 'harness-macos-x86_64', 'harness-linux-aarch64', 'harness-linux-x86_64']:
+    matches = [line.split()[0] for line in manifest if len(line.split()) == 2 and line.split()[1] == artifact]
+    actual = hashlib.sha256((downloads / artifact).read_bytes()).hexdigest()
+    if matches != [actual]:
+        raise SystemExit(f'Checksum missing, duplicated, or mismatched: {artifact}')
+    pattern = r'(url "[^"\n]*/' + re.escape(artifact) + r'"\s*\n\s*sha256 ")[^"]+(")'
+    # Match the existing URL/checksum pair regardless of whether it is a placeholder.
+    text, count = re.subn(pattern, lambda m: m[1] + actual + m[2], text)
+    if count != 1:
+        raise SystemExit(f'Expected one formula entry: {artifact}')
+text, count = re.subn(r'(?m)^  version "[^"]+"$', f'  version "{version[1:]}"', text)
+if count != 1:
+    raise SystemExit('Expected one formula version')
+# No formula mutation happens before all artifacts and substitutions validate.
+formula.write_text(text)
+print(f'Updated {formula} for {version}')
+PY

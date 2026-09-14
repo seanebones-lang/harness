@@ -3,14 +3,14 @@
 [![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95%2B-orange)](rust-toolchain.toml)
 [![Toolchain](https://img.shields.io/badge/pinned-1.95.0-blue)](rust-toolchain.toml)
-[![Coverage](https://img.shields.io/badge/coverage-62.28%25%20(gate%2060%25%20met)-brightgreen)](COVERAGE.md)
+[![Coverage](https://img.shields.io/badge/coverage-64.39%25%20(gate%2060%25%20met)-brightgreen)](COVERAGE.md)
 [![Version](https://img.shields.io/badge/version-1.3.0-informational)](Cargo.toml)
 
 **NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
 
 **Provider-neutral by design:** Harness does not choose, recommend, or rank a vendor, model, or fallback order. Setup saves your exact `provider:model` route; the first entry is primary and every later entry is tried in the order you chose. Eighteen alphabetized built-in names are convenience configurations, not a closed catalogue: custom OpenAI chat-completions-compatible HTTP(S) endpoints can be added from the CLI without changing Rust code.
 
-**Status:** public **beta / POC** (daily-driver capable). Version **1.3.0**. **Stable** is blocked on full REL-01 smoke matrix + release artifact billing (see [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md)).  
+**Status:** public **beta / POC** (daily-driver capable). Version **1.3.0**. **Stable** is blocked on full REL-01 smoke matrix + verified release artifacts (Actions currently billing-locked) (see [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md)).
 **Branch:** ship on **`main`** only.  
 **License:** proprietary — NextEleven LLC ([`LICENSE`](LICENSE)). **Not MIT. Not open source.** Public repo = proof-of-concept visibility only.
 
@@ -252,7 +252,7 @@ TUI: **F2** or `/swarm` dumps swarm registry lines into the single-panel transcr
 ```bash
 cargo build
 cargo build --profile release-lto
-cargo test --bin harness          # 376 tests (2026-08-24; no API keys)
+cargo test --bin harness          # 454 tests (2026-09-13; no API keys)
 cargo test -p harness-tools       # 179 tests (Swarm-51)
 cargo test -p harness-provider-router
 cargo clippy -p harness --bin harness -- -D warnings
@@ -260,7 +260,7 @@ cargo fmt --all -- --check
 
 # Coverage SoT (badge = measured; CI fail-under 60% met)
 cargo llvm-cov --workspace --all-features --summary-only
-# Last measured: **61.65%** lines (2026-08-09 Swarm-51) — see COVERAGE.md
+# Last measured: **64.39%** lines (2026-09-13 production hardening) — see COVERAGE.md
 
 # Offline microbench pack
 ./target/debug/harness bench
@@ -268,6 +268,8 @@ cargo bench                       # criterion (memory search, JSON-RPC)
 
 # Offline REL smoke helpers
 bash scripts/smoke_rel01.sh
+python3 scripts/smoke_agent.py target/release-lto/harness
+python3 scripts/test_install.py
 # bash scripts/smoke_linux_docker.sh   # needs Docker
 ```
 Root package is a **binary** — use `cargo test --bin harness <filter>`, not `--lib`. One test filter only per invocation.
@@ -316,9 +318,11 @@ Developer narrative: [`CLAUDE.md`](CLAUDE.md) · architecture: [`ARCHITECTURE.md
 |------|--------|
 | Public beta | **GO** |
 | Supported stable release | Blocked — REL-01 full OS smoke + verified prebuilt matrix; choose the next version only at release time |
-|| Coverage CI gate | **Met** — measured **62.28%** lines (llvm-cov 2026-09-12); badge 62.28% |
+| Coverage CI gate | **Met** — measured **64.39%** lines (llvm-cov 2026-09-13); badge 64.39% |
 | Billing / full Release matrix | 📌 pinned (maintainer) |
 | Branch | **`main`** |
+
+Current hardening evidence: [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md). Container setup: [`docs/CONTAINERS.md`](docs/CONTAINERS.md).
 
 Details: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · ordered work: [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md).
 
@@ -336,7 +340,7 @@ Details: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · [`docs/PUBLIC_REL
 ## Demo & evaluation
 
 ```bash
-docker compose up                 # judge path + Ollama when configured
+docker compose run --rm harness   # configure first: docs/CONTAINERS.md
 demo/DEMO_SCRIPT_5-10min.md       # doctor → one-shot → tools → swarm → gc
 ./target/debug/harness bench      # offline pack under demo/bench_tasks/
 ```

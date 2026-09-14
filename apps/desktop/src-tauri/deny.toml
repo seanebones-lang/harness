@@ -1,0 +1,14 @@
+# Desktop-only maintenance exceptions reviewed 2026-09-13 after updating the
+# complete Tauri lockfile. These are unmaintained transitive crates, not accepted
+# vulnerability advisories. See ../../../docs/PRODUCTION_READINESS.md.
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "GTK glib-macros transitively requires proc-macro-error 1.x; no patched version. Recheck on Tauri/GTK upgrades." },
+  { id = "RUSTSEC-2025-0081", reason = "unic-char-property via Tauri urlpattern parser; no patched version. Recheck on Tauri upgrades." },
+  { id = "RUSTSEC-2025-0075", reason = "unic-char-range via Tauri urlpattern parser; no patched version. Recheck on Tauri upgrades." },
+  { id = "RUSTSEC-2025-0080", reason = "unic-common via Tauri urlpattern parser; no patched version. Recheck on Tauri upgrades." },
+  { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident via Tauri urlpattern parser; no patched version. Recheck on Tauri upgrades." },
+  { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version via Tauri urlpattern parser; no patched version. Recheck on Tauri upgrades." },
+]

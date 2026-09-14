@@ -10,6 +10,60 @@ use std::sync::Arc;
 
 use super::state::ServerState;
 
+/// The loopback bootstrap exposes a bearer token to the bundled UI. Reject
+/// foreign Host values before that bootstrap can be reached via DNS rebinding,
+/// and reject cross-origin browser requests on every route (including WebSocket).
+pub(crate) async fn browser_boundary(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    req: Request<axum::body::Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let host = req
+        .headers()
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<axum::http::uri::Authority>().ok())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    if addr.ip().is_loopback() && !is_loopback_host(host.host()) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if let Some(origin) = req.headers().get(axum::http::header::ORIGIN) {
+        let origin = origin
+            .to_str()
+            .ok()
+            .and_then(|value| value.parse::<axum::http::Uri>().ok())
+            .ok_or(StatusCode::FORBIDDEN)?;
+        if !matches!(origin.scheme_str(), Some("http" | "https"))
+            || origin.authority() != Some(&host)
+        {
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+    let mut response = next.run(req).await;
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        "x-content-type-options",
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    response.headers_mut().insert(
+        "x-frame-options",
+        axum::http::HeaderValue::from_static("DENY"),
+    );
+    Ok(response)
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
 pub(crate) async fn require_auth(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<ServerState>>,
