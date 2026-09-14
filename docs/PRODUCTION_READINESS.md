@@ -1,4 +1,4 @@
-# Production readiness — 2026-09-13
+# Production readiness — 2026-09-14
 
 **Decision: hardened candidate; not yet a supported production release.** The local macOS CLI and HTTP paths pass the checks below, including one real provider round trip. Cross-platform CI and the complete release artifact matrix remain blocked by GitHub's account billing lock. No stable tag or production release was published as part of this work.
 
@@ -7,6 +7,14 @@
 Work began on clean `main` at `78e90ac7654779368b5a116fe9c30e2883396863`. The root Rust workspace, embedded browser UI, installers, release/CI workflows, Docker path, VS Code package, and separate Tauri crate were reviewed and repaired. This was release engineering and targeted runtime hardening, not an exhaustive independent security audit or acceptance of every optional integration.
 
 The existing proprietary NextEleven LLC license and explicit user-owned provider/model route remain the product contract. Credentials and personal runtime state were not copied into the repository or release artifacts.
+
+## September 14 continuation
+
+Removed unused direct `keyring` and `mimalloc` dependencies after the first Linux container build exhausted its 4 GiB VM compiling transitive `turso_core`. Neither crate had an application call site; credential sync uses its existing platform command/key-file implementation. The lockfile loses 157 packages without adding or upgrading a package. The Linux arm64 optimized rebuild then passed in 5m 51s on the same 2-CPU, 4-GiB VM; runtime image acceptance passed. All 775 workspace tests also pass inside Linux after installing the Git prerequisite in the disposable test container. No memory increase was needed.
+
+Added `scripts/smoke_container.sh` and a required CI job to exercise the actual runtime image as UID 10001, then run isolated CLI and synthetic tool/provider/HTTP checks with test-only Python tooling.
+
+Latest pushed hardening commit `4e0d980ff16b38c4577b68c0ea0a660127d62177` reached GitHub. CI [34796445513](https://github.com/seanebones-lang/harness/actions/runs/34796445513) and Coverage [34796445491](https://github.com/seanebones-lang/harness/actions/runs/34796445491) were rejected before execution; the test-job annotation confirms the account billing lock persists.
 
 ## Repairs
 
@@ -24,6 +32,9 @@ The existing proprietary NextEleven LLC license and explicit user-owned provider
 
 ## Direct validation
 
+The September 14 dependency cleanup was revalidated with all 775 workspace tests, strict Clippy, fmt, and cargo-deny; optimized macOS build, source installation (byte-identical), offline smoke, and synthetic provider/HTTP integration also pass. Coverage and desktop/editor artifact measurements below were taken before this dependency-only cleanup.
+
+
 | Check | Result |
 |---|---|
 | Root `cargo test --locked --workspace --all-features` | **775 passed**, no failures; **454** are root binary tests |
@@ -31,6 +42,8 @@ The existing proprietary NextEleven LLC license and explicit user-owned provider
 | `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings` | Passed |
 | Root `cargo deny check` | Advisories, bans, licenses, and sources passed under existing policy |
 | Measured coverage | **64.39% lines** (18112/28130), 66.19% regions, 70.98% functions; 60% gate passed |
+| Linux arm64 workspace suite | **775 passed**, no failures; Git installed in the disposable test container |
+| Linux arm64 container | Locked optimized build passed; UID 10001, workspace/state permissions, offline CLI, streaming read_file continuation, HTTP bearer auth, persistent sessions and export passed |
 | Optimized macOS arm64 CLI | `cargo build --locked --profile release-lto` passed |
 | Explicit release-binary offline smoke | Passed; temporary home/project state, no caller-state mutation |
 | Synthetic provider/HTTP integration | Passed: streaming, real read_file execution, tool-result continuation, exact model at HTTP boundary, bearer auth, session persistence, Markdown export |
@@ -58,10 +71,14 @@ The updated Tauri graph still requires six crates with upstream unmaintained adv
 ## Remaining gates and restart order
 
 1. **Restore GitHub Actions execution.** The latest starting-commit run, [34740550198](https://github.com/seanebones-lang/harness/actions/runs/34740550198), reports: “The job was not started because your account is locked due to a billing issue.” Restore account billing, then run CI for the final candidate commit. A billing-rejected job is not a test failure or a pass.
-2. **Run the full native matrix and install rehearsals.** macOS Intel, Linux arm64/x86_64, and Windows must execute the final candidate tests and installers. This Mac cannot establish their behavior. Docker CLI exists locally, but its daemon socket is unavailable, so the repaired container path remains unexecuted.
+2. **Run the full native matrix and install rehearsals.** macOS Intel, Linux x86_64, and Windows must execute the final candidate tests and installers. Local Linux arm64 workspace and runtime acceptance now pass; native installation/package rehearsals remain required. A dedicated Colima profile `harness-readiness` now provides local Linux arm64 Docker execution without changing the normal Docker context. After removing unused dependencies, the actual release image builds and passes runtime acceptance in 4 GiB. Local Linux arm64 results cannot establish Windows, Intel, or the full native matrix.
 3. **Complete interactive acceptance.** Real-provider TUI approval/cancellation, browser reconnect/cancellation, native editor integration, and cold-start desktop GUI behavior on clean machines remain distinct checks. One-shot live success and a synthetic browser chat do not complete that matrix.
 4. **Complete desktop distribution requirements.** Validate final GUI packages on each supported platform, Developer-ID signing/notarization on macOS, and required OS-specific installer behavior. The wrapper requires a separately installed/configured CLI.
 5. **Cut a new immutable version after acceptance.** Align all versions, tag the green candidate, build all five verified artifacts, complete checksums, publish the staged draft, refresh Homebrew hashes, and validate public installer downloads. Do not move or overwrite the existing v1.3.0 tag.
+
+## Local evidence and environment
+
+Validation logs, checksummed macOS/Linux arm64 CLI candidate archives, the VSIX, and `validation.json` are retained in `target/production-readiness/2026-09-14/` (ignored build output). These are local candidate artifacts, not a published stable release. The dedicated Colima profile is stopped after acceptance; restart with `colima start --profile harness-readiness --activate=false` and select it per command with `DOCKER_CONTEXT=colima-harness-readiness`. The normal Docker context was not changed. Duplicate untracked files with ` 2` in their names were preserved and excluded from the commit.
 
 ## Repeat local checks
 

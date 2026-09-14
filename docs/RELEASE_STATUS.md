@@ -4,6 +4,18 @@ This file records the latest **go / no-go** assessment for sharing the repo publ
 
 ## Verification log (this workspace)
 
+**2026-09-14 — Linux runtime acceptance and dependency reduction (not stable)**
+
+Removed unused `keyring` and `mimalloc` direct dependencies, eliminating 157 locked packages without adding or upgrading packages. The original Linux image build was killed for memory exhaustion inside the unused transitive Turso database. The revised optimized Linux arm64 image built successfully in 5m 51s on a dedicated 2-CPU, 4-GiB Colima VM. Its actual runtime passed UID 10001/filesystem checks, isolated offline CLI smoke, and synthetic provider/tool/HTTP integration, including bearer authentication and persistent session export. All **775 workspace tests pass on Linux arm64**, after installing Git in the disposable build-stage test container. A reusable container smoke script now runs in CI.
+
+After dependency removal, macOS workspace tests (**775**), strict Clippy, formatting, and dependency policy pass. Optimized macOS compilation, byte-identical source installation, offline CLI and synthetic provider/HTTP integration pass. Installer tests (**4**) and browser DOM regressions (**2**) pass. Prior coverage and desktop/editor artifact checks remain documented separately; coverage was not remeasured for this dependency-only change.
+
+**Go/no-go:** Linux arm64 runtime acceptance **PASS**; supported stable release **NO-GO**. Hardening commit `4e0d980` was pushed. Its CI [34796445513](https://github.com/seanebones-lang/harness/actions/runs/34796445513) and Coverage [34796445491](https://github.com/seanebones-lang/harness/actions/runs/34796445491) were rejected before execution because of GitHub's account billing lock. Full native platform/install acceptance, clean-machine interactive checks, desktop signing/notarization and complete versioned release artifacts remain open. No release tag or production publication was made.
+
+Logs and packaged editor artifact are retained locally in `target/production-readiness/2026-09-14/`; [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) is the current restart record.
+
+---
+
 **2026-09-13 — Production hardening candidate (not stable)**
 
 Integrated upstream documentation commit `820f902`; its 62.28% remeasure is retained in COVERAGE.md history and superseded by the candidate measurement below.

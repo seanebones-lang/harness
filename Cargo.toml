@@ -105,14 +105,12 @@ chrono = { workspace = true }
 rusqlite = { workspace = true }
 dotenvy = "0.15.7"
 age = "0.11.3"
-keyring = "4.0.0"
 tar = "0.4.45"
 notify-rust = "4.16.0"
 arboard = "3.6.1"
 toml_edit = "0.25.11"
 lru = "0.18.0"
 clap_complete = "4.6.3"
-mimalloc = "0.1.50"
 regex.workspace = true
 lazy_static = "1.5.0"
 urlencoding = "2.1.3"

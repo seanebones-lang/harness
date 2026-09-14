@@ -28,9 +28,6 @@ mod tui;
 
 mod cli;
 
-// mimalloc is linked but turso already sets the global allocator.
-// We still benefit from mimalloc being in the dependency tree via turso.
-
 use anyhow::{Context, Result};
 use clap::Parser;
 use harness_provider_core::ArcProvider;

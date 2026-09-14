@@ -14,6 +14,17 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  container:
+    name: Container runtime acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build locked production image
+        run: docker build -t harness:ci .
+      - name: Verify runtime image and provider integration
+        run: bash scripts/smoke_container.sh harness:ci
+
   supply-chain:
     name: Supply chain (audit + deny)
     runs-on: ubuntu-latest
