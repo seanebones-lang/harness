@@ -2,7 +2,7 @@
 
 This guide walks through installing NextEleven Harness on every OS the project **tests in CI** and supports in the field: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
 
-**Status (August 2026):** Public **beta** — **376 binary tests**, P0 security closed. See [`TODO.md`](../TODO.md) for open work and [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for latest gates.
+**Status (September 14, 2026):** Public **beta / proof of concept** — **775 workspace tests pass** on macOS arm64 and Linux arm64; P0 security work is closed. See [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for current gates. Stable release remains blocked on remote platform execution, signed artifacts, and the GitHub Actions billing lock.
 
 **Quick links:** [macOS](#macos) · [Linux](#linux) · [Windows](#windows-native) · [WSL2](#windows-subsystem-for-linux-wsl2) · [After installing](#after-installing) · [Updating](#updating) · [Uninstall](#uninstall)
 

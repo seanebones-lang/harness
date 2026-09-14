@@ -1,6 +1,6 @@
 # Production readiness — 2026-09-14
 
-**Decision: hardened candidate; not yet a supported production release.** The local macOS CLI and HTTP paths pass the checks below, including one real provider round trip. Cross-platform CI and the complete release artifact matrix remain blocked by GitHub's account billing lock. No stable tag or production release was published as part of this work.
+**Decision: hardened candidate; not yet a supported production release.** The macOS arm64 and Linux arm64 CLI, HTTP, and container paths pass the checks below, including one real provider round trip. Cross-platform CI and the complete release artifact matrix remain blocked by GitHub's account billing lock. No stable tag or production release was published as part of this work.
 
 ## Scope and starting state
 

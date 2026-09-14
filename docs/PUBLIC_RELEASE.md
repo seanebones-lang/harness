@@ -82,9 +82,9 @@ Record here when you run this checklist (update the table per release).
 
 See **[`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md)** for the latest automated gate results. That log is the source of truth for current test counts, security posture, and remaining manual release gates.
 
-- **Date:** update when you tag
-- **Recorded revision:** `git log -1 --oneline`
-- **Go / no-go:** **GO** for public beta under the proprietary evaluation license — complete TUI + `gh` checks on a full dev machine before calling it stable.
+- **Date:** 2026-09-14 (candidate; do not tag yet)
+- **Recorded revision:** `3aa38c5 build: remove unused database graph and verify Linux runtime`
+- **Go / no-go:** **GO** for public beta under the proprietary evaluation license. The candidate has passing macOS arm64 and Linux arm64 workspace/runtime evidence; complete the remote native matrix, TUI/`gh` checks, signed artifacts, and billing recovery before calling it stable.
 
 ---
 

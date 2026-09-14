@@ -10,7 +10,7 @@
 
 **Provider-neutral by design:** Harness does not choose, recommend, or rank a vendor, model, or fallback order. Setup saves your exact `provider:model` route; the first entry is primary and every later entry is tried in the order you chose. Eighteen alphabetized built-in names are convenience configurations, not a closed catalogue: custom OpenAI chat-completions-compatible HTTP(S) endpoints can be added from the CLI without changing Rust code.
 
-**Status:** public **beta / POC** (daily-driver capable). Version **1.3.0**. **Stable** is blocked on full REL-01 smoke matrix + verified release artifacts (Actions currently billing-locked) (see [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md)).
+**Status (2026-09-14):** public **beta / POC** (daily-driver capable). Version **1.3.0**. Candidate commit **`3aa38c5`** passes 775 workspace tests on macOS arm64 and Linux arm64, and the optimized Linux container passes runtime acceptance. **Stable** remains blocked on remote native matrix execution, signed release artifacts, and the GitHub Actions billing lock (see [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md)).
 **Branch:** ship on **`main`** only.  
 **License:** proprietary — NextEleven LLC ([`LICENSE`](LICENSE)). **Not MIT. Not open source.** Public repo = proof-of-concept visibility only.
 
@@ -252,7 +252,7 @@ TUI: **F2** or `/swarm` dumps swarm registry lines into the single-panel transcr
 ```bash
 cargo build
 cargo build --profile release-lto
-cargo test --bin harness          # 454 tests (2026-09-13; no API keys)
+  cargo test --bin harness          # 454 tests (2026-09-14; no API keys)
 cargo test -p harness-tools       # 179 tests (Swarm-51)
 cargo test -p harness-provider-router
 cargo clippy -p harness --bin harness -- -D warnings
