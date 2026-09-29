@@ -90,6 +90,16 @@ pub fn dispatch(action: &DeadboltAction, cfg: &Config) -> Result<()> {
                 report.swarm_task_ids.len()
             );
         }
+        DeadboltAction::Serve { bind } => {
+            let path = bind
+                .clone()
+                .unwrap_or_else(harness_deadbolt::default_bind_path);
+            if harness_deadbolt::bind_refused(&path) {
+                anyhow::bail!("deadbolt:bind_refused");
+            }
+            println!("deadbolt serve {}", path.display());
+            harness_deadbolt::serve(&cfg.deadbolt, &path)?;
+        }
         DeadboltAction::Drill => unreachable!("drill handled above"),
     }
     Ok(())

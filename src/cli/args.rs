@@ -303,6 +303,12 @@ pub enum DeadboltAction {
     },
     /// In-process self-check. No API keys. Exits 0 on success.
     Drill,
+    /// Local Unix sidecar. Not a model tool. Refuses `0.0.0.0`.
+    Serve {
+        /// Socket path. Default `~/.harness/deadbolt.sock`.
+        #[arg(long)]
+        bind: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]

@@ -20,6 +20,11 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod serve;
+mod witness;
+pub use serve::{bind_refused, default_bind_path, serve};
+pub use witness::WitnessSink;
+
 const TOKEN_MAX: usize = 128;
 
 /// Operator configuration (`[deadbolt]`).
@@ -40,6 +45,18 @@ pub struct DeadboltConfig {
     /// Append-only JSONL path. Default `~/.harness/deadbolt-events.jsonl`.
     #[serde(default)]
     pub events_path: Option<String>,
+    /// Env var that holds the sidecar token. Unset means no HTTP token.
+    #[serde(default)]
+    pub token_env: Option<String>,
+    /// Token file. Used only when mode is `0600` and `token_env` is empty.
+    #[serde(default)]
+    pub token_file: Option<String>,
+    /// Write a second Witness-shaped store. Default off. Drill stays JSONL-only.
+    #[serde(default)]
+    pub witness: bool,
+    /// Witness sqlite path. Default `~/.harness/deadbolt-witness.db`.
+    #[serde(default)]
+    pub witness_db: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -58,6 +75,10 @@ impl Default for DeadboltConfig {
             lease_ttl_secs: 60,
             db_path: None,
             events_path: None,
+            token_env: None,
+            token_file: None,
+            witness: false,
+            witness_db: None,
         }
     }
 }
@@ -131,6 +152,9 @@ pub enum DeadboltError {
     /// Drill scenario failed. The string is a code token, not prose.
     #[error("deadbolt:drill_failed:{0}")]
     DrillFailed(&'static str),
+    /// Bind was not a local socket. `0.0.0.0` is refused.
+    #[error("deadbolt:bind_refused")]
+    BindRefused,
 }
 
 /// Why admit refused the action.
@@ -244,6 +268,7 @@ impl JsonlSqliteSink {
         let conn = Connection::open(db).map_err(|_| SinkError::Unavailable)?;
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
+             PRAGMA busy_timeout=5000;
              CREATE TABLE IF NOT EXISTS leases (
                agent_id TEXT PRIMARY KEY,
                parent_id TEXT,
@@ -299,8 +324,9 @@ fn write_record(g: &mut StoreInner, record: &EvidenceRecord) -> Result<(), SinkE
         EpistemicClass::Inferred => "inferred",
         EpistemicClass::Generated => "generated",
     };
-    g.conn
-        .execute(
+    let start = std::time::Instant::now();
+    loop {
+        match g.conn.execute(
             "INSERT INTO events (seq, cid, payload_sha256, class, kind, payload, premises, ts)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
@@ -313,8 +339,14 @@ fn write_record(g: &mut StoreInner, record: &EvidenceRecord) -> Result<(), SinkE
                 premises,
                 now_secs()
             ],
-        )
-        .map_err(|_| SinkError::Unavailable)?;
+        ) {
+            Ok(_) => break,
+            Err(e) if is_sqlite_busy(&e) && start.elapsed() < BUSY_BUDGET => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(_) => return Err(SinkError::Unavailable),
+        }
+    }
     let line = serde_json::to_string(record).map_err(|_| SinkError::Unavailable)?;
     g.events
         .write_all(line.as_bytes())
@@ -326,11 +358,39 @@ fn write_record(g: &mut StoreInner, record: &EvidenceRecord) -> Result<(), SinkE
     Ok(())
 }
 
+const BUSY_BUDGET: std::time::Duration = std::time::Duration::from_millis(5000);
+
+fn is_sqlite_busy(err: &rusqlite::Error) -> bool {
+    match err {
+        rusqlite::Error::SqliteFailure(e, _) => {
+            matches!(
+                e.code,
+                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+            )
+        }
+        _ => false,
+    }
+}
+
+fn keeps_deny_code(decision: AdmitDecision) -> bool {
+    matches!(
+        decision,
+        AdmitDecision::Deny {
+            code: DenyCode::Killed
+                | DenyCode::Paused
+                | DenyCode::PurposeExceeded
+                | DenyCode::LeaseExpired
+                | DenyCode::NoLease
+        }
+    )
+}
+
 /// Out-of-band lease gate. Clone shares the store.
 #[derive(Clone)]
 pub struct Deadbolt {
     store: Option<Arc<JsonlSqliteSink>>,
     sink: Option<Arc<dyn EvidenceSink>>,
+    witness: Option<Arc<dyn EvidenceSink>>,
     fail_closed: bool,
     ttl: u64,
     enabled: bool,
@@ -349,13 +409,25 @@ impl Deadbolt {
             .as_deref()
             .map(expand_path)
             .unwrap_or_else(default_events_path);
-        Self::open_paths(
+        let mut gate = Self::open_paths(
             &db,
             &events,
             cfg.enabled,
             cfg.fail_closed,
             cfg.lease_ttl_secs,
-        )
+        );
+        if cfg.witness && gate.enabled && gate.store.is_some() {
+            let path = cfg
+                .witness_db
+                .as_deref()
+                .map(expand_path)
+                .unwrap_or_else(default_witness_path);
+            gate.witness = Some(match WitnessSink::open(&path) {
+                Ok(sink) => Arc::new(sink),
+                Err(_) => Arc::new(ClosedWitness),
+            });
+        }
+        gate
     }
 
     /// Open a store under `dir` (tests and drill). Does not touch `~/.harness`.
@@ -374,6 +446,7 @@ impl Deadbolt {
             return Self {
                 store: None,
                 sink: None,
+                witness: None,
                 fail_closed,
                 ttl,
                 enabled: false,
@@ -386,6 +459,7 @@ impl Deadbolt {
                 Self {
                     store: Some(store),
                     sink: Some(sink),
+                    witness: None,
                     fail_closed,
                     ttl,
                     enabled: true,
@@ -394,6 +468,7 @@ impl Deadbolt {
             Err(_) => Self {
                 store: None,
                 sink: None,
+                witness: None,
                 fail_closed,
                 ttl,
                 enabled: true,
@@ -527,13 +602,15 @@ impl Deadbolt {
         }
         let decision = self.evaluate(agent_id, tool);
         let deny = matches!(decision, AdmitDecision::Deny { .. });
-        if (record_allow || deny)
-            && self.record_decision(agent_id, tool, &decision).is_err()
-            && self.fail_closed
-        {
-            return AdmitDecision::Deny {
-                code: DenyCode::StoreUnavailable,
-            };
+        if (record_allow || deny) && self.record_decision(agent_id, tool, &decision).is_err() {
+            if keeps_deny_code(decision) {
+                return decision;
+            }
+            if self.fail_closed {
+                return AdmitDecision::Deny {
+                    code: DenyCode::StoreUnavailable,
+                };
+            }
         }
         decision
     }
@@ -878,11 +955,14 @@ impl Deadbolt {
             AdmitDecision::Deny { .. } => return Err(DeadboltError::DrillFailed("admit_a")),
         }
         db.kill("drill-a")?;
-        match db.admit("drill-a", "read_file") {
+        match db.admit("drill-a", "shell") {
             AdmitDecision::Deny {
                 code: DenyCode::Killed,
             } => {}
-            _ => return Err(DeadboltError::DrillFailed("kill_a")),
+            AdmitDecision::Deny {
+                code: DenyCode::StoreUnavailable,
+            } => return Err(DeadboltError::DrillFailed("post_kill_store_unavailable")),
+            _ => return Err(DeadboltError::DrillFailed("post_kill_not_killed")),
         }
         match db.admit("drill-b", "read_file") {
             AdmitDecision::Allow => {}
@@ -901,6 +981,30 @@ impl Deadbolt {
                 code: DenyCode::Killed,
             } => {}
             _ => return Err(DeadboltError::DrillFailed("child_deny")),
+        }
+        db.ensure_agent("line-p")?;
+        db.ensure_agent("line-b")?;
+        let line_live = db.register_child("line-p", "line-c", Some("swarm-line"))?;
+        if !line_live {
+            return Err(DeadboltError::DrillFailed("lineage_child_live"));
+        }
+        match db.admit("line-c", "read_file") {
+            AdmitDecision::Allow => {}
+            _ => return Err(DeadboltError::DrillFailed("lineage_child_allow")),
+        }
+        db.kill("line-p")?;
+        match db.admit("line-c", "shell") {
+            AdmitDecision::Deny {
+                code: DenyCode::Killed,
+            } => {}
+            AdmitDecision::Deny {
+                code: DenyCode::StoreUnavailable,
+            } => return Err(DeadboltError::DrillFailed("lineage_store_unavailable")),
+            _ => return Err(DeadboltError::DrillFailed("lineage_not_killed")),
+        }
+        match db.admit("line-b", "shell") {
+            AdmitDecision::Allow => {}
+            _ => return Err(DeadboltError::DrillFailed("lineage_unrelated")),
         }
         db.ensure_agent("drill-d")?;
         db.clip("drill-d", "shell")?;
@@ -991,6 +1095,9 @@ impl Deadbolt {
         };
         let record = EvidenceRecord::seal(class, kind, payload, premises, seq)?;
         sink.append(&record)?;
+        if let Some(witness) = &self.witness {
+            witness.append(&record)?;
+        }
         Ok(record.cid)
     }
 
@@ -1125,6 +1232,11 @@ pub fn default_events_path() -> PathBuf {
     harness_home().join("deadbolt-events.jsonl")
 }
 
+/// Default Witness sqlite path. JSONL is the sibling `.jsonl`.
+pub fn default_witness_path() -> PathBuf {
+    harness_home().join("deadbolt-witness.db")
+}
+
 fn harness_home() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -1138,6 +1250,14 @@ fn expand_path(raw: &str) -> PathBuf {
         }
     }
     PathBuf::from(raw)
+}
+
+struct ClosedWitness;
+
+impl EvidenceSink for ClosedWitness {
+    fn append(&self, _record: &EvidenceRecord) -> Result<(), SinkError> {
+        Err(SinkError::Unavailable)
+    }
 }
 
 struct DrillDir(PathBuf);
@@ -1333,10 +1453,62 @@ fn status_of(lease: Lease) -> AgentStatus {
 mod tests {
     use super::*;
 
+    struct FailSink;
+
+    impl EvidenceSink for FailSink {
+        fn append(&self, _record: &EvidenceRecord) -> Result<(), SinkError> {
+            Err(SinkError::Unavailable)
+        }
+    }
+
     fn gate() -> (tempfile::TempDir, Deadbolt) {
         let dir = tempfile::tempdir().unwrap();
         let db = Deadbolt::open_at(dir.path(), true, 60);
         (dir, db)
+    }
+
+    #[test]
+    fn post_kill_shell_deny_is_killed_not_store_unavailable() {
+        for _ in 0..20 {
+            let (_dir, db) = gate();
+            db.ensure_agent("A").unwrap();
+            db.ensure_agent("B").unwrap();
+            db.kill("A").unwrap();
+            assert_eq!(
+                db.admit("A", "shell"),
+                AdmitDecision::Deny {
+                    code: DenyCode::Killed
+                }
+            );
+            assert!(matches!(db.admit("B", "shell"), AdmitDecision::Allow));
+        }
+    }
+
+    #[test]
+    fn killed_deny_kept_when_sink_append_fails() {
+        let (_dir, mut db) = gate();
+        db.ensure_agent("A").unwrap();
+        db.kill("A").unwrap();
+        db.sink = Some(Arc::new(FailSink));
+        assert_eq!(
+            db.admit("A", "shell"),
+            AdmitDecision::Deny {
+                code: DenyCode::Killed
+            }
+        );
+    }
+
+    #[test]
+    fn allow_write_failure_fail_closed_is_store_unavailable() {
+        let (_dir, mut db) = gate();
+        db.ensure_agent("A").unwrap();
+        db.sink = Some(Arc::new(FailSink));
+        assert_eq!(
+            db.admit("A", "read_file"),
+            AdmitDecision::Deny {
+                code: DenyCode::StoreUnavailable
+            }
+        );
     }
 
     #[test]
@@ -1351,6 +1523,23 @@ mod tests {
                 code: DenyCode::Killed
             }
         );
+    }
+
+    #[test]
+    fn parent_kill_denies_child_first_admit() {
+        let (_dir, db) = gate();
+        db.ensure_agent("P").unwrap();
+        db.ensure_agent("B").unwrap();
+        assert!(db.register_child("P", "C", Some("swarm-fake")).unwrap());
+        assert!(matches!(db.admit("C", "read_file"), AdmitDecision::Allow));
+        db.kill("P").unwrap();
+        assert_eq!(
+            db.admit("C", "shell"),
+            AdmitDecision::Deny {
+                code: DenyCode::Killed
+            }
+        );
+        assert!(matches!(db.admit("B", "shell"), AdmitDecision::Allow));
     }
 
     #[test]
@@ -1484,6 +1673,59 @@ mod tests {
         assert!(is_shutdown_tool("deadbolt"));
         assert!(!is_shutdown_tool("read_file"));
         assert!(!is_shutdown_tool("shell"));
+    }
+
+    #[test]
+    fn inferred_purpose_exceeded_has_premises() {
+        let dir = tempfile::tempdir().unwrap();
+        let witness_db = dir.path().join("witness.db");
+        let db = Deadbolt::open(&DeadboltConfig {
+            db_path: Some(dir.path().join("deadbolt.db").display().to_string()),
+            events_path: Some(dir.path().join("events.jsonl").display().to_string()),
+            witness: true,
+            witness_db: Some(witness_db.display().to_string()),
+            ..DeadboltConfig::default()
+        });
+        db.ensure_agent("A").unwrap();
+        db.clip("A", "shell").unwrap();
+        assert_eq!(
+            db.admit("A", "shell"),
+            AdmitDecision::Deny {
+                code: DenyCode::PurposeExceeded
+            }
+        );
+        let text = fs::read_to_string(dir.path().join("witness.jsonl")).unwrap();
+        assert!(!text.contains("generated"));
+        let mut saw = false;
+        for line in text.lines().filter(|l| !l.is_empty()) {
+            let row: Value = serde_json::from_str(line).unwrap();
+            let class = row["epistemic_type"].as_str().unwrap();
+            assert!(class == "observed" || class == "inferred");
+            if row["kind"] == "purpose_exceeded" {
+                saw = true;
+                assert_eq!(class, "inferred");
+                assert!(row["premises"].as_array().unwrap().len() >= 2);
+                assert!(row["cid"].as_str().unwrap().starts_with("sha256:"));
+            }
+            if class == "observed" {
+                assert!(row["premises"].as_array().unwrap().is_empty());
+            }
+        }
+        assert!(saw);
+    }
+
+    #[test]
+    fn killed_deny_not_rewritten_when_witness_append_fails() {
+        let (_dir, mut db) = gate();
+        db.ensure_agent("A").unwrap();
+        db.kill("A").unwrap();
+        db.witness = Some(Arc::new(FailSink));
+        assert_eq!(
+            db.admit("A", "shell"),
+            AdmitDecision::Deny {
+                code: DenyCode::Killed
+            }
+        );
     }
 
     #[test]

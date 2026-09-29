@@ -242,3 +242,6 @@ fail_closed = true
 lease_ttl_secs = 60
 db_path = "~/.harness/deadbolt.db"
 events_path = "~/.harness/deadbolt-events.jsonl"
+# token_env = "DEADBOLT_TOKEN"
+# witness = false
+# witness_db = "~/.harness/deadbolt-witness.db"
