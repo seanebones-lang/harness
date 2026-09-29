@@ -20,13 +20,13 @@ harness deadbolt incident --agent ID [--out PATH] [--json] [--children]
 
 `kill` requires `--agent`. It revokes that agent_id and its children, and cancels swarm tasks bound to those leases. Killing agent A does not block agent B. The lease is bound to `agent_id`, not a vendor API key.
 
-`policy` sets blast radius. Omitted flags leave the stored value. An unset list stays open. An off-list tool or a missing or foreign dest is deny `purpose_exceeded`. Crossing `--spend-cap` pauses the lease. The next admit is `spend_cap`.
+`policy` sets blast radius. Omitted flags leave the stored value. An unset list stays open. An off-list tool is deny `purpose_exceeded`. A present foreign dest is deny `purpose_exceeded`. A missing dest is deny `purpose_exceeded` only for a network-class tool (`http`, `fetch`, `browser`, `web_search`). A local tool with no host is not denied for `dest_allow` alone. Crossing `--spend-cap` pauses the lease. The next admit is `spend_cap`.
 
 `approve` grants one shot for one irreversible tool. It is not a model tool. The next admit of that tool is allow. The one after that is `needs_human` again.
 
 `incident` writes the token file from the pinned crate. `--json` is the default. `--json=false` prints `agent= killed_at= children= codes=` and no prose. The file always lists children. `--children` does not strip them.
 
-Pinned crate: `github.com/seanebones-lang/deadbolt` rev `25dfcf4`.
+Pinned crate: `github.com/seanebones-lang/deadbolt` rev `ec1bcf5`.
 
 `drill` is an in-process self-check. It does not need API keys and does not touch `~/.harness`.
 
@@ -41,7 +41,7 @@ db_path = "~/.harness/deadbolt.db"
 events_path = "~/.harness/deadbolt-events.jsonl"
 ```
 
-If the store cannot be opened or written and `fail_closed` is true, every admit is Deny. The lease is rechecked on every tool action, including MCP adapters, which execute only through `ToolExecutor`. The executor passes `dest` when the tool arguments contain `url`, `uri`, `href`, `endpoint`, or `host`. Same parse as `deadbolt mcp-proxy`. If `dest_allow` is set and no host parses, admit is `purpose_exceeded` and the tool body does not run. `needs_human` and `spend_cap` deny the same way. Admit runs once, before the body. A second admit is not used, because that would consume an irreversible one-shot. Confirm-gate and the workspace jail stay.
+If the store cannot be opened or written and `fail_closed` is true, every admit is Deny. The lease is rechecked on every tool action, including MCP adapters, which execute only through `ToolExecutor`. The executor passes `dest` when the tool arguments contain `url`, `uri`, `href`, `endpoint`, or `host`. Same parse as `deadbolt mcp-proxy`. If `dest_allow` is set and no host parses, admit is `purpose_exceeded` only for a network-class tool. A local tool with no host is not denied for that reason. A present foreign host is `purpose_exceeded`. The tool body does not run on deny. `needs_human` and `spend_cap` deny the same way. A live admit, allow or deny, renews the TTL. Silence expires the lease. Admit runs once, before the body. A second admit is not used, because that would consume an irreversible one-shot. Confirm-gate and the workspace jail stay.
 
 ## Evidence
 

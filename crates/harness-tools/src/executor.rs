@@ -847,10 +847,15 @@ mod tests {
         assert!(foreign.contains("purpose_exceeded"));
         assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
         let missing = exec
-            .execute(&call_args("shell", json!({"note": "no host"})))
+            .execute(&call_args("fetch", json!({"note": "no host"})))
             .await;
         assert!(missing.contains("purpose_exceeded"));
         assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        let local = exec
+            .execute(&call_args("shell", json!({"note": "no host"})))
+            .await;
+        assert!(!local.contains("purpose_exceeded"), "{local}");
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     #[tokio::test]

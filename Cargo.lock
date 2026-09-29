@@ -1132,21 +1132,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4ae5f15dda3c708c0ade84bfee31ccab44a3da4f88015ed22f63732abe300c8"
 
 [[package]]
-name = "deadbolt"
-version = "0.1.0"
-source = "git+https://github.com/seanebones-lang/deadbolt?rev=25dfcf4648364b9e01bb0b7a8ef6f47fa2caa531#25dfcf4648364b9e01bb0b7a8ef6f47fa2caa531"
-dependencies = [
- "clap",
- "dirs",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1770,7 +1755,7 @@ dependencies = [
 name = "harness-deadbolt"
 version = "1.3.0"
 dependencies = [
- "deadbolt",
+ "n11-deadbolt",
 ]
 
 [[package]]
@@ -2848,6 +2833,21 @@ checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
+]
+
+[[package]]
+name = "n11-deadbolt"
+version = "0.1.0"
+source = "git+https://github.com/seanebones-lang/deadbolt?rev=ec1bcf58e9eaacceb17c0947bb39d9772bb71fdf#ec1bcf58e9eaacceb17c0947bb39d9772bb71fdf"
+dependencies = [
+ "clap",
+ "dirs",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

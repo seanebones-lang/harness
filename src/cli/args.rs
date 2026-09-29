@@ -359,11 +359,23 @@ pub enum DeadboltAction {
         /// Write the file here. Default is stdout.
         #[arg(long)]
         out: Option<PathBuf>,
-        /// JSON when true. Token line when false.
-        #[arg(long, default_value_t = true, action = ArgAction::Set)]
+        /// JSON when true. Bare `--json` is true. `--json true` still works.
+        #[arg(
+            long,
+            action = ArgAction::Set,
+            num_args = 0..=1,
+            default_missing_value = "true",
+            default_value = "true"
+        )]
         json: bool,
         /// Incident JSON always lists children. This flag does not strip them.
-        #[arg(long, default_value_t = true, action = ArgAction::Set)]
+        #[arg(
+            long,
+            action = ArgAction::Set,
+            num_args = 0..=1,
+            default_missing_value = "true",
+            default_value = "true"
+        )]
         children: bool,
     },
 }
