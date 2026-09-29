@@ -91,14 +91,31 @@ pub fn dispatch(action: &DeadboltAction, cfg: &Config) -> Result<()> {
             );
         }
         DeadboltAction::Serve { bind } => {
-            let path = bind
-                .clone()
-                .unwrap_or_else(harness_deadbolt::default_bind_path);
+            let path = bind.clone().unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join(".harness")
+                    .join("deadbolt.sock")
+            });
             if harness_deadbolt::bind_refused(&path) {
                 anyhow::bail!("deadbolt:bind_refused");
             }
             println!("deadbolt serve {}", path.display());
             harness_deadbolt::serve(&cfg.deadbolt, &path)?;
+        }
+        DeadboltAction::Export {
+            agent,
+            out,
+            json,
+            children,
+        } => {
+            let rows = db.export(agent, *children)?;
+            let text = harness_deadbolt::format_export(&rows, *json);
+            if let Some(path) = out {
+                std::fs::write(path, text)?;
+            } else {
+                print!("{text}");
+            }
         }
         DeadboltAction::Drill => unreachable!("drill handled above"),
     }

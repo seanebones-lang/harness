@@ -1,6 +1,6 @@
 //! CLI argument definitions (clap).
 
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -308,6 +308,21 @@ pub enum DeadboltAction {
         /// Socket path. Default `~/.harness/deadbolt.sock`.
         #[arg(long)]
         bind: Option<PathBuf>,
+    },
+    /// Export one agent's evidence. JSONL. Not a model tool.
+    Export {
+        /// Agent id. Not a vendor key.
+        #[arg(long)]
+        agent: String,
+        /// Write JSONL here. Default is stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// JSONL when true. Token lines when false.
+        #[arg(long, default_value_t = true, action = ArgAction::Set)]
+        json: bool,
+        /// Include child leases.
+        #[arg(long, default_value_t = false)]
+        children: bool,
     },
 }
 

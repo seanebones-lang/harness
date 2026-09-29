@@ -2,7 +2,7 @@
 
 Deadbolt is an out-of-band lease gate. It is not a model tool. The model cannot call pause, clip, resume, kill, or drill. There is no fleet halt and no shutdown tool in the tool list.
 
-Harness calls Deadbolt. Deadbolt writes evidence through a thin Witness-shaped sink (Observed / Inferred / Generated, premises on inferences, sha256 content id). This crate does not vendor Witness or EvidenceLens and does not depend on the TUI or provider types.
+Harness calls the Apache-2.0 crate at <https://github.com/seanebones-lang/deadbolt>. This repository stays proprietary. Harness is a consumer. The sidecar still does not shut down frontier models. It cuts tool, MCP, and spawn for one agent id. `harness deadbolt serve` keeps `~/.harness/deadbolt.sock`. The standalone `deadbolt` binary defaults to `~/.deadbolt/deadbolt.sock`.
 
 ## Operator CLI
 
@@ -37,6 +37,12 @@ If the store cannot be opened or written and `fail_closed` is true, every admit 
 Append-only JSONL plus sqlite rows. A tool attempt and the allow/deny decision are Observed. A clip breaker ("purpose exceeded") is Inferred and cites premise content ids. Prose is rejected. Each record carries a sha256 content id over the payload.
 
 `[deadbolt] witness = true` also appends format-compatible rows (`epistemic_type`, `cid`, `premises`) to `witness_db`. Default is off, so drill does not open Witness. A Witness write failure does not replace `killed`, `paused`, `purpose_exceeded`, `lease_expired`, or `no_lease`. Generated is not written.
+
+`harness deadbolt export --agent ID [--out PATH] [--json] [--children]`
+Default out is stdout. The file is JSONL, one record per line.
+`--json=false` prints `key=value` tokens, not sentences.
+Rows keep class, kind, cid, payload_sha256, premises, agent_id, tool, decision, code, ts.
+`--children` includes child leases. A generated row refuses the export.
 
 ## Lineage
 
