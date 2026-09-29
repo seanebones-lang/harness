@@ -38,6 +38,7 @@ This design means that adding a new provider requires no changes to the agent lo
 | `harness-provider-mlx` | Apple Silicon MLX via `mlx_lm.server` |
 | `harness-provider-router` | Exact user-owned primary/fallback routing and provider catalogue |
 | `harness-tools` | Tool trait and all built-in tools (file, shell, search, git, gh, patch, spawn) |
+| `harness-deadbolt` | Out-of-band lease gate. Not a model tool. See `docs/DEADBOLT.md`. |
 | `harness-memory` | SQLite session store and vector memory with cosine search |
 | `harness-mcp` | Full MCP 2025-03-26 protocol client (tools, resources, sampling, roots, progress) |
 | `harness-browser` | Chrome DevTools Protocol automation |
@@ -75,8 +76,10 @@ User input (TUI / CLI / HTTP)
         │
         ├─ Text ──► AgentEvent::TextChunk ──► TUI / SSE / stdout
         │
-        ├─ ToolCall ──► harness-tools: Tool::execute()
+        ├─ ToolCall ──► harness-tools: ToolExecutor::execute()
         │                     │
+        │                     ├─ harness-deadbolt: admit()  (lease recheck; Deny skips the body)
+        │                     ├─ confirm gate + workspace jail
         │                     ├─ ReadFileTool, WriteFileTool, PatchFileTool
         │                     ├─ ShellTool, SearchCodeTool, GitTool, GhTool
         │                     ├─ SpawnAgentTool (recursive drive_agent)

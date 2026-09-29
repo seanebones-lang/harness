@@ -4,6 +4,7 @@ use crate::policy::tool_requires_confirmation;
 use crate::registry::Tool as _;
 use crate::registry::ToolRegistry;
 use crate::tools::TestRunnerTool;
+use harness_deadbolt::{AdmitDecision, ToolAdmit};
 use harness_provider_core::ToolCall;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -57,6 +58,10 @@ pub struct ToolExecutor {
     auto_approve: HashSet<String>,
     /// Which calls require confirmation when the gate is enabled.
     confirm_policy: ConfirmPolicy,
+    /// Out-of-band Deadbolt lease. Absent means the gate is not attached.
+    admit: Option<Arc<dyn ToolAdmit>>,
+    /// Agent the lease is bound to. Not a vendor key.
+    agent_id: Option<String>,
 }
 
 impl ToolExecutor {
@@ -76,6 +81,8 @@ impl ToolExecutor {
             shell_confirm_patterns: Vec::new(),
             auto_approve: HashSet::new(),
             confirm_policy: ConfirmPolicy::Off,
+            admit: None,
+            agent_id: None,
         }
     }
 
@@ -187,6 +194,37 @@ impl ToolExecutor {
         false
     }
 
+    /// Attach Deadbolt. `admit` runs before any tool body, including MCP adapters.
+    pub fn with_deadbolt(mut self, gate: Arc<dyn ToolAdmit>, agent_id: impl Into<String>) -> Self {
+        self.admit = Some(gate);
+        self.agent_id = Some(agent_id.into());
+        self
+    }
+
+    /// Rebind the lease id. Used when a swarm worker shares a parent executor.
+    pub fn with_agent_id(&self, agent_id: impl Into<String>) -> Self {
+        let mut out = self.clone();
+        out.agent_id = Some(agent_id.into());
+        out
+    }
+
+    fn deadbolt_deny(&self, tool: &str, record: bool) -> Option<String> {
+        let (Some(gate), Some(agent_id)) = (&self.admit, &self.agent_id) else {
+            return None;
+        };
+        let decision = if record {
+            gate.admit_tool(agent_id, tool)
+        } else {
+            gate.probe_tool(agent_id, tool)
+        };
+        match decision {
+            AdmitDecision::Allow => None,
+            AdmitDecision::Deny { code } => {
+                Some(format!("[deadbolt] denied {tool}: {}", code.as_str()))
+            }
+        }
+    }
+
     /// Attach a confirmation gate (enables plan/approve mode).
     pub fn with_confirm_gate(mut self, gate: ConfirmGate) -> Self {
         self.confirm_gate = Some(gate);
@@ -251,6 +289,12 @@ impl ToolExecutor {
             Err(e) => return format!("Error parsing tool arguments: {e}"),
         };
 
+        // Deadbolt admit is out-of-band and runs before any tool body, confirm
+        // write, or MCP adapter execute. Confirm-gate and the workspace jail stay.
+        if let Some(denied) = self.deadbolt_deny(&call.function.name, true) {
+            return denied;
+        }
+
         let Some(tool) = self.registry.get(&call.function.name) else {
             warn!(name = %call.function.name, "unknown tool requested");
             return format!("Unknown tool: {}", call.function.name);
@@ -274,6 +318,9 @@ impl ToolExecutor {
                             );
                         }
                         ConfirmResult::ApplyContent { path, content } => {
+                            if let Some(denied) = self.deadbolt_deny(&call.function.name, false) {
+                                return denied;
+                            }
                             if let Err(e) = tokio::fs::write(&path, &content).await {
                                 return format!("Tool error writing {path}: {e}");
                             }
@@ -302,6 +349,9 @@ impl ToolExecutor {
         }
 
         debug!(tool = %call.function.name, "executing tool");
+        if let Some(denied) = self.deadbolt_deny(&call.function.name, false) {
+            return denied;
+        }
         let result = match tool.execute(args.clone()).await {
             Ok(output) => output,
             Err(e) => return format!("Tool error: {e}"),
@@ -576,5 +626,52 @@ mod tests {
             ex.test_needs_confirmation("shell", &json!({"command": "do danger thing"}))
                 .await
         );
+    }
+
+    fn call(name: &str) -> ToolCall {
+        ToolCall {
+            id: "t".into(),
+            kind: "function".into(),
+            function: harness_provider_core::ToolCallFunction {
+                name: name.into(),
+                arguments: "{}".into(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn deadbolt_deny_after_kill_blocks_next_admit() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("agent-a").expect("lease");
+        let exec =
+            ToolExecutor::new(ToolRegistry::new()).with_deadbolt(Arc::new(gate.clone()), "agent-a");
+        let allowed = exec.execute(&call("read_file")).await;
+        assert!(!allowed.contains("[deadbolt]"));
+        gate.kill("agent-a").expect("kill");
+        let denied = exec.execute(&call("read_file")).await;
+        assert!(denied.contains("[deadbolt]"));
+        assert!(denied.contains("killed"));
+        let other =
+            ToolExecutor::new(ToolRegistry::new()).with_deadbolt(Arc::new(gate.clone()), "agent-b");
+        gate.ensure_agent("agent-b").expect("b lease");
+        let b = other.execute(&call("read_file")).await;
+        assert!(!b.contains("[deadbolt]"), "killing A must not block B: {b}");
+    }
+
+    #[test]
+    fn model_definitions_have_no_shutdown_tool() {
+        let names = [
+            "read_file",
+            "shell",
+            "spawn_agent",
+            "spawn_swarm",
+            "write_file",
+        ];
+        for name in names {
+            assert!(!harness_deadbolt::is_shutdown_tool(name));
+        }
+        assert!(harness_deadbolt::is_shutdown_tool("shutdown"));
+        assert!(harness_deadbolt::is_shutdown_tool("deadbolt"));
     }
 }

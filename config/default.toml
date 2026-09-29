@@ -233,3 +233,12 @@ timeout_secs = 60
 # transport = "auto"   # auto | unix | tcp
 
 # Phase E adds richer notification kinds when integrations call into src/notifications.rs.
+
+[deadbolt]
+# Out-of-band lease. Not a model tool. Fail closed if the store cannot be written.
+# kill requires --agent and is bound to that agent_id, not a vendor key. No fleet halt.
+enabled = true
+fail_closed = true
+lease_ttl_secs = 60
+db_path = "~/.harness/deadbolt.db"
+events_path = "~/.harness/deadbolt-events.jsonl"

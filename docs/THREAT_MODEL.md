@@ -42,6 +42,14 @@ NextEleven Harness is a **local coding agent**: it runs shell commands, edits fi
 - **Computer use:** Screen/keyboard control when `[computer_use] enabled = true` — equivalent to remote desktop access. See `docs/COMPUTER_USE.md`.
 - **Swarm workers:** `[swarm] worker_tool_allowlist` + `worker_max_wall_secs` reduce blast radius for parallel agents. Empty allowlist → safe defaults (`read_file`, `list_dir`, `search_code`, `test_runner`). Remote registry URL is stubbed (errors until W7.1 HTTP lands).
 
+## Deadbolt (out-of-band lease)
+
+- Not a model tool. No shutdown/kill tool in the tool list. No fleet halt.
+- `admit()` runs at the start of `ToolExecutor::execute`, before any tool body, including MCP adapters. The lease is rechecked on every action.
+- Kill is bound to `agent_id`, not a vendor key. Parent kill revokes child leases and cancels those swarm tasks. Killing agent A does not block agent B.
+- Fail closed when the store is missing or unwritable (`fail_closed = true`). Confirm-gate and the workspace jail stay.
+- Evidence: append-only JSONL + sqlite. Tool attempt/decision = observed. "Purpose exceeded" = inferred with premises. Prose is not stored as observed. sha256 content id on the payload. See `docs/DEADBOLT.md`.
+
 ## Providers
 
 - Keys via env / config only; never commit secrets.

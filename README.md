@@ -36,6 +36,7 @@
 - **Parallel swarm** — SQLite registry (`~/.harness/swarm.db`), CLI + TUI panel (F2 / `/swarm`), cancel-all, auto-GC, `--json`, worker tool allowlist + wall timeout, optional remote registry hook
 - **Sessions + memory** — SQLite sessions, semantic recall, project memory (`.harness/memory/`), ambient consolidation
 - **Plan mode** — `--plan` pauses destructive tools for y/n
+- **Deadbolt** — out-of-band lease (`harness deadbolt status|pause|clip|resume|kill|drill`). Not a model tool. Kill requires `--agent`. See [`docs/DEADBOLT.md`](docs/DEADBOLT.md).
 - **Serve / daemon** — local HTTP+SSE (`harness serve`), Unix-socket daemon, collab WS when enabled
 - **MCP** — tools + resources/roots CLI + inbound sampling approval (TUI y/n or auto)
 - **Ops** — `doctor`, `cost`, `sync` (age-encrypted), `bench` (offline pack), `trace` / OTLP notes, bridges (Obsidian/Notes/Calendar/Projects)

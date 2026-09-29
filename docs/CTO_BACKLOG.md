@@ -140,6 +140,10 @@ Goal: judge-ready package (can run in parallel with Waves 1–2).
 - [x] **W8.4** Technical report diagram accuracy vs actual swarm/TUI. *(ARCHITECTURE.md / CLAUDE.md / TECHNICAL_REPORT.md verified current re: swarm TUI panel F2, SQLite registry)*
 - [x] **W8.5** Demo script 5–10 min: doctor → one-shot → TUI tools → swarm → gc. *(demo/DEMO_SCRIPT_5-10min.md created)*
 
+### WAVE 9 — Out-of-band lease
+
+- [x] **W9.1** Deadbolt v0 in-tree. Crate `harness-deadbolt`, admit before every tool body, CLI `harness deadbolt` (no model tool, no fleet halt). Check only after `cargo test -p harness-deadbolt`, `cargo test -p harness-tools`, `cargo test --bin harness`, clippy `-D warnings`, and `./target/debug/harness deadbolt drill` exit 0.
+
 ---
 
 ## Recommended first sprint (this session series)

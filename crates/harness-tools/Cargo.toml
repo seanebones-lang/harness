@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 harness-provider-core = { path = "../harness-provider-core" }
+harness-deadbolt = { path = "../harness-deadbolt" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }

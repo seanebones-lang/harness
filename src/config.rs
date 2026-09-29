@@ -57,6 +57,9 @@ pub struct Config {
     /// Background memory consolidation (`[ambient]`).
     #[serde(default)]
     pub ambient: AmbientConfigSection,
+    /// Out-of-band lease gate (`[deadbolt]`). Not a model tool.
+    #[serde(default)]
+    pub deadbolt: harness_deadbolt::DeadboltConfig,
 }
 
 /// Tools and sandbox settings.

@@ -202,9 +202,18 @@ pub async fn build_tools(
                 for i in 0..n {
                     let label = format_swarm_worker_label(&prompt, i + 1, n);
                     let id = swarm::register_task_with_model(&label, Some(worker_model.as_str()))?;
+                    let parent = crate::deadbolt_rt::process_agent_id();
+                    let child =
+                        crate::deadbolt_rt::bind_swarm_child(&cfg_clone.deadbolt, &parent, &id);
+                    if cfg_clone.deadbolt.enabled && child.is_none() {
+                        continue;
+                    }
                     ids.push(id.clone());
                     let p = worker_provider.clone();
-                    let t = tools.clone();
+                    let mut t = tools.clone();
+                    if let Some(cid) = child {
+                        t = t.with_agent_id(cid);
+                    }
                     let mem = memory_store.clone();
                     let emb = embed_model.clone();
                     let sys = cfg_clone.agent.system_prompt.clone();
@@ -321,13 +330,17 @@ pub async fn build_tools_inner(
     let sub_confirm_policy =
         confirm_policy_for_gate(confirm_gate.is_some(), cfg.approval.effective_mode());
     let sub_notifications = cfg.notifications.clone();
-    let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |task: String| {
+    let sub_deadbolt = cfg.deadbolt.clone();
+    let runner: harness_tools::tools::agent::SubAgentRunner = Arc::new(move |req| {
         let p: ArcProvider = sub_provider.clone();
         let m = sub_model.clone();
         let scfg = sub_shell_cfg.clone();
         let ws = sub_workspace.clone();
         let gate = sub_confirm.clone();
         let notif = sub_notifications.clone();
+        let bolt_cfg = sub_deadbolt.clone();
+        let child_id = req.child_agent_id.clone();
+        let prompt = req.prompt;
         let sub_tools = {
             let mut r = ToolRegistry::new();
             r.register(ReadFileTool {
@@ -352,13 +365,19 @@ pub async fn build_tools_inner(
                     .with_confirm_gate(g)
                     .with_confirm_policy(sub_confirm_policy);
             }
+            if bolt_cfg.enabled {
+                if let Some(child) = child_id {
+                    let bolt = crate::deadbolt_rt::handle(&bolt_cfg);
+                    exec = exec.with_deadbolt(Arc::new(bolt), child);
+                }
+            }
             exec
         };
         Box::pin(async move {
             use harness_memory::Session;
             use harness_provider_core::Message;
             let mut session = Session::new(&m);
-            session.push(Message::user(&task));
+            session.push(Message::user(&prompt));
             let drive_result = agent::drive_agent(
                 &p,
                 &sub_tools,
@@ -394,6 +413,21 @@ pub async fn build_tools_inner(
         })
     });
 
+    let parent_id = crate::deadbolt_rt::process_agent_id();
+    let spawn = if cfg.deadbolt.enabled {
+        let gate = crate::deadbolt_rt::handle(&cfg.deadbolt);
+        let _ = gate.ensure_agent(&parent_id);
+        SpawnAgentTool::new(runner).with_lineage(harness_tools::tools::agent::AgentLineage {
+            parent_agent_id: parent_id.clone(),
+            register: Arc::new(move |parent, child| {
+                gate.register_child(parent, child, None)
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))
+            }),
+        })
+    } else {
+        SpawnAgentTool::new(runner)
+    };
+
     let mut registry = ToolRegistry::new();
     registry.register(ReadFileTool {
         workspace: workspace.clone(),
@@ -419,7 +453,7 @@ pub async fn build_tools_inner(
     });
     registry.register(GhTool);
     registry.register(TestRunnerTool);
-    registry.register(SpawnAgentTool::new(runner));
+    registry.register(spawn);
     if let Some(enqueue) = swarm_enqueue {
         registry.register(SpawnSwarmTool::new(enqueue));
     }
@@ -573,6 +607,12 @@ pub async fn build_tools_inner(
         .iter()
         .map(|r| (r.tool.clone(), r.pattern.clone()))
         .collect();
+
+    let executor = crate::deadbolt_rt::bind(
+        executor,
+        &cfg.deadbolt,
+        &crate::deadbolt_rt::process_agent_id(),
+    );
 
     if trusted_rules.is_empty() {
         Ok(executor)

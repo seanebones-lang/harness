@@ -186,6 +186,10 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
             crate::cli::connect_to_server(url, prompt, session.as_deref()).await?;
         }
 
+        Some(Commands::Deadbolt { action }) => {
+            crate::deadbolt_rt::dispatch(action, cfg)?;
+        }
+
         _ => anyhow::bail!("internal: command requires agent runtime"),
     }
     Ok(())

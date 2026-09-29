@@ -1,5 +1,8 @@
 //! Wraps an MCP tool definition as a harness `Tool` so it plugs into
 //! the existing `ToolRegistry` without any changes to the core.
+//!
+//! Execute only through `ToolExecutor`. Deadbolt `admit()` runs there, before
+//! this adapter's body. Do not call `execute` from a side path.
 
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;

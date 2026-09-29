@@ -254,12 +254,55 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Out-of-band lease control. Not a model tool. No fleet halt.
+    Deadbolt {
+        #[command(subcommand)]
+        action: DeadboltAction,
+    },
     /// Generate shell completions (bash, zsh, fish, powershell, elvish).
     Completions {
         /// Shell type.
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+}
+
+#[derive(Subcommand)]
+pub enum DeadboltAction {
+    /// List leases. Read-only. Does not halt anyone.
+    Status {
+        /// One agent id. Omit to list every lease.
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Pause one agent. Requires `--agent`.
+    Pause {
+        /// Agent id. Not a vendor key.
+        #[arg(long)]
+        agent: String,
+    },
+    /// Clip one tool on one agent. Other tools stay admitted.
+    Clip {
+        /// Tool name, for example `shell`.
+        tool: String,
+        /// Agent id. Not a vendor key.
+        #[arg(long)]
+        agent: String,
+    },
+    /// Clear pause and clips for one agent. Does not resurrect a kill.
+    Resume {
+        /// Agent id. Not a vendor key.
+        #[arg(long)]
+        agent: String,
+    },
+    /// Revoke one agent and its children. Requires `--agent`. No `--all`.
+    Kill {
+        /// Agent id. Not a vendor key.
+        #[arg(long)]
+        agent: String,
+    },
+    /// In-process self-check. No API keys. Exits 0 on success.
+    Drill,
 }
 
 #[derive(Subcommand)]

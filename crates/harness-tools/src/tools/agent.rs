@@ -5,29 +5,59 @@
 use async_trait::async_trait;
 use harness_provider_core::ToolDefinition;
 use serde_json::{json, Value};
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::registry::Tool;
 
-/// Closure type: given a task string, run a sub-agent and return its output.
+/// Prompt plus the child agent id Deadbolt bound, when lineage is attached.
+pub struct SpawnRequest {
+    /// Full prompt passed to the sub-agent.
+    pub prompt: String,
+    /// Child lease id. `None` when Deadbolt is not attached.
+    pub child_agent_id: Option<String>,
+}
+
+/// Closure type: given a spawn request, run a sub-agent and return its output.
 pub type SubAgentRunner = Arc<
     dyn Fn(
-            String,
-        )
-            -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>>
+            SpawnRequest,
+        ) -> Pin<Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>>
         + Send
         + Sync,
 >;
 
+/// Registers a child lease under a parent. `Ok(true)` means the child is live.
+pub type ChildRegister = Arc<dyn Fn(&str, &str) -> anyhow::Result<bool> + Send + Sync>;
+
+/// Parent/child binding applied before the sub-agent runner starts.
+pub struct AgentLineage {
+    /// Parent lease id. Not a vendor key.
+    pub parent_agent_id: String,
+    /// Out-of-band registrar. Must not be a model tool.
+    pub register: ChildRegister,
+}
+
 /// Spawn a sub-agent with a subset of tools.
 pub struct SpawnAgentTool {
     runner: SubAgentRunner,
+    lineage: Option<AgentLineage>,
 }
 
 impl SpawnAgentTool {
     /// Create the tool with a runtime-specific sub-agent runner.
     pub fn new(runner: SubAgentRunner) -> Self {
-        Self { runner }
+        Self {
+            runner,
+            lineage: None,
+        }
+    }
+
+    /// Register each spawned child under `parent` before the runner starts.
+    pub fn with_lineage(mut self, lineage: AgentLineage) -> Self {
+        self.lineage = Some(lineage);
+        self
     }
 }
 
@@ -67,20 +97,50 @@ impl Tool for SpawnAgentTool {
         } else {
             format!("{task}\n\nAdditional context:\n{context}")
         };
-        (self.runner)(full_prompt).await
+        let child_agent_id = if let Some(lineage) = &self.lineage {
+            let child = mint_child_id();
+            let live = (lineage.register)(&lineage.parent_agent_id, &child)?;
+            if !live {
+                anyhow::bail!("deadbolt:killed");
+            }
+            Some(child)
+        } else {
+            None
+        };
+        (self.runner)(SpawnRequest {
+            prompt: full_prompt,
+            child_agent_id,
+        })
+        .await
     }
+}
+
+fn mint_child_id() -> String {
+    static N: AtomicU64 = AtomicU64::new(1);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let tick = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    format!("h-{}-{tick:x}-{n:x}", std::process::id())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    fn runner_ok() -> SubAgentRunner {
+        Arc::new(|req| {
+            let prompt = req.prompt;
+            Box::pin(async move { Ok(format!("done:{prompt}")) })
+        })
+    }
 
     #[tokio::test]
     async fn spawn_agent_invokes_runner_with_context() {
-        let runner: SubAgentRunner =
-            Arc::new(move |prompt| Box::pin(async move { Ok(format!("done:{prompt}")) }));
-        let tool = SpawnAgentTool::new(runner);
+        let tool = SpawnAgentTool::new(runner_ok());
         let out = tool
             .execute(json!({
                 "task": "summarize",
@@ -94,11 +154,10 @@ mod tests {
 
     #[test]
     fn definition_name_and_required_task() {
-        let runner: SubAgentRunner =
-            Arc::new(move |_prompt| Box::pin(async move { Ok(String::new()) }));
-        let tool = SpawnAgentTool::new(runner);
+        let tool = SpawnAgentTool::new(runner_ok());
         let def = tool.definition();
         assert_eq!(def.function.name, "spawn_agent");
+        assert!(!harness_deadbolt::is_shutdown_tool(&def.function.name));
         assert!(def.function.description.contains("sub-agent"));
         let required = def.function.parameters["required"]
             .as_array()
@@ -110,18 +169,14 @@ mod tests {
 
     #[tokio::test]
     async fn missing_task_errors() {
-        let runner: SubAgentRunner =
-            Arc::new(move |_prompt| Box::pin(async move { Ok("should not run".into()) }));
-        let tool = SpawnAgentTool::new(runner);
+        let tool = SpawnAgentTool::new(runner_ok());
         let err = tool.execute(json!({})).await.unwrap_err();
         assert!(err.to_string().contains("missing task"));
     }
 
     #[tokio::test]
     async fn non_string_task_errors() {
-        let runner: SubAgentRunner =
-            Arc::new(move |_prompt| Box::pin(async move { Ok("should not run".into()) }));
-        let tool = SpawnAgentTool::new(runner);
+        let tool = SpawnAgentTool::new(runner_ok());
         let err = tool
             .execute(json!({"task": 42, "context": "x"}))
             .await
@@ -131,7 +186,8 @@ mod tests {
 
     #[tokio::test]
     async fn empty_context_uses_task_only() {
-        let runner: SubAgentRunner = Arc::new(move |prompt| {
+        let runner: SubAgentRunner = Arc::new(|req| {
+            let prompt = req.prompt;
             Box::pin(async move {
                 assert_eq!(prompt, "solo-task");
                 assert!(!prompt.contains("Additional context"));
@@ -145,8 +201,8 @@ mod tests {
             .expect("spawn");
         assert_eq!(out, "ok:solo-task");
 
-        // Explicit empty context string is treated the same as absent.
-        let runner2: SubAgentRunner = Arc::new(move |prompt| {
+        let runner2: SubAgentRunner = Arc::new(|req| {
+            let prompt = req.prompt;
             Box::pin(async move {
                 assert_eq!(prompt, "solo-task");
                 Ok("ok2".into())
@@ -162,7 +218,8 @@ mod tests {
 
     #[tokio::test]
     async fn context_is_appended_with_header() {
-        let runner: SubAgentRunner = Arc::new(move |prompt| {
+        let runner: SubAgentRunner = Arc::new(|req| {
+            let prompt = req.prompt;
             Box::pin(async move {
                 assert!(prompt.starts_with("do work"));
                 assert!(prompt.contains("Additional context:\nconstraints"));
@@ -183,12 +240,49 @@ mod tests {
     #[tokio::test]
     async fn runner_error_propagates() {
         let runner: SubAgentRunner =
-            Arc::new(move |_prompt| Box::pin(async move { anyhow::bail!("sub-agent exploded") }));
+            Arc::new(|_req| Box::pin(async move { anyhow::bail!("sub-agent exploded") }));
         let tool = SpawnAgentTool::new(runner);
         let err = tool
             .execute(json!({"task": "x"}))
             .await
             .expect_err("runner failure");
         assert!(err.to_string().contains("sub-agent exploded"));
+    }
+
+    #[tokio::test]
+    async fn revoked_parent_skips_runner() {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits2 = hits.clone();
+        let runner: SubAgentRunner = Arc::new(move |_req| {
+            hits2.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async move { Ok("ran".into()) })
+        });
+        let seen = Arc::new(Mutex::new(None));
+        let seen2 = seen.clone();
+        let tool = SpawnAgentTool::new(runner).with_lineage(AgentLineage {
+            parent_agent_id: "parent".into(),
+            register: Arc::new(move |parent, child| {
+                *seen2.lock().expect("lock") = Some((parent.to_string(), child.to_string()));
+                Ok(false)
+            }),
+        });
+        let err = tool.execute(json!({"task": "x"})).await.unwrap_err();
+        assert!(err.to_string().contains("deadbolt:killed"));
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+        assert!(seen.lock().expect("lock").is_some());
+    }
+
+    #[tokio::test]
+    async fn live_lineage_passes_child_id() {
+        let runner: SubAgentRunner = Arc::new(|req| {
+            let id = req.child_agent_id.unwrap_or_default();
+            Box::pin(async move { Ok(id) })
+        });
+        let tool = SpawnAgentTool::new(runner).with_lineage(AgentLineage {
+            parent_agent_id: "parent".into(),
+            register: Arc::new(|_p, _c| Ok(true)),
+        });
+        let out = tool.execute(json!({"task": "x"})).await.unwrap();
+        assert!(out.starts_with("h-"));
     }
 }

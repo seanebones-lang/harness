@@ -10,6 +10,7 @@ mod config;
 mod cost;
 mod cost_db;
 mod daemon;
+mod deadbolt_rt;
 mod diff_review;
 mod events;
 mod highlight;
@@ -436,9 +437,17 @@ async fn main() -> Result<()> {
                     prompt.clone()
                 };
                 let id = swarm::register_task_with_model(&label, Some(worker_model.as_str()))?;
+                let parent = crate::deadbolt_rt::process_agent_id();
+                let child = crate::deadbolt_rt::bind_swarm_child(&cfg.deadbolt, &parent, &id);
+                if cfg.deadbolt.enabled && child.is_none() {
+                    continue;
+                }
                 ids.push(id.clone());
                 let p = worker_provider.clone();
-                let t = tools.clone();
+                let mut t = tools.clone();
+                if let Some(cid) = child.clone() {
+                    t = t.with_agent_id(cid);
+                }
                 let mem = memory_store.clone();
                 let emb = embed_model.clone();
                 let sys = cfg.agent.system_prompt.clone();
