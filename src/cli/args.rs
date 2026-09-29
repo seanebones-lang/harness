@@ -324,6 +324,48 @@ pub enum DeadboltAction {
         #[arg(long, default_value_t = false)]
         children: bool,
     },
+    /// Set lease blast radius. Omitted fields stay as stored. Unset lists stay open.
+    Policy {
+        /// Agent id. Not a vendor key.
+        #[arg(long)]
+        agent: String,
+        /// Comma-separated tool allow-list.
+        #[arg(long)]
+        tools: Option<String>,
+        /// Comma-separated host allow-list.
+        #[arg(long)]
+        dest: Option<String>,
+        /// USD cap. Crossing it pauses the lease.
+        #[arg(long)]
+        spend_cap: Option<f64>,
+        /// Comma-separated tools that need one approve.
+        #[arg(long)]
+        irreversible: Option<String>,
+    },
+    /// One shot for an irreversible tool. Not a model tool.
+    Approve {
+        /// Agent id. Not a vendor key.
+        #[arg(long)]
+        agent: String,
+        /// Tool name.
+        #[arg(long)]
+        tool: String,
+    },
+    /// JSON incident. Tokens only. Not a model tool.
+    Incident {
+        /// Agent id. Not a vendor key.
+        #[arg(long)]
+        agent: String,
+        /// Write the file here. Default is stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// JSON when true. Token line when false.
+        #[arg(long, default_value_t = true, action = ArgAction::Set)]
+        json: bool,
+        /// Incident JSON always lists children. This flag does not strip them.
+        #[arg(long, default_value_t = true, action = ArgAction::Set)]
+        children: bool,
+    },
 }
 
 #[derive(Subcommand)]

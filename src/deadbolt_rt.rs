@@ -5,7 +5,7 @@
 use std::sync::OnceLock;
 
 use anyhow::Result;
-use harness_deadbolt::{Deadbolt, DeadboltConfig};
+use harness_deadbolt::{Deadbolt, DeadboltConfig, PolicyPatch};
 
 use crate::cli::args::DeadboltAction;
 use crate::config::Config;
@@ -117,6 +117,47 @@ pub fn dispatch(action: &DeadboltAction, cfg: &Config) -> Result<()> {
                 print!("{text}");
             }
         }
+        DeadboltAction::Policy {
+            agent,
+            tools,
+            dest,
+            spend_cap,
+            irreversible,
+        } => {
+            db.set_policy(
+                agent,
+                PolicyPatch {
+                    tools_allow: split_list(tools.as_deref()),
+                    dest_allow: split_list(dest.as_deref()),
+                    spend_cap_usd: *spend_cap,
+                    irreversible: split_list(irreversible.as_deref()),
+                },
+            )?;
+            println!("deadbolt policy {agent}");
+        }
+        DeadboltAction::Approve { agent, tool } => {
+            db.approve(agent, tool)?;
+            println!("deadbolt approve {agent} {tool}");
+        }
+        DeadboltAction::Incident {
+            agent,
+            out,
+            json,
+            children: _,
+        } => {
+            let raw = db.incident(agent)?;
+            let value: serde_json::Value = serde_json::from_str(&raw)?;
+            let text = if *json {
+                format!("{value}\n")
+            } else {
+                incident_tokens(&value)
+            };
+            if let Some(path) = out {
+                std::fs::write(path, text)?;
+            } else {
+                print!("{text}");
+            }
+        }
         DeadboltAction::Drill => unreachable!("drill handled above"),
     }
     Ok(())
@@ -172,6 +213,42 @@ fn child_for(parent: &str, swarm_task_id: &str) -> String {
     }
 }
 
+fn split_list(raw: Option<&str>) -> Option<Vec<String>> {
+    raw.map(|s| {
+        s.split(',')
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+            .collect()
+    })
+}
+
+fn incident_tokens(value: &serde_json::Value) -> String {
+    let agent = value.get("agent").and_then(|v| v.as_str()).unwrap_or("-");
+    let killed = value
+        .get("killed_at")
+        .and_then(|v| v.as_i64())
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "-".into());
+    let children = value
+        .get("children")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let codes = value
+        .get("decisions")
+        .and_then(|v| v.as_array())
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| row.get("code").and_then(|c| c.as_str()))
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "-".into());
+    format!("agent={agent} killed_at={killed} children={children} codes={codes}\n")
+}
+
 fn is_agent_token(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 128
@@ -200,5 +277,21 @@ mod tests {
         let cli =
             Cli::try_parse_from(["harness", "deadbolt", "kill", "--agent", "h-1"]).expect("parse");
         assert!(!command_needs_agent_runtime(&cli));
+    }
+
+    #[test]
+    fn policy_approve_incident_are_not_agent_runtime() {
+        for argv in [
+            vec![
+                "harness", "deadbolt", "policy", "--agent", "h-1", "--tools", "shell",
+            ],
+            vec![
+                "harness", "deadbolt", "approve", "--agent", "h-1", "--tool", "shell",
+            ],
+            vec!["harness", "deadbolt", "incident", "--agent", "h-1"],
+        ] {
+            let cli = Cli::try_parse_from(argv).expect("parse");
+            assert!(!command_needs_agent_runtime(&cli));
+        }
     }
 }

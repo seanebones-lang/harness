@@ -4,7 +4,7 @@ use crate::policy::tool_requires_confirmation;
 use crate::registry::Tool as _;
 use crate::registry::ToolRegistry;
 use crate::tools::TestRunnerTool;
-use harness_deadbolt::{AdmitDecision, ToolAdmit};
+use harness_deadbolt::Deadbolt;
 use harness_provider_core::ToolCall;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -59,7 +59,7 @@ pub struct ToolExecutor {
     /// Which calls require confirmation when the gate is enabled.
     confirm_policy: ConfirmPolicy,
     /// Out-of-band Deadbolt lease. Absent means the gate is not attached.
-    admit: Option<Arc<dyn ToolAdmit>>,
+    admit: Option<Arc<Deadbolt>>,
     /// Agent the lease is bound to. Not a vendor key.
     agent_id: Option<String>,
 }
@@ -195,7 +195,7 @@ impl ToolExecutor {
     }
 
     /// Attach Deadbolt. `admit` runs before any tool body, including MCP adapters.
-    pub fn with_deadbolt(mut self, gate: Arc<dyn ToolAdmit>, agent_id: impl Into<String>) -> Self {
+    pub fn with_deadbolt(mut self, gate: Arc<Deadbolt>, agent_id: impl Into<String>) -> Self {
         self.admit = Some(gate);
         self.agent_id = Some(agent_id.into());
         self
@@ -208,20 +208,37 @@ impl ToolExecutor {
         out
     }
 
-    fn deadbolt_deny(&self, tool: &str, record: bool) -> Option<String> {
+    fn deadbolt_deny(&self, tool: &str, args: &serde_json::Value) -> Option<String> {
         let (Some(gate), Some(agent_id)) = (&self.admit, &self.agent_id) else {
             return None;
         };
-        let decision = if record {
-            gate.admit_tool(agent_id, tool)
-        } else {
-            gate.probe_tool(agent_id, tool)
-        };
-        match decision {
-            AdmitDecision::Allow => None,
-            AdmitDecision::Deny { code } => {
+        if let Some(usd) = spend_of(args) {
+            if gate.spend_add(agent_id, usd).is_err() {
+                return Some(format!("[deadbolt] denied {tool}: store_unavailable"));
+            }
+        }
+        let dest = dest_of(args);
+        match gate.admit_dest(agent_id, tool, dest.as_deref()) {
+            harness_deadbolt::AdmitDecision::Allow => None,
+            harness_deadbolt::AdmitDecision::Deny { code } => {
                 Some(format!("[deadbolt] denied {tool}: {}", code.as_str()))
             }
+        }
+    }
+
+    /// Kill or pause between confirm and the body. Does not re-admit.
+    /// A second admit would consume an irreversible one-shot.
+    fn deadbolt_recheck(&self, tool: &str) -> Option<String> {
+        let (Some(gate), Some(agent_id)) = (&self.admit, &self.agent_id) else {
+            return None;
+        };
+        match gate.status(Some(agent_id)) {
+            Ok(rows) => match rows.first().map(|r| r.state.as_str()).unwrap_or("") {
+                "killed" => Some(format!("[deadbolt] denied {tool}: killed")),
+                "paused" => Some(format!("[deadbolt] denied {tool}: paused")),
+                _ => None,
+            },
+            Err(_) => Some(format!("[deadbolt] denied {tool}: store_unavailable")),
         }
     }
 
@@ -291,7 +308,7 @@ impl ToolExecutor {
 
         // Deadbolt admit is out-of-band and runs before any tool body, confirm
         // write, or MCP adapter execute. Confirm-gate and the workspace jail stay.
-        if let Some(denied) = self.deadbolt_deny(&call.function.name, true) {
+        if let Some(denied) = self.deadbolt_deny(&call.function.name, &args) {
             return denied;
         }
 
@@ -318,7 +335,7 @@ impl ToolExecutor {
                             );
                         }
                         ConfirmResult::ApplyContent { path, content } => {
-                            if let Some(denied) = self.deadbolt_deny(&call.function.name, false) {
+                            if let Some(denied) = self.deadbolt_recheck(&call.function.name) {
                                 return denied;
                             }
                             if let Err(e) = tokio::fs::write(&path, &content).await {
@@ -349,7 +366,7 @@ impl ToolExecutor {
         }
 
         debug!(tool = %call.function.name, "executing tool");
-        if let Some(denied) = self.deadbolt_deny(&call.function.name, false) {
+        if let Some(denied) = self.deadbolt_recheck(&call.function.name) {
             return denied;
         }
         let result = match tool.execute(args.clone()).await {
@@ -468,6 +485,100 @@ fn build_preview(tool_name: &str, args: &serde_json::Value) -> String {
         }
         _ => serde_json::to_string_pretty(args).unwrap_or_default(),
     }
+}
+
+fn dest_of(args: &serde_json::Value) -> Option<String> {
+    find_dest(args)
+}
+
+fn find_dest(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::Object(map) => {
+            for key in ["url", "uri", "href", "endpoint", "host"] {
+                if let Some(raw) = map.get(key).and_then(|v| v.as_str()) {
+                    if let Some(host) = host_from_field(key, raw) {
+                        return Some(host);
+                    }
+                }
+            }
+            map.values().find_map(find_dest)
+        }
+        serde_json::Value::Array(items) => items.iter().find_map(find_dest),
+        _ => None,
+    }
+}
+
+fn host_from_field(key: &str, raw: &str) -> Option<String> {
+    if let Some(host) = host_in(raw) {
+        return Some(host);
+    }
+    if key == "host" {
+        bare_host(raw)
+    } else {
+        None
+    }
+}
+
+fn bare_host(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() || raw.contains('/') || raw.contains(' ') || raw.contains('@') {
+        return None;
+    }
+    let host = raw.split(':').next()?;
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_string())
+    }
+}
+
+fn host_in(raw: &str) -> Option<String> {
+    let rest = raw
+        .strip_prefix("https://")
+        .or_else(|| raw.strip_prefix("http://"))?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority
+        .rsplit_once('@')
+        .map(|(_, host)| host)
+        .unwrap_or(authority);
+    let host = if let Some(rest) = host.strip_prefix('[') {
+        rest.split(']').next()?
+    } else {
+        host.split(':').next()?
+    };
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_string())
+    }
+}
+
+fn spend_of(args: &serde_json::Value) -> Option<f64> {
+    find_spend(args)
+}
+
+fn find_spend(value: &serde_json::Value) -> Option<f64> {
+    match value {
+        serde_json::Value::Object(map) => {
+            for key in ["amount", "usd", "cost"] {
+                if let Some(n) = map.get(key).and_then(as_usd) {
+                    return Some(n);
+                }
+            }
+            map.values().find_map(find_spend)
+        }
+        serde_json::Value::Array(items) => items.iter().find_map(find_spend),
+        _ => None,
+    }
+}
+
+fn as_usd(value: &serde_json::Value) -> Option<f64> {
+    if let Some(n) = value.as_f64() {
+        return n.is_finite().then_some(n);
+    }
+    let raw = value.as_str()?.trim();
+    let n = raw.parse::<f64>().ok()?;
+    n.is_finite().then_some(n)
 }
 
 #[cfg(test)]
@@ -673,5 +784,119 @@ mod tests {
         }
         assert!(harness_deadbolt::is_shutdown_tool("shutdown"));
         assert!(harness_deadbolt::is_shutdown_tool("deadbolt"));
+    }
+
+    struct FlagTool {
+        ran: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::registry::Tool for FlagTool {
+        fn definition(&self) -> harness_provider_core::ToolDefinition {
+            harness_provider_core::ToolDefinition::new("shell", "s", json!({}))
+        }
+
+        async fn execute(&self, _: serde_json::Value) -> anyhow::Result<String> {
+            self.ran.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok("ran".into())
+        }
+    }
+
+    fn flag_exec(
+        gate: &harness_deadbolt::Deadbolt,
+        agent: &str,
+    ) -> (ToolExecutor, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut reg = ToolRegistry::new();
+        reg.register(FlagTool { ran: ran.clone() });
+        let exec = ToolExecutor::new(reg).with_deadbolt(Arc::new(gate.clone()), agent);
+        (exec, ran)
+    }
+
+    fn call_args(name: &str, args: serde_json::Value) -> ToolCall {
+        ToolCall {
+            id: "t".into(),
+            kind: "function".into(),
+            function: harness_provider_core::ToolCallFunction {
+                name: name.into(),
+                arguments: args.to_string(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn dest_policy_denies_foreign_host_and_missing_host() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("agent-a").expect("lease");
+        gate.set_policy(
+            "agent-a",
+            harness_deadbolt::PolicyPatch {
+                dest_allow: Some(vec!["api.stripe.com".into()]),
+                ..harness_deadbolt::PolicyPatch::default()
+            },
+        )
+        .expect("policy");
+        let (exec, ran) = flag_exec(&gate, "agent-a");
+        let foreign = exec
+            .execute(&call_args(
+                "shell",
+                json!({"url": "https://github.com/acme"}),
+            ))
+            .await;
+        assert!(foreign.contains("purpose_exceeded"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        let missing = exec
+            .execute(&call_args("shell", json!({"note": "no host"})))
+            .await;
+        assert!(missing.contains("purpose_exceeded"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn irreversible_needs_human_does_not_run_until_approve() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("agent-a").expect("lease");
+        gate.set_policy(
+            "agent-a",
+            harness_deadbolt::PolicyPatch {
+                irreversible: Some(vec!["shell".into()]),
+                ..harness_deadbolt::PolicyPatch::default()
+            },
+        )
+        .expect("policy");
+        let (exec, ran) = flag_exec(&gate, "agent-a");
+        let denied = exec.execute(&call("shell")).await;
+        assert!(denied.contains("needs_human"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        gate.approve("agent-a", "shell").expect("approve");
+        let allowed = exec.execute(&call("shell")).await;
+        assert_eq!(allowed, "ran");
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+        ran.store(false, std::sync::atomic::Ordering::SeqCst);
+        let again = exec.execute(&call("shell")).await;
+        assert!(again.contains("needs_human"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn spend_cap_does_not_run_body() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("agent-a").expect("lease");
+        gate.set_policy(
+            "agent-a",
+            harness_deadbolt::PolicyPatch {
+                spend_cap_usd: Some(5.0),
+                ..harness_deadbolt::PolicyPatch::default()
+            },
+        )
+        .expect("policy");
+        gate.spend_add("agent-a", 6.0).expect("spend");
+        let (exec, ran) = flag_exec(&gate, "agent-a");
+        let denied = exec.execute(&call("shell")).await;
+        assert!(denied.contains("spend_cap"), "{denied}");
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

@@ -7,4 +7,4 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-deadbolt = { git = "https://github.com/seanebones-lang/deadbolt", rev = "2ee1b8c0f1fd0c636b4c87b5b8fbe888d4ff17c8" }
+deadbolt = { git = "https://github.com/seanebones-lang/deadbolt", rev = "25dfcf4648364b9e01bb0b7a8ef6f47fa2caa531" }
