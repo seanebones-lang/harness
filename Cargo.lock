@@ -2838,7 +2838,7 @@ dependencies = [
 [[package]]
 name = "n11-deadbolt"
 version = "0.1.0"
-source = "git+https://github.com/seanebones-lang/deadbolt?rev=ec1bcf58e9eaacceb17c0947bb39d9772bb71fdf#ec1bcf58e9eaacceb17c0947bb39d9772bb71fdf"
+source = "git+https://github.com/seanebones-lang/deadbolt?rev=102bc2bfe58d692859275b0c2ee616553444725d#102bc2bfe58d692859275b0c2ee616553444725d"
 dependencies = [
  "clap",
  "dirs",
