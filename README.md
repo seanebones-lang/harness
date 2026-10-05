@@ -1,6 +1,6 @@
 # NextEleven Harness — Rust Coding Agent
 
-[![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
+[![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.95%2B-orange)](rust-toolchain.toml)
 [![Toolchain](https://img.shields.io/badge/pinned-1.95.0-blue)](rust-toolchain.toml)
 [![Coverage](https://img.shields.io/badge/coverage-64.39%25%20(gate%2060%25%20met)-brightgreen)](COVERAGE.md)
