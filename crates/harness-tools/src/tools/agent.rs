@@ -157,6 +157,7 @@ mod tests {
         let tool = SpawnAgentTool::new(runner_ok());
         let def = tool.definition();
         assert_eq!(def.function.name, "spawn_agent");
+        #[cfg(feature = "deadbolt")]
         assert!(!harness_deadbolt::is_shutdown_tool(&def.function.name));
         assert!(def.function.description.contains("sub-agent"));
         let required = def.function.parameters["required"]
@@ -267,6 +268,7 @@ mod tests {
             }),
         });
         let err = tool.execute(json!({"task": "x"})).await.unwrap_err();
+        #[cfg(feature = "deadbolt")]
         assert!(err.to_string().contains("deadbolt:killed"));
         assert_eq!(hits.load(Ordering::SeqCst), 0);
         assert!(seen.lock().expect("lock").is_some());

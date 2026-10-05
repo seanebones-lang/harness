@@ -439,9 +439,12 @@ async fn main() -> Result<()> {
                 let id = swarm::register_task_with_model(&label, Some(worker_model.as_str()))?;
                 let parent = crate::deadbolt_rt::process_agent_id();
                 let child = crate::deadbolt_rt::bind_swarm_child(&cfg.deadbolt, &parent, &id);
+                #[cfg(feature = "deadbolt")]
                 if cfg.deadbolt.enabled && child.is_none() {
                     continue;
                 }
+                #[cfg(not(feature = "deadbolt"))]
+                if false { /* deadbolt disabled */ }
                 ids.push(id.clone());
                 let p = worker_provider.clone();
                 let mut t = tools.clone();

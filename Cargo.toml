@@ -25,6 +25,10 @@ edition = "2021"
 license = "LicenseRef-NextEleven-Proprietary"
 rust-version = "1.95"
 
+[workspace.features]
+default = ["deadbolt"]
+deadbolt = ["harness-deadbolt/deadbolt", "harness-tools/deadbolt"]
+
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
@@ -69,6 +73,10 @@ rust-version.workspace = true
 [[bin]]
 name = "harness"
 path = "src/main.rs"
+
+[features]
+default = ["deadbolt"]
+deadbolt = ["harness-tools/deadbolt", "harness-deadbolt/deadbolt"]
 
 [dependencies]
 harness-provider-core = { path = "crates/harness-provider-core" }

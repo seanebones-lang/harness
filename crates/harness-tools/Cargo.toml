@@ -4,9 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["deadbolt"]
+deadbolt = ["harness-deadbolt"]
+
 [dependencies]
 harness-provider-core = { path = "../harness-provider-core" }
-harness-deadbolt = { path = "../harness-deadbolt" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
@@ -26,3 +29,4 @@ rusqlite = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+harness-deadbolt = { path = "../harness-deadbolt", optional = true }

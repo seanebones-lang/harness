@@ -4,12 +4,16 @@
 
 use std::sync::OnceLock;
 
+#[cfg(feature = "deadbolt")]
 use anyhow::Result;
+
+#[cfg(feature = "deadbolt")]
 use harness_deadbolt::{Deadbolt, DeadboltConfig, PolicyPatch};
 
 use crate::cli::args::DeadboltAction;
 use crate::config::Config;
 
+#[cfg(feature = "deadbolt")]
 static HANDLE: OnceLock<Deadbolt> = OnceLock::new();
 static AGENT: OnceLock<String> = OnceLock::new();
 
@@ -33,11 +37,18 @@ pub fn process_agent_id() -> String {
 }
 
 /// Shared gate for this process. CLI commands in other processes open the same files.
+#[cfg(feature = "deadbolt")]
 pub fn handle(cfg: &DeadboltConfig) -> Deadbolt {
     HANDLE.get_or_init(|| Deadbolt::open(cfg)).clone()
 }
 
+#[cfg(not(feature = "deadbolt"))]
+pub fn handle(_cfg: &DeadboltConfig) -> ! {
+    panic!("deadbolt feature not enabled");
+}
+
 /// `harness deadbolt …`. Drill uses a temp store and does not need API keys.
+#[cfg(feature = "deadbolt")]
 pub fn dispatch(action: &DeadboltAction, cfg: &Config) -> Result<()> {
     if matches!(action, DeadboltAction::Drill) {
         Deadbolt::drill()?;
@@ -163,10 +174,18 @@ pub fn dispatch(action: &DeadboltAction, cfg: &Config) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(feature = "deadbolt"))]
+pub fn dispatch(_action: &DeadboltAction, _cfg: &Config) -> anyhow::Result<()> {
+    panic!("deadbolt feature not enabled");
+}
+
+#[cfg(feature = "deadbolt")]
 use harness_tools::ToolExecutor;
+#[cfg(feature = "deadbolt")]
 use std::sync::Arc;
 
 /// Attach the process gate when `[deadbolt] enabled`. No-op when disabled.
+#[cfg(feature = "deadbolt")]
 pub fn bind(exec: ToolExecutor, cfg: &DeadboltConfig, agent_id: &str) -> ToolExecutor {
     if !cfg.enabled {
         return exec;
@@ -179,10 +198,16 @@ pub fn bind(exec: ToolExecutor, cfg: &DeadboltConfig, agent_id: &str) -> ToolExe
     exec.with_deadbolt(Arc::new(gate), agent_id.to_string())
 }
 
+#[cfg(not(feature = "deadbolt"))]
+pub fn bind(exec: ToolExecutor, _cfg: &DeadboltConfig, _agent_id: &str) -> ToolExecutor {
+    exec
+}
+
 /// Register a swarm worker under `parent`.
 ///
 /// `None` means do not spawn: Deadbolt is off, or the parent is already dead
 /// (the swarm task is cancelled). `Some` is the child lease id to bind.
+#[cfg(feature = "deadbolt")]
 pub fn bind_swarm_child(cfg: &DeadboltConfig, parent: &str, swarm_task_id: &str) -> Option<String> {
     if !cfg.enabled {
         return None;
@@ -202,6 +227,11 @@ pub fn bind_swarm_child(cfg: &DeadboltConfig, parent: &str, swarm_task_id: &str)
         Err(_) if cfg.fail_closed => Some(child),
         Err(_) => None,
     }
+}
+
+#[cfg(not(feature = "deadbolt"))]
+pub fn bind_swarm_child(_cfg: &DeadboltConfig, _parent: &str, _swarm_task_id: &str) -> Option<String> {
+    None
 }
 
 fn child_for(parent: &str, swarm_task_id: &str) -> String {

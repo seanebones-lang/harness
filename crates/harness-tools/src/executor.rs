@@ -4,6 +4,7 @@ use crate::policy::tool_requires_confirmation;
 use crate::registry::Tool as _;
 use crate::registry::ToolRegistry;
 use crate::tools::TestRunnerTool;
+#[cfg(feature = "deadbolt")]
 use harness_deadbolt::Deadbolt;
 use harness_provider_core::ToolCall;
 use std::collections::HashSet;
@@ -59,6 +60,7 @@ pub struct ToolExecutor {
     /// Which calls require confirmation when the gate is enabled.
     confirm_policy: ConfirmPolicy,
     /// Out-of-band Deadbolt lease. Absent means the gate is not attached.
+    #[cfg(feature = "deadbolt")]
     admit: Option<Arc<Deadbolt>>,
     /// Agent the lease is bound to. Not a vendor key.
     agent_id: Option<String>,
@@ -195,6 +197,7 @@ impl ToolExecutor {
     }
 
     /// Attach Deadbolt. `admit` runs before any tool body, including MCP adapters.
+    #[cfg(feature = "deadbolt")]
     pub fn with_deadbolt(mut self, gate: Arc<Deadbolt>, agent_id: impl Into<String>) -> Self {
         self.admit = Some(gate);
         self.agent_id = Some(agent_id.into());
@@ -202,12 +205,14 @@ impl ToolExecutor {
     }
 
     /// Rebind the lease id. Used when a swarm worker shares a parent executor.
+    #[cfg(feature = "deadbolt")]
     pub fn with_agent_id(&self, agent_id: impl Into<String>) -> Self {
         let mut out = self.clone();
         out.agent_id = Some(agent_id.into());
         out
     }
 
+    #[cfg(feature = "deadbolt")]
     fn deadbolt_deny(&self, tool: &str, args: &serde_json::Value) -> Option<String> {
         let (Some(gate), Some(agent_id)) = (&self.admit, &self.agent_id) else {
             return None;
@@ -228,6 +233,7 @@ impl ToolExecutor {
 
     /// Kill or pause between confirm and the body. Does not re-admit.
     /// A second admit would consume an irreversible one-shot.
+    #[cfg(feature = "deadbolt")]
     fn deadbolt_recheck(&self, tool: &str) -> Option<String> {
         let (Some(gate), Some(agent_id)) = (&self.admit, &self.agent_id) else {
             return None;
@@ -240,6 +246,16 @@ impl ToolExecutor {
             },
             Err(_) => Some(format!("[deadbolt] denied {tool}: store_unavailable")),
         }
+    }
+
+    #[cfg(not(feature = "deadbolt"))]
+    fn deadbolt_deny(&self, _tool: &str, _args: &serde_json::Value) -> Option<String> {
+        None
+    }
+
+    #[cfg(not(feature = "deadbolt"))]
+    fn deadbolt_recheck(&self, _tool: &str) -> Option<String> {
+        None
     }
 
     /// Attach a confirmation gate (enables plan/approve mode).
@@ -751,6 +767,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(feature = "deadbolt")]
     async fn deadbolt_deny_after_kill_blocks_next_admit() {
         let dir = tempfile::tempdir().expect("tmp");
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
@@ -780,9 +797,12 @@ mod tests {
             "write_file",
         ];
         for name in names {
+            #[cfg(feature = "deadbolt")]
             assert!(!harness_deadbolt::is_shutdown_tool(name));
         }
+        #[cfg(feature = "deadbolt")]
         assert!(harness_deadbolt::is_shutdown_tool("shutdown"));
+        #[cfg(feature = "deadbolt")]
         assert!(harness_deadbolt::is_shutdown_tool("deadbolt"));
     }
 

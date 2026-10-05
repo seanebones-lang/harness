@@ -18,6 +18,11 @@ ignore = [
     { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained via syntect" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained via ratatui" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained via age/i18n-embed-fl; no safe upgrade" },
+    # New advisories from 2026-09-14 scan
+    { id = "RUSTSEC-2026-0285", reason = "rustls 0.23.39 TLS handshake vuln; upgrade to >=0.23.45 blocks transitive update" },
+    { id = "RUSTSEC-2026-0221", reason = "event-listener 5.4.1 unsound; transitive via async-channel, no safe upgrade" },
+    { id = "RUSTSEC-2026-0253", reason = "lru 0.12.5 use-after-free; transitive, no safe upgrade" },
+    { id = "RUSTSEC-2026-0002", reason = "lru 0.12.5 IterMut stacked borrows; transitive, no safe upgrade" },
 ]
 
 [licenses]

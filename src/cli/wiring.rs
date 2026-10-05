@@ -205,9 +205,12 @@ pub async fn build_tools(
                     let parent = crate::deadbolt_rt::process_agent_id();
                     let child =
                         crate::deadbolt_rt::bind_swarm_child(&cfg_clone.deadbolt, &parent, &id);
+                    #[cfg(feature = "deadbolt")]
                     if cfg_clone.deadbolt.enabled && child.is_none() {
                         continue;
                     }
+                    #[cfg(not(feature = "deadbolt"))]
+                    if false { /* deadbolt disabled */ }
                     ids.push(id.clone());
                     let p = worker_provider.clone();
                     let mut t = tools.clone();
@@ -366,6 +369,7 @@ pub async fn build_tools_inner(
                     .with_confirm_policy(sub_confirm_policy);
             }
             if bolt_cfg.enabled {
+                #[cfg(feature = "deadbolt")]
                 if let Some(child) = child_id {
                     let bolt = crate::deadbolt_rt::handle(&bolt_cfg);
                     exec = exec.with_deadbolt(Arc::new(bolt), child);
@@ -415,15 +419,22 @@ pub async fn build_tools_inner(
 
     let parent_id = crate::deadbolt_rt::process_agent_id();
     let spawn = if cfg.deadbolt.enabled {
-        let gate = crate::deadbolt_rt::handle(&cfg.deadbolt);
-        let _ = gate.ensure_agent(&parent_id);
-        SpawnAgentTool::new(runner).with_lineage(harness_tools::tools::agent::AgentLineage {
-            parent_agent_id: parent_id.clone(),
-            register: Arc::new(move |parent, child| {
-                gate.register_child(parent, child, None)
-                    .map_err(|e| anyhow::anyhow!(e.to_string()))
-            }),
-        })
+        #[cfg(feature = "deadbolt")]
+        {
+            let gate = crate::deadbolt_rt::handle(&cfg.deadbolt);
+            let _ = gate.ensure_agent(&parent_id);
+            SpawnAgentTool::new(runner).with_lineage(harness_tools::tools::agent::AgentLineage {
+                parent_agent_id: parent_id.clone(),
+                register: Arc::new(move |parent, child| {
+                    gate.register_child(parent, child, None)
+                        .map_err(|e| anyhow::anyhow!(e.to_string()))
+                }),
+            })
+        }
+        #[cfg(not(feature = "deadbolt"))]
+        {
+            SpawnAgentTool::new(runner)
+        }
     } else {
         SpawnAgentTool::new(runner)
     };

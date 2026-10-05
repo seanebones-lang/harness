@@ -6,5 +6,9 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+default = ["deadbolt"]
+deadbolt = ["deadbolt-dep"]
+
 [dependencies]
-deadbolt = { package = "n11-deadbolt", git = "https://github.com/seanebones-lang/deadbolt", rev = "ec1bcf58e9eaacceb17c0947bb39d9772bb71fdf" }
+deadbolt-dep = { package = "n11-deadbolt", git = "https://github.com/seanebones-lang/deadbolt", rev = "ec1bcf58e9eaacceb17c0947bb39d9772bb71fdf", optional = true }
