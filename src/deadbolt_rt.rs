@@ -230,7 +230,11 @@ pub fn bind_swarm_child(cfg: &DeadboltConfig, parent: &str, swarm_task_id: &str)
 }
 
 #[cfg(not(feature = "deadbolt"))]
-pub fn bind_swarm_child(_cfg: &DeadboltConfig, _parent: &str, _swarm_task_id: &str) -> Option<String> {
+pub fn bind_swarm_child(
+    _cfg: &DeadboltConfig,
+    _parent: &str,
+    _swarm_task_id: &str,
+) -> Option<String> {
     None
 }
 
