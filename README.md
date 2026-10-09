@@ -58,6 +58,23 @@ harness cost today
 
 A failed or token-limited one-shot run exits with an error and saves its session for inspection or resume. Session exports retain full tool results. Tool execution limits stop an incomplete run rather than claiming completion.
 
+## Build a backend, RAG service, or automation
+
+Start with an outcome and observable acceptance criteria:
+
+```sh
+cd /path/to/your/project
+harness build "Build a local document retrieval API in Python" \
+  --accept "Ingested documents retain source identifiers" \
+  --accept "Answers cite retrieved sources; empty retrieval is explicit" \
+  --accept "The API starts locally and handles malformed requests" \
+  --check "python3 -m pytest"
+```
+
+This saves an editable `.harness/build.toml` and runs the existing agent. It discovers verification commands from existing root manifests when none are supplied. Use `--prepare-only` to review the brief without API calls. Repeating `--accept` or `--check` supplies the respective list; omitted lists keep existing values when continuing the same outcome. A different outcome archives the prior brief and progress notes.
+
+Run `harness build` to continue the saved outcome, or `harness --resume <session-id> build` to also reuse a conversation. The terminal and HTTP agent load the same brief and `.harness/BUILD_PROGRESS.md` alongside project instructions. Progress notes are guidance to recheck against the workspace. The brief itself does not prove completion or execute checks; the agent must run them and report their evidence. Supply checks appropriate to your repository and review any detected commands.
+
 ## Useful capabilities
 
 - **Repository tools:** reading, writing, patches, search, shell commands, Git, GitHub CLI, and test execution.

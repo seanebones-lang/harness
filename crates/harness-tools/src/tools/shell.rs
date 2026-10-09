@@ -491,7 +491,7 @@ mod tests {
 }
 
 #[cfg(unix)]
-struct ProcessGroupGuard(Option<i32>);
+pub(crate) struct ProcessGroupGuard(pub(crate) Option<i32>);
 
 #[cfg(unix)]
 impl Drop for ProcessGroupGuard {

@@ -29,10 +29,13 @@ Available tools:
 Guidelines:
   - Prefer patch_file for single-file edits, apply_patch for multi-file changes.
   - Use the git tool for all git operations instead of shell git commands.
-  - Always run test_runner after changes to verify correctness.
+  - Run the project's relevant verification commands after changes; use configured build checks when present and test_runner when its detected runner fits the project.
   - Use web_search when you need up-to-date information or documentation.
   - Be concise. Prefer making changes over explaining them.
-  - When editing multiple files, use spawn_agent for parallelism.
+  - Use sub-agents only for independent tasks whose results you can integrate and verify.
+  - Inspect the repository's stack, existing changes, and run instructions before implementation.
+  - Deliver a working end-to-end slice, verify the relevant behavior, and give an exact run command.
+  - Distinguish code written, tests passed, local startup, live integration, and deployment.
   - In plan mode (--plan flag), destructive calls pause for user approval.";
 
 /// Load a project-specific system prompt prefix from well-known files in CWD.
@@ -44,17 +47,33 @@ pub fn load_project_instructions() -> Option<String> {
 /// Load project instructions from well-known files under `root` (path-injectable for tests).
 /// Checks (in order): `.harness/SYSTEM.md`, `AGENTS.md`, `CLAUDE.md`.
 pub fn load_project_instructions_in(root: &Path) -> Option<String> {
+    let mut sections = Vec::new();
     let candidates = [".harness/SYSTEM.md", "AGENTS.md", "CLAUDE.md"];
     for rel in &candidates {
         let path = root.join(rel);
         if let Ok(text) = std::fs::read_to_string(&path) {
             if !text.trim().is_empty() {
                 tracing::debug!(file = %path.display(), "loaded project instructions");
-                return Some(format!("## Project instructions (from {rel})\n\n{text}"));
+                sections.push(format!("## Project instructions (from {rel})\n\n{text}"));
+                break;
             }
         }
     }
-    None
+    match crate::build_workflow::BuildBrief::load(root) {
+        Ok(Some(brief)) => {
+            sections.push(brief.instructions());
+            if let Ok(progress) = std::fs::read_to_string(root.join(".harness/BUILD_PROGRESS.md")) {
+                sections.push(format!("## Prior build progress (verify against the actual workspace)\n\n{}", harness_tools::text::char_prefix(&progress, 16_000)));
+            }
+        }
+        Err(error) => sections.push(format!("## Build brief error\n\n{error}. Inspect .harness/build.toml and repair it before inferring the build outcome.")),
+        _ => {}
+    }
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
 }
 
 #[cfg(test)]
@@ -120,5 +139,31 @@ mod tests {
         let loaded = load_project_instructions_in(dir.path()).expect("claude fallback");
         assert!(loaded.contains("real instructions"));
         assert!(loaded.contains("from CLAUDE.md"));
+    }
+
+    #[test]
+    fn build_brief_and_progress_extend_existing_project_instructions() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("AGENTS.md"),
+            "Keep the existing API contract",
+        )
+        .unwrap();
+        crate::build_workflow::prepare(
+            dir.path(),
+            Some("Add grounded retrieval"),
+            &["Every answer has a source".into()],
+            &[],
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join(".harness/BUILD_PROGRESS.md"),
+            "Next: test empty retrieval",
+        )
+        .unwrap();
+        let loaded = load_project_instructions_in(dir.path()).unwrap();
+        assert!(loaded.contains("Keep the existing API contract"));
+        assert!(loaded.contains("Every answer has a source"));
+        assert!(loaded.contains("Next: test empty retrieval"));
     }
 }

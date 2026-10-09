@@ -19,6 +19,7 @@ smoke:
 	cargo build --locked --bin harness
 	HARNESS_BIN="$(CURDIR)/target/debug/harness" bash scripts/smoke_rel01.sh
 	python3 scripts/smoke_agent.py target/debug/harness
+	python3 scripts/smoke_build.py target/debug/harness
 	python3 scripts/smoke_tui.py target/debug/harness
 	python3 scripts/test_install.py
 

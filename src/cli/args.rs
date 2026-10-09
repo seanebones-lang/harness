@@ -72,6 +72,20 @@ pub enum Commands {
     },
     /// Run a single prompt non-interactively.
     Run { prompt: String },
+    /// Build a working project slice using a persistent outcome and acceptance brief.
+    Build {
+        /// Desired outcome. Omit to continue the saved project brief.
+        goal: Option<String>,
+        /// Observable acceptance criterion; repeat for multiple criteria.
+        #[arg(long)]
+        accept: Vec<String>,
+        /// Verification command; repeat. Replaces auto-detected checks when supplied.
+        #[arg(long)]
+        check: Vec<String>,
+        /// Save/review the brief without running the agent or making API calls.
+        #[arg(long)]
+        prepare_only: bool,
+    },
     /// Start the harness HTTP server.
     Serve {
         /// Address to listen on.

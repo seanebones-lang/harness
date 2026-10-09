@@ -37,7 +37,13 @@ pub struct TestFailure {
 impl TestReport {
     /// Format a concise summary for the agent loop.
     pub fn to_agent_string(&self) -> String {
-        let status = if self.failed == 0 { "PASS" } else { "FAIL" };
+        let status = if self.failed > 0 {
+            "FAIL"
+        } else if self.passed > 0 {
+            "PASS"
+        } else {
+            "OK"
+        };
         let mut out = format!(
             "[{status}] {} passed, {} failed\n",
             self.passed, self.failed
@@ -45,8 +51,10 @@ impl TestReport {
         for f in &self.errors {
             out.push_str(&format!("  FAILED: {}\n    {}\n", f.name, f.message));
         }
-        if self.failed == 0 {
+        if self.failed == 0 && self.passed > 0 {
             out.push_str("All tests passed.");
+        } else if self.failed == 0 {
+            out.push_str("Test command exited successfully; no passing test count was parsed.");
         }
         out
     }
@@ -83,12 +91,18 @@ impl Tool for TestRunnerTool {
 
         let (cmd, runner) = detect_test_command(scope);
 
-        let child = tokio::process::Command::new("sh")
+        let mut command = tokio::process::Command::new("sh");
+        command
             .arg("-c")
             .arg(&cmd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .spawn()?;
+            .kill_on_drop(true);
+        #[cfg(unix)]
+        command.process_group(0);
+        let child = command.spawn()?;
+        #[cfg(unix)]
+        let mut group = super::shell::ProcessGroupGuard(child.id().map(|id| id as i32));
 
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(timeout),
@@ -96,6 +110,10 @@ impl Tool for TestRunnerTool {
         )
         .await
         .map_err(|_| anyhow::anyhow!("test run timed out after {timeout}s"))??;
+        #[cfg(unix)]
+        {
+            group.0 = None;
+        }
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -116,13 +134,15 @@ enum Runner {
 }
 
 fn detect_test_command(scope: Option<&str>) -> (String, Runner) {
+    // Scope is an argument, not shell source (including filters with spaces).
+    let quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
     if std::path::Path::new("Cargo.toml").exists() {
         let cmd = match scope {
             Some(s) if s.contains('/') => format!(
                 "cargo test --package {} 2>&1",
-                s.split('/').next().unwrap_or(s)
+                quote(s.split('/').next().unwrap_or(s))
             ),
-            Some(s) => format!("cargo test {} 2>&1", s),
+            Some(s) => format!("cargo test {} 2>&1", quote(s)),
             None => "cargo test 2>&1".to_string(),
         };
         return (cmd, Runner::Cargo);
@@ -130,7 +150,7 @@ fn detect_test_command(scope: Option<&str>) -> (String, Runner) {
 
     if std::path::Path::new("package.json").exists() {
         let cmd = match scope {
-            Some(s) => format!("npm test -- {s} 2>&1"),
+            Some(s) => format!("npm test -- {} 2>&1", quote(s)),
             None => "npm test 2>&1".to_string(),
         };
         return (cmd, Runner::Npm);
@@ -139,7 +159,7 @@ fn detect_test_command(scope: Option<&str>) -> (String, Runner) {
     if std::path::Path::new("pyproject.toml").exists() || std::path::Path::new("setup.py").exists()
     {
         let cmd = match scope {
-            Some(s) => format!("python -m pytest {s} -v 2>&1"),
+            Some(s) => format!("python -m pytest {} -v 2>&1", quote(s)),
             None => "python -m pytest -v 2>&1".to_string(),
         };
         return (cmd, Runner::Pytest);
@@ -147,7 +167,7 @@ fn detect_test_command(scope: Option<&str>) -> (String, Runner) {
 
     if std::path::Path::new("go.mod").exists() {
         let cmd = match scope {
-            Some(s) => format!("go test {s} 2>&1"),
+            Some(s) => format!("go test {} 2>&1", quote(s)),
             None => "go test ./... 2>&1".to_string(),
         };
         return (cmd, Runner::Go);
@@ -157,12 +177,21 @@ fn detect_test_command(scope: Option<&str>) -> (String, Runner) {
 }
 
 fn parse_output(runner: &Runner, output: &str, success: bool) -> TestReport {
-    match runner {
+    let mut report = match runner {
         Runner::Cargo => parse_cargo(output, success),
         Runner::Pytest => parse_pytest(output, success),
         Runner::Go => parse_go(output, success),
         Runner::Npm | Runner::Make => parse_generic(output, success),
+    };
+    // Compilation/startup failures may occur before any test summary exists.
+    if !success && report.failed == 0 {
+        report.failed = 1;
+        report.errors.push(TestFailure {
+            name: "test command".into(),
+            message: crate::text::byte_suffix(output, 4000).trim().to_string(),
+        });
     }
+    report
 }
 
 fn parse_cargo(output: &str, _success: bool) -> TestReport {
@@ -170,21 +199,26 @@ fn parse_cargo(output: &str, _success: bool) -> TestReport {
     let mut failed = 0;
     let mut errors: Vec<TestFailure> = Vec::new();
 
+    let has_summary = output.lines().any(|line| line.contains("test result:"));
     for line in output.lines() {
         if line.contains("test result:") {
             // e.g. "test result: FAILED. 3 passed; 2 failed; ..."
             if let Some(p) = extract_number(line, "passed") {
-                passed = p;
+                passed += p;
             }
             if let Some(f) = extract_number(line, "failed") {
-                failed = f;
+                failed += f;
             }
             continue;
         }
         if line.starts_with("test ") && line.ends_with(" ... ok") {
-            passed += 1;
+            if !has_summary {
+                passed += 1;
+            }
         } else if line.starts_with("test ") && line.contains(" ... FAILED") {
-            failed += 1;
+            if !has_summary {
+                failed += 1;
+            }
             let name = line
                 .trim_start_matches("test ")
                 .split(" ...")
@@ -505,8 +539,8 @@ thread 'mods::x' panicked at 'boom'
         assert_eq!(ok.passed, 0);
         assert_eq!(ok.failed, 0);
         assert!(ok.errors.is_empty());
-        assert!(ok.to_agent_string().contains("PASS"));
-        assert!(ok.to_agent_string().contains("All tests passed"));
+        assert!(ok.to_agent_string().contains("OK"));
+        assert!(!ok.to_agent_string().contains("All tests passed"));
 
         let bad = parse_generic("", false);
         assert_eq!(bad.failed, 1);
@@ -538,5 +572,16 @@ thread 'mods::x' panicked at 'boom'
         assert_ne!(Runner::Cargo, Runner::Npm);
         assert_ne!(Runner::Pytest, Runner::Go);
         assert_ne!(Runner::Make, Runner::Npm);
+    }
+
+    #[test]
+    fn compile_failures_and_workspace_totals_are_reported_honestly() {
+        for runner in [Runner::Cargo, Runner::Go] {
+            let report = parse_output(&runner, "error: could not compile backend", false);
+            assert_eq!(report.failed, 1);
+            assert!(report.to_agent_string().contains("could not compile"));
+        }
+        let report = parse_output(&Runner::Cargo, "test a ... ok\ntest result: ok. 3 passed; 0 failed\ntest b ... ok\ntest result: ok. 7 passed; 0 failed\n", true);
+        assert_eq!(report.passed, 10);
     }
 }

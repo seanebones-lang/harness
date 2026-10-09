@@ -24,6 +24,11 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
         }
 
         Some(Commands::Project { action }) => handle_project_command(action)?,
+        Some(Commands::Build {
+            prepare_only: true, ..
+        }) => {
+            println!("Edit .harness/build.toml if needed, then run `harness build` to begin.");
+        }
 
         Some(Commands::Sessions) => {
             let store = open_session_store(cfg)?;

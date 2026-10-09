@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Persistent `harness build` workflow with editable outcomes, acceptance criteria, existing-project check discovery, offline brief preparation, and cross-session progress context
 - Personal-use acceptance record and real terminal cancellation/session recovery smoke tests
 - Isolated real-binary CLI and synthetic provider/HTTP release smoke, including tool execution, exact model routing, session persistence, and export
 - Installer and Homebrew checksum contract tests with failure-preservation checks
@@ -28,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Current product, contributor, roadmap, translated quick-start, audit, release, and competition documents now distinguish the exact user-owned route from superseded automatic-router behavior and separate current `main` evidence from tagged-release history
 
 ### Fixed
+- Test-runner compile failures cannot report success; Cargo workspace totals accumulate across suites, and unknown counts are not presented as passing tests
+- Test-runner cancellation and timeouts clean up owned Unix process groups
 - UTF-8 truncation and split transport chunks, combined stream events, incomplete-response and provider-error reporting
 - Failed and cancelled session recovery, complete exports, safe context compaction, and bounded cosmetic naming
 - Correct fallback model selection, current OpenAI reasoning request parameters, and selected embedding models

@@ -41,6 +41,7 @@ pub fn handle_project_command(action: &ProjectAction) -> Result<()> {
                 std::fs::write(&readme_path, format!("# {name}\n"))
                     .with_context(|| format!("writing {}", readme_path.display()))?;
             }
+            std::fs::write(project_dir.join(".gitignore"), ".harness/\n.env\n.env.*\n!.env.example\n.venv/\n__pycache__/\nnode_modules/\ntarget/\n.DS_Store\n")?;
 
             let outcome = store.add(
                 Some(name.clone()),
@@ -55,10 +56,7 @@ pub fn handle_project_command(action: &ProjectAction) -> Result<()> {
             println!("Initialized and linked project '{}'", entry.name);
             println!("  path: {}", entry.path.display());
             println!("  branch: {default_branch}");
-            println!(
-                "Next: harness project publish {} --public|--private",
-                entry.name
-            );
+            println!("Next: open this directory and run `harness build \"your desired outcome\"`.");
         }
         ProjectAction::Add {
             name,

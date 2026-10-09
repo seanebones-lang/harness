@@ -4,6 +4,7 @@ mod auth_token;
 mod background;
 mod bench;
 mod bridges;
+mod build_workflow;
 mod checkpoint;
 mod collab;
 mod config;
@@ -58,6 +59,22 @@ async fn main() -> Result<()> {
     fmt().with_env_filter(filter).with_target(false).init();
 
     let mut cfg = config::load(cli.config.as_deref())?;
+    let build_prompt = if let Some(Commands::Build {
+        goal,
+        accept,
+        check,
+        ..
+    }) = &cli.command
+    {
+        Some(build_workflow::prepare(
+            &std::env::current_dir()?,
+            goal.as_deref(),
+            accept,
+            check,
+        )?)
+    } else {
+        None
+    };
     swarm::configure(&cfg.swarm);
     daemon::configure(&cfg.daemon);
 
@@ -549,6 +566,22 @@ async fn main() -> Result<()> {
                 src_dir,
                 sd_model,
                 &cfg,
+            )
+            .await?;
+        }
+
+        Some(Commands::Build { .. }) => {
+            agent::run_once(
+                &provider,
+                &session_store,
+                memory_store.as_ref(),
+                embed_model.as_deref(),
+                &tools,
+                &model,
+                cfg.agent.system_prompt.as_deref(),
+                build_prompt.as_deref().expect("build prompt prepared"),
+                cli.resume.as_deref(),
+                run_opts,
             )
             .await?;
         }
