@@ -45,6 +45,18 @@ Remote source baseline: `8915ea79f3bd681a64e1a119da85b2c3df1608d1`. Its [13-job 
 - Both installed executables were refreshed. Optimized-binary CLI, HTTP, tool, and terminal/cancellation smoke passed, followed by terminal startup and clean quit using the owner's actual configuration in the Desktop workspace.
 - Final code commit `af610901328f713e69af6b7af5507749a04caca5` passed all [13 CI jobs](https://github.com/seanebones-lang/harness/actions/runs/38003249253) and [coverage](https://github.com/seanebones-lang/harness/actions/runs/38003249262). This includes Ubuntu, macOS, and Windows builds/tests/installers, container runtime acceptance, strict linting, the default-feature-disabled configuration, desktop/extension compilation, web regressions, and supply-chain checks.
 
+## Build workflow acceptance — October 9, 2026
+
+Harness now saves an editable outcome, observable acceptance criteria, and verification commands in `.harness/build.toml`. `harness build` continues that outcome; `--resume` also restores a saved conversation. The CLI, terminal, and HTTP agent share the brief and prior progress context. Replacing an outcome archives its brief and progress together. Offline preparation makes no provider calls. New project initialization supplies a local-use next step and ignores runtime state, credentials, dependencies, and build artifacts.
+
+The brief instructs the model to verify a useful slice against the existing stack, preserve retrieval sources, handle empty retrieval honestly, and account for automation retry/recovery behavior where relevant. These are agent instructions, not an automatic acceptance certifier. Test execution now honors failed command exit status, accumulates Rust workspace summaries, and reports unparsed counts honestly. Unix test cancellation cleans up the owned process group.
+
+The executable build integration check uses a synthetic provider with real file writes and two executed Python retrieval tests. It verifies credential-free preparation, acceptance/project instructions reaching the provider, and fresh-session continuation from saved progress. It does not benchmark an autonomous full RAG application.
+
+The extended candidate passed `make verify`: 810 workspace tests including doctests, strict formatting/Clippy, no-default-feature Clippy, installer contracts, and CLI/HTTP/build/terminal smoke checks.
+
+The first bounded live build on the saved NVIDIA GPT-OSS model returned eight HTTP 200 responses but did not finish the small retrieval component within that request cap. A malformed tool name containing a channel marker was blocked. Unknown tools now return exact registered names alongside any admission denial, without aliasing the malformed name or executing its body. A regression test confirms that boundary. Live build capability must be assessed separately from the deterministic workflow checks.
+
 ## Limits of this acceptance
 
 This establishes a personal Mac CLI/terminal and loopback HTTP workflow. Other providers have local parser/request tests, not paid live acceptance. Desktop/editor compilation does not establish interactive operation of every optional client, MCP server, voice backend, computer control, or remote swarm. Verify each optional integration against the actual service when it is used. No signed distribution, marketplace release, or commercial-readiness claim is made.

@@ -136,7 +136,7 @@ pub fn prepare(
         brief.acceptance.len(),
         brief.checks.len()
     );
-    Ok(format!("Continue the active build brief. Inspect actual repository state and .harness/BUILD_PROGRESS.md first. Implement and verify the next useful slice toward this outcome: {}", brief.goal))
+    Ok(format!("Continue the active build brief. Inspect actual repository state and read .harness/BUILD_PROGRESS.md if it exists. Missing progress means this is a new build; proceed from the brief. Implement and verify the next useful slice toward this outcome: {}", brief.goal))
 }
 
 fn detected_checks(root: &Path) -> Vec<String> {

@@ -321,16 +321,30 @@ impl ToolExecutor {
             Ok(v) => v,
             Err(e) => return format!("Error parsing tool arguments: {e}"),
         };
+        let tool = self.registry.get(&call.function.name);
+        let unknown_tool = || {
+            let mut names = self.registry.names();
+            names.sort();
+            format!(
+                "Unknown tool: {}. No tool body executed. Use an exact registered tool name without channel markers or extra text. Available tools: {}",
+                call.function.name,
+                names.join(", ")
+            )
+        };
 
         // Deadbolt admit is out-of-band and runs before any tool body, confirm
         // write, or MCP adapter execute. Confirm-gate and the workspace jail stay.
         if let Some(denied) = self.deadbolt_deny(&call.function.name, &args) {
-            return denied;
+            return if tool.is_none() {
+                format!("{denied}\n{}", unknown_tool())
+            } else {
+                denied
+            };
         }
 
-        let Some(tool) = self.registry.get(&call.function.name) else {
+        let Some(tool) = tool else {
             warn!(name = %call.function.name, "unknown tool requested");
-            return format!("Unknown tool: {}", call.function.name);
+            return unknown_tool();
         };
 
         // In plan mode, pause and wait for confirmation before destructive calls.
@@ -831,6 +845,19 @@ mod tests {
         reg.register(FlagTool { ran: ran.clone() });
         let exec = ToolExecutor::new(reg).with_deadbolt(Arc::new(gate.clone()), agent);
         (exec, ran)
+    }
+
+    #[tokio::test]
+    async fn malformed_tool_names_remain_blocked_with_actionable_errors() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("agent-a").expect("lease");
+        let (exec, ran) = flag_exec(&gate, "agent-a");
+        let result = exec.execute(&call("shell<|channel|>commentary")).await;
+        assert!(result.contains("Unknown tool"));
+        assert!(result.contains("exact registered tool name"));
+        assert!(result.contains("Available tools: shell"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     fn call_args(name: &str, args: serde_json::Value) -> ToolCall {
