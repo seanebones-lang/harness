@@ -177,7 +177,7 @@ PR (if desired): https://github.com/seanebones-lang/harness/pull/new/dev
 | [`RELEASE_STATUS.md`](RELEASE_STATUS.md) | Go/no-go log |
 | [`SHORTCUTS.md`](SHORTCUTS.md) | TUI keys (incl. F2 swarm) |
 | [`../TODO.md`](../TODO.md) | Canonical open tasks |
-| [`../COMPETITION_TODO.md`](../COMPETITION_TODO.md) | Submission / competition hygiene |
+| [`../COMPETITION_TODO.md`](history/COMPETITION_TODO.md) | Submission / competition hygiene |
 | [`../CLAUDE.md`](../CLAUDE.md) | Codebase guide for agents/contributors |
 | [`../README.md`](../README.md) | User-facing entry |
 

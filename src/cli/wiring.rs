@@ -342,6 +342,7 @@ pub async fn build_tools_inner(
         let gate = sub_confirm.clone();
         let notif = sub_notifications.clone();
         let bolt_cfg = sub_deadbolt.clone();
+        #[cfg(feature = "deadbolt")]
         let child_id = req.child_agent_id.clone();
         let prompt = req.prompt;
         let sub_tools = {
@@ -417,6 +418,7 @@ pub async fn build_tools_inner(
         })
     });
 
+    #[cfg(feature = "deadbolt")]
     let parent_id = crate::deadbolt_rt::process_agent_id();
     let spawn = if cfg.deadbolt.enabled {
         #[cfg(feature = "deadbolt")]
@@ -658,17 +660,13 @@ pub async fn connect_to_server(
 
     use futures::StreamExt;
     let mut byte_stream = resp.bytes_stream();
-    let mut buf = String::new();
+    let mut buf = harness_provider_core::LineBuffer::default();
 
     while let Some(chunk) = byte_stream.next().await {
         let bytes: bytes::Bytes = chunk.context("reading SSE stream")?;
-        buf.push_str(&String::from_utf8_lossy(&bytes));
+        buf.push(&bytes);
 
-        // Process complete SSE lines
-        while let Some(pos) = buf.find('\n') {
-            let line = buf[..pos].trim_end_matches('\r').to_string();
-            buf = buf[pos + 1..].to_string();
-
+        while let Some(line) = buf.next_line()? {
             match parse_sse_connect_line(&line) {
                 SseConnectAction::Text(content) => {
                     print!("{content}");
@@ -683,17 +681,17 @@ pub async fn connect_to_server(
                 }
                 SseConnectAction::Done => {
                     println!();
-                    break;
+                    return Ok(());
                 }
                 SseConnectAction::Error(msg) => {
-                    eprintln!("error: {msg}");
+                    anyhow::bail!("server error: {msg}");
                 }
                 SseConnectAction::Ignore => {}
             }
         }
     }
 
-    Ok(())
+    anyhow::bail!("server stream ended before completion")
 }
 
 #[cfg(test)]

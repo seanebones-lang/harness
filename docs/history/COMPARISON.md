@@ -1,3 +1,5 @@
+> Historical material. Retained for reference; excluded from the personal-use roadmap. Current licensing is MIT; earlier proprietary language below describes the prior policy. See [the current backlog](../CTO_BACKLOG.md).
+
 # Harness vs Other AI Coding Tools
 
 High-level comparison for evaluators. The real test is your own workflow on your stack.
@@ -41,4 +43,4 @@ High-level comparison for evaluators. The real test is your own workflow on your
 - **Claude Code** — You are all-in on Anthropic and want their official VS Code integration.
 - **Aider** — You prefer Python, git-centric pair programming, and already know that workflow.
 
-This table is intentionally high-level and may lag vendor feature changes. See [`README.md`](../README.md) and [`CHANGELOG.md`](../CHANGELOG.md) for current Harness capabilities.
+This table is intentionally high-level and may lag vendor feature changes. See [`README.md`](../../README.md) and [`CHANGELOG.md`](../../CHANGELOG.md) for current Harness capabilities.

@@ -1,37 +1,45 @@
-.PHONY: all build test lint doc bench clean docker-build docker-run
+.PHONY: all build test lint verify smoke web-test supply-chain doc bench clean docker-build docker-run
 
-# Default target
 all: build
 
-# Build the release binary (thin LTO, stripped)
 build:
-	cargo build --profile release-lto
+	cargo build --locked --profile release-lto
 
-# Run the full test suite (no API keys required)
 test:
-	cargo test --all
+	cargo test --locked --workspace --all-features
 
-# Lint: clippy (deny warnings) + fmt check
 lint:
-	cargo clippy --all-targets --all-features -- -D warnings
 	cargo fmt --all -- --check
+	cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
-# Generate and open workspace documentation
+verify: lint test smoke
+	cargo clippy --locked --no-default-features -- -D warnings
+
+smoke:
+	cargo build --locked --bin harness
+	HARNESS_BIN="$(CURDIR)/target/debug/harness" bash scripts/smoke_rel01.sh
+	python3 scripts/smoke_agent.py target/debug/harness
+	python3 scripts/smoke_tui.py target/debug/harness
+	python3 scripts/test_install.py
+
+web-test:
+	cd static && npm ci && npm test
+
+supply-chain:
+	cargo deny check
+
+# Generate workspace API documentation.
 doc:
-	cargo doc --workspace --no-deps --open
+	cargo doc --locked --workspace --no-deps
 
-# Run benchmarks (requires nightly or bench feature)
 bench:
-	cargo bench --all
+	cargo bench --locked --workspace
 
-# Remove build artifacts
 clean:
 	cargo clean
 
-# Build the Docker image
 docker-build:
 	docker build -t harness:latest .
 
-# Run the Docker container interactively (Ollama local backend, no API key needed)
 docker-run:
 	docker compose up

@@ -70,7 +70,7 @@ pub async fn run_once(
     let sys = system_prompt.unwrap_or(DEFAULT_SYSTEM).to_string();
 
     let handle = tokio::spawn(async move {
-        drive_agent_full(
+        let drive = drive_agent_full(
             &provider2,
             &tools2,
             mem2.as_ref(),
@@ -83,9 +83,20 @@ pub async fn run_once(
             opts.native_code_execution,
             opts.native_x_search,
             None,
-        )
-        .await?;
-        Ok::<Session, anyhow::Error>(session)
+        );
+        let result = tokio::select! {
+            result = drive => result,
+            signal = tokio::signal::ctrl_c() => {
+                match signal {
+                    Ok(()) => Err(anyhow::anyhow!("run cancelled; session saved for resume")),
+                    Err(error) => Err(error.into()),
+                }
+            }
+        };
+        if result.is_err() {
+            super::complete_cancelled_tool_results(&mut session);
+        }
+        (session, result)
     });
 
     while let Some(event) = rx.recv().await {
@@ -97,7 +108,7 @@ pub async fn run_once(
             }
             AgentEvent::ToolStart { name, .. } => eprintln!("\n[→ {name}]"),
             AgentEvent::ToolResult { name, result, .. } => {
-                let preview = &result[..result.len().min(100)];
+                let preview = harness_tools::text::char_prefix(result, 100);
                 eprintln!("[← {name}] {preview}");
             }
             AgentEvent::MemoryRecall { count } => eprintln!("[memory] recalled {count} entries"),
@@ -120,7 +131,11 @@ pub async fn run_once(
     }
 
     println!();
-    let mut final_session = handle.await??;
+    let (mut final_session, result) = handle.await?;
+    // Keep completed tools and partial responses resumable even when the run fails.
+    store.save(&final_session)?;
+    eprintln!("[session {}]", final_session.short_id());
+    result?;
 
     if let Some(title) = suggest_session_name(provider, &final_session).await {
         final_session.name = Some(title.clone());
@@ -132,6 +147,5 @@ pub async fn run_once(
         store_turn_memory(provider, mem, em, &final_session).await;
     }
 
-    eprintln!("[session {}]", final_session.short_id());
     Ok(())
 }

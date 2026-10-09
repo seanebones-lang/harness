@@ -2,7 +2,7 @@
 
 This guide walks through installing NextEleven Harness on every OS the project **tests in CI** and supports in the field: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
 
-**Status (September 14, 2026):** Public **beta / proof of concept** — **775 workspace tests pass** on macOS arm64 and Linux arm64; P0 security work is closed. See [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) for current gates. Stable release remains blocked on remote platform execution, signed artifacts, and the GitHub Actions billing lock.
+**Current direction:** MIT-licensed personal coding tool. Prefer a current source build and run the acceptance checks described in [PERSONAL_USE.md](PERSONAL_USE.md). The operating systems below have CI configurations; current verification is recorded separately.
 
 **Quick links:** [macOS](#macos) · [Linux](#linux) · [Windows](#windows-native) · [WSL2](#windows-subsystem-for-linux-wsl2) · [After installing](#after-installing) · [Updating](#updating) · [Uninstall](#uninstall)
 
@@ -12,9 +12,9 @@ This guide walks through installing NextEleven Harness on every OS the project *
 
 | Environment | Status | CI |
 |-------------|--------|-----|
-| **macOS** (Apple Silicon and Intel) | Fully supported | `macos-latest` |
-| **Linux** (typical glibc distros, e.g. Ubuntu, Fedora) | Fully supported | `ubuntu-latest` |
-| **Windows** 10 / 11 (native PowerShell) | Fully supported | `windows-latest` |
+| **macOS** (Apple Silicon and Intel) | CI target | `macos-latest` |
+| **Linux** (typical glibc distros, e.g. Ubuntu, Fedora) | CI target | `ubuntu-latest` |
+| **Windows** 10 / 11 (native PowerShell) | CI target | `windows-latest` |
 | **WSL2** (Linux distro on Windows) | Treat as **Linux** | Same as Linux |
 
 NextEleven Harness does not ship OS-specific installers (`.msi`, `.dmg`, `.deb`). You **build from source** with Rust or use **GitHub Releases** binaries when published (see [README](../README.md)).
@@ -57,7 +57,7 @@ Review scripts before piping to a shell. From a temporary directory:
 curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.sh | bash
 ```
 
-The script clones the repo into a temp dir, runs `cargo build --profile release-lto`, installs `harness` to `~/.local/bin`, and creates `~/.harness/config.toml` if missing.
+The script downloads and checks a matching release binary when available, or builds source as a fallback. It installs `harness` to `~/.local/bin`. Run `harness setup` afterward.
 
 Custom install location:
 

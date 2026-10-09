@@ -22,12 +22,8 @@ resolver = "2"
 [workspace.package]
 version = "1.3.0"
 edition = "2021"
-license = "LicenseRef-NextEleven-Proprietary"
+license = "MIT"
 rust-version = "1.95"
-
-[workspace.features]
-default = ["deadbolt"]
-deadbolt = ["harness-deadbolt/deadbolt", "harness-tools/deadbolt"]
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

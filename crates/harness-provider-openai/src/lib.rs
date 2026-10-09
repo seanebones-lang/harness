@@ -107,8 +107,12 @@ struct ApiRequest {
     messages: Vec<Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<Value>,
-    max_tokens: u32,
-    temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_completion_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
     stream: bool,
     stream_options: StreamOptions,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -177,6 +181,30 @@ fn build_tool_schemas(tools: &[harness_provider_core::ToolDefinition]) -> Vec<Va
             })
         })
         .collect()
+}
+
+fn build_api_request(req: &ChatRequest, config: &OpenAIConfig) -> ApiRequest {
+    let model = req.effective_model(&config.model);
+    let reasoning_model = ["gpt-5", "gpt-6", "o1", "o3", "o4"]
+        .iter()
+        .any(|prefix| model.starts_with(prefix));
+    // Official OpenAI reasoning models reject legacy token/sampling parameters.
+    // Compatible services retain their own established request format.
+    let modern_limits = config.base_url.trim_end_matches('/') == OPENAI_BASE_URL && reasoning_model;
+    ApiRequest {
+        model: model.to_owned(),
+        messages: build_api_messages(req),
+        tools: build_tool_schemas(&req.tools),
+        max_tokens: (!modern_limits).then_some(config.max_tokens),
+        max_completion_tokens: modern_limits.then_some(config.max_tokens),
+        temperature: (!modern_limits).then_some(config.temperature),
+        stream: true,
+        stream_options: StreamOptions { include_usage: true },
+        response_format: req.response_schema.as_ref().map(|schema| json!({
+            "type": "json_schema",
+            "json_schema": { "name": schema.name, "schema": schema.schema, "strict": schema.strict }
+        })),
+    }
 }
 
 #[async_trait]
@@ -264,14 +292,14 @@ impl Provider for OpenAIProvider {
         }
     }
 
-    async fn embed(&self, _model: &str, text: &str) -> Result<Vec<f32>, ProviderError> {
+    async fn embed(&self, model: &str, text: &str) -> Result<Vec<f32>, ProviderError> {
         let url = format!("{}/embeddings", self.config.base_url);
         let resp = self
             .client
             .post(&url)
             .bearer_auth(&self.config.api_key)
             .json(&json!({
-                "model": "text-embedding-3-small",
+                "model": model,
                 "input": text
             }))
             .send()
@@ -279,9 +307,10 @@ impl Provider for OpenAIProvider {
             .map_err(|e| ProviderError::Other(e.to_string()))?;
 
         if !resp.status().is_success() {
+            let status = resp.status().as_u16();
             let msg = resp.text().await.unwrap_or_default();
             return Err(ProviderError::Api {
-                status: 0,
+                status,
                 message: msg,
             });
         }
@@ -301,33 +330,7 @@ impl Provider for OpenAIProvider {
     }
 
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
-        let messages = build_api_messages(&req);
-        let tools = build_tool_schemas(&req.tools);
-
-        // Build response_format for strict JSON schema if requested
-        let response_format = req.response_schema.as_ref().map(|rs| {
-            json!({
-                "type": "json_schema",
-                "json_schema": {
-                    "name": rs.name,
-                    "schema": rs.schema,
-                    "strict": rs.strict
-                }
-            })
-        });
-
-        let body = ApiRequest {
-            model: req.effective_model(&self.config.model).to_string(),
-            messages,
-            tools,
-            max_tokens: self.config.max_tokens,
-            temperature: self.config.temperature,
-            stream: true,
-            stream_options: StreamOptions {
-                include_usage: true,
-            },
-            response_format,
-        };
+        let body = build_api_request(&req, &self.config);
 
         let url = format!("{}/chat/completions", self.config.base_url);
 
@@ -371,158 +374,158 @@ impl Provider for OpenAIProvider {
 fn parse_openai_sse(
     byte_stream: impl futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 ) -> impl futures::Stream<Item = Result<Delta, ProviderError>> + Send {
-    use std::pin::Pin;
+    use std::{
+        collections::{HashMap, VecDeque},
+        pin::Pin,
+    };
     type ByteStream =
         Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>;
-
     struct State {
         stream: ByteStream,
-        buf: String,
-        // index → (id, name, accumulated_args)
-        tool_calls: std::collections::HashMap<u32, (String, String, String)>,
-        /// Tool calls accumulated for the current assistant turn; emitted one `Delta::ToolCall` at a time.
-        pending_tool_calls: std::collections::VecDeque<ToolCall>,
-        /// After all `pending_tool_calls` are emitted, send this `Done` (e.g. `ToolUse`).
-        pending_stop_after_tools: Option<StopReason>,
-        done: bool,
+        lines: harness_provider_core::LineBuffer,
+        tools: HashMap<u32, (String, String, String)>,
+        queue: VecDeque<Delta>,
+        finished: bool,
+        eof: bool,
     }
-
     let state = State {
         stream: Box::pin(byte_stream),
-        buf: String::new(),
-        tool_calls: std::collections::HashMap::new(),
-        pending_tool_calls: std::collections::VecDeque::new(),
-        pending_stop_after_tools: None,
-        done: false,
+        lines: Default::default(),
+        tools: HashMap::new(),
+        queue: VecDeque::new(),
+        finished: false,
+        eof: false,
     };
-
-    futures::stream::unfold(state, |mut s| async move {
-        if s.done {
-            return None;
-        }
-
-        // Drain multi-tool batches: emit every tool call before the final `Done`.
-        if let Some(call) = s.pending_tool_calls.pop_front() {
-            return Some((Ok(Delta::ToolCall(call)), s));
-        }
-        if let Some(sr) = s.pending_stop_after_tools.take() {
-            s.done = true;
-            return Some((Ok(Delta::Done { stop_reason: sr }), s));
-        }
-
+    futures::stream::unfold(state, |mut state| async move {
         loop {
-            while let Some(nl) = s.buf.find('\n') {
-                let line = s.buf[..nl].trim_end_matches('\r').to_string();
-                s.buf = s.buf[nl + 1..].to_string();
-
-                if let Some(data) = line.strip_prefix("data: ") {
-                    if data == "[DONE]" {
-                        s.done = true;
+            if let Some(delta) = state.queue.pop_front() {
+                return Some((Ok(delta), state));
+            }
+            if state.eof {
+                return None;
+            }
+            let line = match state.lines.next_line() {
+                Ok(line) => line,
+                Err(error) => {
+                    state.eof = true;
+                    return Some((Err(error), state));
+                }
+            };
+            if let Some(line) = line {
+                let Some(data) = line.strip_prefix("data:").map(str::trim_start) else {
+                    continue;
+                };
+                if data == "[DONE]" {
+                    state.eof = true;
+                    // Some compatible servers use only the explicit terminator.
+                    if !state.finished {
+                        if !state.tools.is_empty() {
+                            return Some((Err(ProviderError::StreamEnded), state));
+                        }
+                        state.finished = true;
                         return Some((
                             Ok(Delta::Done {
                                 stop_reason: StopReason::EndTurn,
                             }),
-                            s,
+                            state,
                         ));
                     }
-
-                    if let Ok(v) = serde_json::from_str::<Value>(data) {
-                        // Usage (may appear in a separate chunk or on the last choice)
-                        if let Some(usage) = v.get("usage") {
-                            let in_tok = usage["prompt_tokens"].as_u64().unwrap_or(0) as u32;
-                            let out_tok = usage["completion_tokens"].as_u64().unwrap_or(0) as u32;
-                            if in_tok > 0 || out_tok > 0 {
-                                return Some((
-                                    Ok(Delta::Usage {
-                                        input_tokens: in_tok,
-                                        output_tokens: out_tok,
-                                    }),
-                                    s,
-                                ));
+                    return None;
+                }
+                let value: Value = match serde_json::from_str(data) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        state.eof = true;
+                        return Some((Err(error.into()), state));
+                    }
+                };
+                if let Some(error) = value.get("error") {
+                    state.eof = true;
+                    return Some((
+                        Err(ProviderError::Other(format!(
+                            "provider stream error: {error}"
+                        ))),
+                        state,
+                    ));
+                }
+                if let Some(usage) = value.get("usage") {
+                    let input_tokens = usage["prompt_tokens"].as_u64().unwrap_or(0) as u32;
+                    let output_tokens = usage["completion_tokens"].as_u64().unwrap_or(0) as u32;
+                    if input_tokens > 0 || output_tokens > 0 {
+                        state.queue.push_back(Delta::Usage {
+                            input_tokens,
+                            output_tokens,
+                        });
+                    }
+                }
+                if let Some(choice) = value["choices"]
+                    .as_array()
+                    .and_then(|choices| choices.first())
+                {
+                    let delta = &choice["delta"];
+                    if let Some(text) = delta["content"].as_str().filter(|text| !text.is_empty()) {
+                        state.queue.push_back(Delta::Text(text.to_owned()));
+                    }
+                    if let Some(calls) = delta["tool_calls"].as_array() {
+                        for call in calls {
+                            let index = call["index"].as_u64().unwrap_or(0) as u32;
+                            let entry = state.tools.entry(index).or_default();
+                            if let Some(id) = call["id"].as_str() {
+                                entry.0 = id.to_owned();
                             }
-                        }
-
-                        if let Some(choices) = v["choices"].as_array() {
-                            for choice in choices {
-                                let delta = &choice["delta"];
-                                let finish_reason = choice["finish_reason"].as_str();
-
-                                if let Some(text) = delta["content"].as_str() {
-                                    if !text.is_empty() {
-                                        return Some((Ok(Delta::Text(text.to_string())), s));
-                                    }
-                                }
-
-                                if let Some(tc_arr) = delta["tool_calls"].as_array() {
-                                    for tc in tc_arr {
-                                        let idx = tc["index"].as_u64().unwrap_or(0) as u32;
-                                        let entry = s.tool_calls.entry(idx).or_default();
-                                        if let Some(id) = tc["id"].as_str() {
-                                            entry.0 = id.to_string();
-                                        }
-                                        if let Some(name) = tc["function"]["name"].as_str() {
-                                            entry.1 = name.to_string();
-                                        }
-                                        if let Some(args) = tc["function"]["arguments"].as_str() {
-                                            entry.2.push_str(args);
-                                        }
-                                    }
-                                }
-
-                                if let Some(reason) = finish_reason {
-                                    // Flush every accumulated tool call (OpenAI may batch several).
-                                    if !s.tool_calls.is_empty() {
-                                        let mut sorted: Vec<_> = s.tool_calls.drain().collect();
-                                        sorted.sort_by_key(|(k, _)| *k);
-                                        for (_, (id, name, args)) in sorted {
-                                            s.pending_tool_calls.push_back(ToolCall {
-                                                id,
-                                                kind: "function".into(),
-                                                function: ToolCallFunction {
-                                                    name,
-                                                    arguments: args,
-                                                },
-                                            });
-                                        }
-                                        let sr = match reason {
-                                            "tool_calls" => StopReason::ToolUse,
-                                            "length" => StopReason::MaxTokens,
-                                            _ => StopReason::EndTurn,
-                                        };
-                                        s.pending_stop_after_tools = Some(sr);
-                                        if let Some(call) = s.pending_tool_calls.pop_front() {
-                                            return Some((Ok(Delta::ToolCall(call)), s));
-                                        }
-                                    }
-
-                                    let sr = match reason {
-                                        "tool_calls" => StopReason::ToolUse,
-                                        "length" => StopReason::MaxTokens,
-                                        _ => StopReason::EndTurn,
-                                    };
-                                    s.done = true;
-                                    return Some((Ok(Delta::Done { stop_reason: sr }), s));
-                                }
+                            if let Some(name) = call["function"]["name"].as_str() {
+                                entry.1 = name.to_owned();
+                            }
+                            if let Some(arguments) = call["function"]["arguments"].as_str() {
+                                entry.2.push_str(arguments);
                             }
                         }
                     }
+                    if let Some(reason) = choice["finish_reason"].as_str() {
+                        let mut calls: Vec<_> = state.tools.drain().collect();
+                        calls.sort_by_key(|(index, _)| *index);
+                        for (_, (id, name, arguments)) in calls {
+                            state.queue.push_back(Delta::ToolCall(ToolCall {
+                                id,
+                                kind: "function".into(),
+                                function: ToolCallFunction { name, arguments },
+                            }));
+                        }
+                        let stop_reason = match reason {
+                            "tool_calls" => StopReason::ToolUse,
+                            "length" => StopReason::MaxTokens,
+                            "stop" => StopReason::EndTurn,
+                            _ => {
+                                state.eof = true;
+                                return Some((
+                                    Err(ProviderError::Other(format!(
+                                        "provider stopped with {reason}"
+                                    ))),
+                                    state,
+                                ));
+                            }
+                        };
+                        state.finished = true;
+                        state.queue.push_back(Delta::Done { stop_reason });
+                    }
                 }
+                continue;
             }
-
-            match s.stream.next().await {
-                Some(Ok(chunk)) => s.buf.push_str(&String::from_utf8_lossy(&chunk)),
-                Some(Err(e)) => {
-                    s.done = true;
-                    return Some((Err(ProviderError::Other(e.to_string())), s));
+            if state.eof {
+                return None;
+            }
+            match state.stream.next().await {
+                Some(Ok(chunk)) => state.lines.push(&chunk),
+                Some(Err(error)) => {
+                    state.eof = true;
+                    return Some((Err(ProviderError::Other(error.to_string())), state));
                 }
                 None => {
-                    s.done = true;
-                    return Some((
-                        Ok(Delta::Done {
-                            stop_reason: StopReason::EndTurn,
-                        }),
-                        s,
-                    ));
+                    state.eof = true;
+                    if !state.finished {
+                        return Some((Err(ProviderError::StreamEnded), state));
+                    }
+                    return None;
                 }
             }
         }
@@ -533,6 +536,73 @@ fn parse_openai_sse(
 mod openai_sse_tests {
     use super::*;
     use futures::StreamExt;
+
+    #[test]
+    fn request_limits_follow_the_effective_model_and_endpoint() {
+        let config = OpenAIConfig::new("test").with_max_tokens(1234);
+        for model in ["gpt-5.5", "gpt-6-sol", "o3", "o4-mini"] {
+            let body =
+                serde_json::to_value(build_api_request(&ChatRequest::new(model), &config)).unwrap();
+            assert_eq!(body["model"], model);
+            assert_eq!(body["max_completion_tokens"], 1234);
+            assert!(body.get("max_tokens").is_none());
+            assert!(body.get("temperature").is_none());
+        }
+        let compatible = config.with_base_url("http://localhost:8080/v1");
+        let body =
+            serde_json::to_value(build_api_request(&ChatRequest::new("gpt-5.5"), &compatible))
+                .unwrap();
+        assert_eq!(body["max_tokens"], 1234);
+        assert!(body.get("temperature").is_some());
+        assert!(body.get("max_completion_tokens").is_none());
+    }
+
+    #[tokio::test]
+    async fn preserves_unicode_at_every_network_split_and_trailing_usage() {
+        let payload = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"hé中🦀\"},\"finish_reason\":\"stop\"}]}\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7}}\n",
+            "data: [DONE]\n"
+        );
+        for split in 0..=payload.len() {
+            let chunks = vec![
+                Ok(bytes::Bytes::copy_from_slice(&payload.as_bytes()[..split])),
+                Ok(bytes::Bytes::copy_from_slice(&payload.as_bytes()[split..])),
+            ];
+            let parsed = parse_openai_sse(futures::stream::iter(chunks));
+            tokio::pin!(parsed);
+            let mut text = String::new();
+            let mut usage = None;
+            let mut done = 0;
+            while let Some(delta) = parsed.next().await {
+                match delta.unwrap() {
+                    Delta::Text(part) => text.push_str(&part),
+                    Delta::Usage {
+                        input_tokens,
+                        output_tokens,
+                    } => usage = Some((input_tokens, output_tokens)),
+                    Delta::Done { .. } => done += 1,
+                    _ => {}
+                }
+            }
+            assert_eq!(text, "hé中🦀");
+            assert_eq!(usage, Some((11, 7)));
+            assert_eq!(done, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn reports_unexpected_eof() {
+        let body = sse_bytes(&[r#"data: {"choices":[{"delta":{"content":"partial"}}]}"#]);
+        let parsed = parse_openai_sse(futures::stream::once(async move { Ok(body) }));
+        tokio::pin!(parsed);
+        assert!(matches!(parsed.next().await, Some(Ok(Delta::Text(_)))));
+        assert!(matches!(
+            parsed.next().await,
+            Some(Err(ProviderError::StreamEnded))
+        ));
+        assert!(parsed.next().await.is_none());
+    }
 
     fn sse_bytes(lines: &[&str]) -> bytes::Bytes {
         let mut s = String::new();
@@ -665,23 +735,15 @@ mod openai_sse_tests {
     }
 
     #[tokio::test]
-    async fn malformed_json_lines_are_skipped_not_panicked() {
-        let body = sse_bytes(&[
-            r#"data: {not valid json"#,
-            r#"data: {"choices":[{"delta":{"content":"survived"}}]}"#,
-            r#"data: also garbage"#,
-            r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
-        ]);
-        let collected = collect(body).await;
-        let text: String = collected
-            .iter()
-            .filter_map(|d| match d {
-                Delta::Text(t) => Some(t.as_str()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(text, "survived");
-        assert!(matches!(collected.last(), Some(Delta::Done { .. })));
+    async fn malformed_json_is_a_reported_failure() {
+        let body = sse_bytes(&["data: {not valid json"]);
+        let stream = parse_openai_sse(futures::stream::once(async move { Ok(body) }));
+        tokio::pin!(stream);
+        assert!(matches!(
+            stream.next().await,
+            Some(Err(ProviderError::Json(_)))
+        ));
+        assert!(stream.next().await.is_none());
     }
 
     #[tokio::test]

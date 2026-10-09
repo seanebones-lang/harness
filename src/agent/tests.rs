@@ -236,7 +236,8 @@ async fn drive_agent_stops_at_tool_loop_limit() {
         events.push(ev);
     }
 
-    result.expect("drive_agent should return Ok after safety stop");
+    assert!(result.unwrap_err().to_string().contains("safety limit"));
+    assert!(!events.iter().any(|event| matches!(event, AgentEvent::Done)));
     assert!(
         events.iter().any(|e| {
             matches!(e, AgentEvent::Error(msg) if msg.contains("50") && msg.contains("safety limit"))
@@ -357,4 +358,123 @@ async fn maybe_compact_emits_context_compacted_event() {
     };
     maybe_compact(&provider, &mut session, 0.0, Some(&emit)).await;
     assert!(saw.get(), "expected ContextCompacted event");
+}
+
+#[tokio::test]
+async fn token_limit_does_not_execute_incomplete_tools_or_report_success() {
+    let mut session = Session::new("script-model");
+    session.push(Message::user("work"));
+    let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![vec![
+        Delta::Text("partial answer".into()),
+        Delta::ToolCall(echo_call("incomplete")),
+        Delta::Done {
+            stop_reason: StopReason::MaxTokens,
+        },
+    ]]));
+    let (tx, mut rx) = crate::events::channel();
+    let result = drive_agent(
+        &provider,
+        &echo_executor(),
+        None,
+        None,
+        &mut session,
+        "test",
+        Some(&tx),
+    )
+    .await;
+    assert!(result.unwrap_err().to_string().contains("token limit"));
+    assert_eq!(
+        session.messages.last().unwrap().content.as_str(),
+        "partial answer"
+    );
+    while let Ok(event) = rx.try_recv() {
+        assert!(!matches!(
+            event,
+            AgentEvent::ToolStart { .. } | AgentEvent::Done
+        ));
+    }
+}
+
+#[tokio::test]
+async fn failed_one_shot_persists_a_resumable_session() {
+    let scratch = tempfile::tempdir().unwrap();
+    let store = harness_memory::SessionStore::open(scratch.path().join("sessions.db")).unwrap();
+    let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![vec![
+        Delta::Text("partial answer".into()),
+        Delta::Done {
+            stop_reason: StopReason::MaxTokens,
+        },
+    ]]));
+    let result = run_once(
+        &provider,
+        &store,
+        None,
+        None,
+        &echo_executor(),
+        "script-model",
+        Some("test"),
+        "work",
+        None,
+        RunOnceOptions::default(),
+    )
+    .await;
+    assert!(result.is_err());
+    let sessions = store.list(10).unwrap();
+    assert_eq!(sessions.len(), 1);
+    let saved = store.find(&sessions[0].0).unwrap().unwrap();
+    assert_eq!(
+        saved.messages.last().unwrap().content.as_str(),
+        "partial answer"
+    );
+}
+
+#[tokio::test]
+async fn failed_or_incomplete_compaction_keeps_exact_history() {
+    for script in [
+        vec![Delta::Text("partial".into())],
+        vec![
+            Delta::Text("partial".into()),
+            Delta::Done {
+                stop_reason: StopReason::MaxTokens,
+            },
+        ],
+        vec![Delta::Done {
+            stop_reason: StopReason::EndTurn,
+        }],
+    ] {
+        let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![script]));
+        let mut session = Session::new("script-model");
+        for i in 0..4 {
+            session.push(Message::user(format!("q{i}")));
+            session.push(Message::assistant(format!("a{i}")));
+        }
+        let before = serde_json::to_value(&session.messages).unwrap();
+        assert!(!compact_context(&provider, &mut session).await);
+        assert_eq!(serde_json::to_value(&session.messages).unwrap(), before);
+    }
+}
+
+#[tokio::test]
+async fn compaction_keeps_tool_call_and_results_in_the_same_turn() {
+    let provider: ArcProvider = Arc::new(ScriptProvider::new(vec![vec![
+        Delta::Text("summary".into()),
+        Delta::Done {
+            stop_reason: StopReason::EndTurn,
+        },
+    ]]));
+    let mut session = Session::new("script-model");
+    session.push(Message::user("first"));
+    session.push(harness_provider_core::tool_calls_to_message(&[echo_call(
+        "first-tool",
+    )]));
+    session.push(Message::tool_result("first-tool", "result"));
+    session.push(Message::assistant("done"));
+    session.push(Message::user("latest"));
+    session.push(Message::assistant("latest answer"));
+    assert!(compact_context(&provider, &mut session).await);
+    assert_eq!(session.messages[1].content.as_str(), "latest");
+    assert!(session
+        .messages
+        .iter()
+        .all(|message| message.role != harness_provider_core::Role::Tool));
 }

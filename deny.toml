@@ -1,14 +1,5 @@
-# https://embarkstudios.github.io/cargo-deny/
+# Dependency policy for MIT-licensed Harness. Third-party licenses remain their own.
 # Run: cargo deny check
-#
-# PRODUCT LICENSE (NextEleven Harness itself):
-#   LicenseRef-NextEleven-Proprietary — NextEleven LLC
-#   Public GitHub = proof-of-concept source visibility ONLY.
-#   NOT MIT. NOT open source. NOT a grant to use/copy/redistribute.
-#
-# The [licenses].allow list below is ONLY for third-party crates.io
-# dependencies required to compile the POC. Allowing "MIT" there does
-# NOT relicense this repository. Do not add a product MIT license.
 
 [advisories]
 version = 2
@@ -26,7 +17,7 @@ ignore = [
 
 [licenses]
 version = 2
-# Third-party dependency licenses only (build graph). Product = proprietary.
+# Licenses permitted in the dependency build graph.
 allow = [
     # Common OSS dependency licenses (crates.io transitive graph)
     "Apache-2.0",
@@ -43,16 +34,13 @@ allow = [
     "Unlicense",
     # Many Rust ecosystem crates are MIT OR Apache-2.0 dual; cargo-deny
     # needs MIT listed to accept the MIT side of dual-licensed deps.
-    # THIS IS NOT A PRODUCT LICENSE.
     "MIT",
-    # Workspace product license (NextEleven LLC proprietary — not crates.io OSS)
-    "LicenseRef-NextEleven-Proprietary",
 ]
 private = { ignore = true }
 confidence-threshold = 0.85
 exceptions = [
     # keyring → turso path; tiny crate, no license field on crates.io
-    # Exception is dependency-only; product remains proprietary.
+    # Dependency-specific exception retained from the original policy.
     { allow = ["MIT"], crate = "cfg_block" },
 ]
 

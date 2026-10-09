@@ -62,23 +62,23 @@ pub async fn maybe_compact(
 /// Force-compact the oldest half of non-system messages into a summary block.
 /// Returns `true` if messages were replaced with a summary.
 pub async fn compact_context(provider: &ArcProvider, session: &mut Session) -> bool {
-    // Separate system messages from the rest.
-    let (system_msgs, mut conv_msgs): (Vec<_>, Vec<_>) = session
+    // Work on a snapshot. Failure or cancellation must leave the original history intact.
+    let (system_msgs, conv_msgs): (Vec<_>, Vec<_>) = session
         .messages
-        .drain(..)
-        .partition(|m| matches!(m.role, Role::System));
-
+        .iter()
+        .cloned()
+        .partition(|message| matches!(message.role, Role::System));
     if conv_msgs.len() < 4 {
-        // Nothing worth compacting.
-        session.messages.extend(system_msgs);
-        session.messages.extend(conv_msgs);
         return false;
     }
 
-    // Take the oldest half for summarisation.
-    let mid = conv_msgs.len() / 2;
-    let to_compact = conv_msgs.drain(..mid).collect::<Vec<_>>();
-    let remaining = conv_msgs;
+    // Keep complete user turns together, including their tool calls and results.
+    let Some(mid) = (conv_msgs.len() / 2..conv_msgs.len())
+        .find(|index| matches!(conv_msgs[*index].role, Role::User))
+    else {
+        return false;
+    };
+    let (to_compact, remaining) = conv_msgs.split_at(mid);
 
     // Build a summarisation prompt.
     let segment: String = to_compact
@@ -103,29 +103,34 @@ pub async fn compact_context(provider: &ArcProvider, session: &mut Session) -> b
     let summary_req =
         ChatRequest::new(&session.model).with_messages(vec![Message::user(&summary_prompt)]);
 
-    let summary = match provider.stream_chat(summary_req).await {
-        Ok(mut stream) => {
-            let mut text = String::new();
-            while let Some(Ok(Delta::Text(chunk))) = stream.next().await {
-                text.push_str(&chunk);
-            }
-            text
-        }
-        Err(e) => {
-            tracing::warn!("compaction failed: {e}");
-            // On failure, put messages back.
-            session.messages.extend(system_msgs);
-            session.messages.extend(to_compact);
-            session.messages.extend(remaining);
+    let mut stream = match provider.stream_chat(summary_req).await {
+        Ok(stream) => stream,
+        Err(error) => {
+            tracing::warn!("compaction failed: {error}");
             return false;
         }
     };
+    let mut summary = String::new();
+    let mut completed = false;
+    while let Some(delta) = stream.next().await {
+        match delta {
+            Ok(Delta::Text(text)) => summary.push_str(&text),
+            Ok(Delta::Done {
+                stop_reason: harness_provider_core::StopReason::EndTurn,
+            }) => completed = true,
+            Ok(Delta::Done { .. }) | Err(_) => return false,
+            _ => {}
+        }
+    }
+    if !completed || summary.trim().is_empty() {
+        return false;
+    }
 
     let compact_msg = Message::system(format!("[compacted: {}]", summary.trim()));
 
-    session.messages.extend(system_msgs);
+    session.messages = system_msgs;
     session.messages.push(compact_msg);
-    session.messages.extend(remaining);
+    session.messages.extend_from_slice(remaining);
 
     tracing::info!(
         "context compacted: {} messages → summary + {}",

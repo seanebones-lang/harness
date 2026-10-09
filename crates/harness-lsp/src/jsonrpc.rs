@@ -181,6 +181,9 @@ pub fn try_decode_lsp_frame(input: &str) -> Result<Option<(String, &str)>> {
     if rest.len() < content_length {
         return Ok(None);
     }
+    if !rest.is_char_boundary(content_length) {
+        anyhow::bail!("LSP: Content-Length splits a UTF-8 character");
+    }
     let body = rest[..content_length].to_string();
     rest = &rest[content_length..];
     Ok(Some((body, rest)))

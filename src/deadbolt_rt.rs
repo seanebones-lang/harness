@@ -7,8 +7,9 @@ use std::sync::OnceLock;
 #[cfg(feature = "deadbolt")]
 use anyhow::Result;
 
+use harness_deadbolt::DeadboltConfig;
 #[cfg(feature = "deadbolt")]
-use harness_deadbolt::{Deadbolt, DeadboltConfig, PolicyPatch};
+use harness_deadbolt::{Deadbolt, PolicyPatch};
 
 use crate::cli::args::DeadboltAction;
 use crate::config::Config;
@@ -40,11 +41,6 @@ pub fn process_agent_id() -> String {
 #[cfg(feature = "deadbolt")]
 pub fn handle(cfg: &DeadboltConfig) -> Deadbolt {
     HANDLE.get_or_init(|| Deadbolt::open(cfg)).clone()
-}
-
-#[cfg(not(feature = "deadbolt"))]
-pub fn handle(_cfg: &DeadboltConfig) -> ! {
-    panic!("deadbolt feature not enabled");
 }
 
 /// `harness deadbolt …`. Drill uses a temp store and does not need API keys.
@@ -176,10 +172,9 @@ pub fn dispatch(action: &DeadboltAction, cfg: &Config) -> Result<()> {
 
 #[cfg(not(feature = "deadbolt"))]
 pub fn dispatch(_action: &DeadboltAction, _cfg: &Config) -> anyhow::Result<()> {
-    panic!("deadbolt feature not enabled");
+    anyhow::bail!("this binary was built without the deadbolt feature");
 }
 
-#[cfg(feature = "deadbolt")]
 use harness_tools::ToolExecutor;
 #[cfg(feature = "deadbolt")]
 use std::sync::Arc;
@@ -238,6 +233,7 @@ pub fn bind_swarm_child(
     None
 }
 
+#[cfg(any(feature = "deadbolt", test))]
 fn child_for(parent: &str, swarm_task_id: &str) -> String {
     let raw = format!("{parent}-{swarm_task_id}");
     if raw.len() <= 128 && is_agent_token(&raw) {
@@ -247,6 +243,7 @@ fn child_for(parent: &str, swarm_task_id: &str) -> String {
     }
 }
 
+#[cfg(any(feature = "deadbolt", test))]
 fn split_list(raw: Option<&str>) -> Option<Vec<String>> {
     raw.map(|s| {
         s.split(',')
@@ -257,6 +254,7 @@ fn split_list(raw: Option<&str>) -> Option<Vec<String>> {
     })
 }
 
+#[cfg(any(feature = "deadbolt", test))]
 fn incident_tokens(value: &serde_json::Value) -> String {
     let agent = value.get("agent").and_then(|v| v.as_str()).unwrap_or("-");
     let killed = value

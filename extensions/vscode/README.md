@@ -1,6 +1,6 @@
 # NextEleven Harness VS Code Extension
 
-Side-panel chat against the Harness daemon. Distributed under the proprietary NextEleven LLC evaluation license; see LICENSE.
+Side-panel chat against the Harness daemon. Distributed under the MIT license; see LICENSE.
 
 ## Requirements
 
@@ -19,4 +19,4 @@ npm run compile
 npm run package
 ```
 
-Packaging recompiles the extension and includes only runtime JavaScript, the icon, manifest, README, and proprietary license. A packaged VSIX is a local artifact; marketplace publication and live editor acceptance are separate release gates.
+Packaging recompiles the extension and includes only runtime JavaScript, the icon, manifest, README, and MIT license. A packaged VSIX is a local artifact; marketplace publication and live editor acceptance are separate release gates.

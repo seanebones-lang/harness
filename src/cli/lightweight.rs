@@ -235,8 +235,8 @@ fn dispatch_runs() -> Result<()> {
     } else {
         println!("{:<10} {:<8} {:<25} PROMPT", "ID", "STATUS", "STARTED");
         for run in runs {
-            let prompt_preview = if run.prompt.len() > 40 {
-                format!("{}…", &run.prompt[..40])
+            let prompt_preview = if run.prompt.chars().count() > 40 {
+                format!("{}…", harness_tools::text::char_prefix(&run.prompt, 40))
             } else {
                 run.prompt.clone()
             };

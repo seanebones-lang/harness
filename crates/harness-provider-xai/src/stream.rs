@@ -13,7 +13,8 @@ use crate::types::{PartialToolCall, StreamChunk, UsageInfo};
 /// Wraps a raw byte stream from reqwest and parses SSE into `Delta` items.
 pub struct SseStream {
     inner: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
-    buffer: String,
+    buffer: harness_provider_core::LineBuffer,
+    terminal_seen: bool,
     // assembles fragmented tool_call deltas keyed by index
     tool_call_builders: HashMap<usize, ToolCallBuilder>,
     done: bool,
@@ -33,7 +34,8 @@ impl SseStream {
     pub fn new(inner: impl Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static) -> Self {
         Self {
             inner: Box::pin(inner),
-            buffer: String::new(),
+            buffer: Default::default(),
+            terminal_seen: false,
             tool_call_builders: HashMap::new(),
             done: false,
             pending_usage: None,
@@ -45,6 +47,15 @@ impl SseStream {
         let data = line.strip_prefix("data: ")?;
         if data == "[DONE]" {
             self.done = true;
+            if !self.terminal_seen {
+                return Some(if self.tool_call_builders.is_empty() {
+                    Ok(Delta::Done {
+                        stop_reason: StopReason::EndTurn,
+                    })
+                } else {
+                    Err(ProviderError::StreamEnded)
+                });
+            }
             return None;
         }
 
@@ -78,12 +89,13 @@ impl SseStream {
 
         if let Some(text) = delta.content {
             if !text.is_empty() {
-                return Some(Ok(Delta::Text(text)));
+                self.queue.push_back(Ok(Delta::Text(text)));
             }
         }
 
         match finish {
             Some(reason) => {
+                self.terminal_seen = true;
                 let stop_reason = match reason {
                     "tool_calls" => StopReason::ToolUse,
                     "stop" => StopReason::EndTurn,
@@ -110,7 +122,7 @@ impl SseStream {
                 self.queue.push_back(Ok(Delta::Done { stop_reason }));
                 self.queue.pop_front()
             }
-            None => None,
+            None => self.queue.pop_front(),
         }
     }
 
@@ -166,43 +178,39 @@ impl Stream for SseStream {
         }
 
         loop {
-            // Check if we have a complete SSE line in the buffer
-            if let Some(pos) = self.buffer.find('\n') {
-                let line = self.buffer[..pos].trim_end_matches('\r').to_string();
-                self.buffer = self.buffer[pos + 1..].to_string();
-
-                if line.starts_with("data: ") {
-                    if let Some(result) = self.parse_event(&line) {
-                        return Poll::Ready(Some(result));
+            match self.buffer.next_line() {
+                Ok(Some(line)) => {
+                    if line.starts_with("data: ") {
+                        if let Some(result) = self.parse_event(&line) {
+                            return Poll::Ready(Some(result));
+                        }
+                        if self.done {
+                            return Poll::Ready(None);
+                        }
                     }
-                    if self.done {
-                        return Poll::Ready(None);
-                    }
+                    continue;
                 }
-                continue;
+                Err(error) => {
+                    self.done = true;
+                    return Poll::Ready(Some(Err(error)));
+                }
+                Ok(None) => {}
             }
 
             // Need more bytes from the underlying stream
             match Pin::new(&mut self.inner).poll_next(cx) {
-                Poll::Ready(Some(Ok(bytes))) => match std::str::from_utf8(&bytes) {
-                    Ok(s) => self.buffer.push_str(s),
-                    Err(e) => return Poll::Ready(Some(Err(ProviderError::Other(e.to_string())))),
-                },
-                Poll::Ready(Some(Err(e))) => {
-                    return Poll::Ready(Some(Err(ProviderError::Other(e.to_string()))))
+                Poll::Ready(Some(Ok(bytes))) => self.buffer.push(&bytes),
+                Poll::Ready(Some(Err(error))) => {
+                    self.done = true;
+                    return Poll::Ready(Some(Err(ProviderError::Other(error.to_string()))));
                 }
                 Poll::Ready(None) => {
-                    // Flush any remaining tool calls if stream ended mid-tool
-                    if !self.tool_call_builders.is_empty() {
-                        let calls = self.flush_tool_calls();
-                        for call in calls {
-                            self.queue.push_back(Ok(Delta::ToolCall(call)));
-                        }
-                        if let Some(item) = self.queue.pop_front() {
-                            return Poll::Ready(Some(item));
-                        }
-                    }
-                    return Poll::Ready(None);
+                    self.done = true;
+                    return if self.terminal_seen {
+                        Poll::Ready(None)
+                    } else {
+                        Poll::Ready(Some(Err(ProviderError::StreamEnded)))
+                    };
                 }
                 Poll::Pending => return Poll::Pending,
             }
@@ -257,7 +265,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn flushes_multiple_pending_tool_calls_on_stream_end() {
+    async fn rejects_pending_tool_calls_on_incomplete_stream() {
         let payload = concat!(
             "data: {\"choices\":[{\"delta\":{\"tool_calls\":[",
             "{\"index\":0,\"id\":\"call_a\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"/tmp/a.txt\\\"}\"}},",
@@ -268,14 +276,11 @@ mod tests {
         let inner = stream::iter(vec![Ok::<Bytes, reqwest::Error>(Bytes::from(payload))]);
         let mut sse = SseStream::new(inner);
 
-        let mut emitted = Vec::new();
-        while let Some(item) = sse.next().await {
-            emitted.push(item.expect("valid stream item"));
-        }
-
-        assert_eq!(emitted.len(), 2);
-        assert!(matches!(&emitted[0], Delta::ToolCall(call) if call.id == "call_a"));
-        assert!(matches!(&emitted[1], Delta::ToolCall(call) if call.id == "call_b"));
+        assert!(matches!(
+            sse.next().await,
+            Some(Err(harness_provider_core::ProviderError::StreamEnded))
+        ));
+        assert!(sse.next().await.is_none());
     }
 
     mod sse_proptest {
@@ -295,6 +300,32 @@ mod tests {
                     }
                 });
             }
+        }
+    }
+    #[tokio::test]
+    async fn combined_final_chunk_preserves_unicode_usage_and_completion() {
+        let payload = "data: {\"choices\":[{\"delta\":{\"content\":\"hé中🦀\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n";
+        for split in 0..=payload.len() {
+            let chunks = vec![
+                Ok(Bytes::copy_from_slice(&payload.as_bytes()[..split])),
+                Ok(Bytes::copy_from_slice(&payload.as_bytes()[split..])),
+            ];
+            let mut parsed = SseStream::new(stream::iter(chunks));
+            assert!(matches!(parsed.next().await, Some(Ok(Delta::Text(text))) if text == "hé中🦀"));
+            assert!(matches!(
+                parsed.next().await,
+                Some(Ok(Delta::Usage {
+                    input_tokens: 3,
+                    output_tokens: 2
+                }))
+            ));
+            assert!(matches!(
+                parsed.next().await,
+                Some(Ok(Delta::Done {
+                    stop_reason: StopReason::EndTurn
+                }))
+            ));
+            assert!(parsed.next().await.is_none());
         }
     }
 }

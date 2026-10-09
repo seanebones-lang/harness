@@ -1,7 +1,11 @@
 {
   "name": "harness-web-ui-tests",
   "private": true,
-  "license": "UNLICENSED",
-  "scripts": { "test": "node --test tests/*.test.cjs" },
-  "devDependencies": { "jsdom": "^26.1.0" }
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
 }

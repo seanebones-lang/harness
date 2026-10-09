@@ -121,8 +121,8 @@ pub(crate) fn agent_event_to_collab(event: &AgentEvent) -> Option<CollabEvent> {
 
 /// Truncate tool results for collab WS payloads (ellipsis after 120 chars).
 pub(crate) fn tool_result_preview(result: &str) -> String {
-    if result.len() > 120 {
-        format!("{}…", &result[..120])
+    if result.chars().count() > 120 {
+        format!("{}…", harness_tools::text::char_prefix(result, 120))
     } else {
         result.to_string()
     }

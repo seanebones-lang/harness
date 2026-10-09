@@ -6,7 +6,7 @@
 
 Work began on clean `main` at `78e90ac7654779368b5a116fe9c30e2883396863`. The root Rust workspace, embedded browser UI, installers, release/CI workflows, Docker path, VS Code package, and separate Tauri crate were reviewed and repaired. This was release engineering and targeted runtime hardening, not an exhaustive independent security audit or acceptance of every optional integration.
 
-The existing proprietary NextEleven LLC license and explicit user-owned provider/model route remain the product contract. Credentials and personal runtime state were not copied into the repository or release artifacts.
+The current license is MIT. Explicit user-owned provider/model routes remain the runtime contract. Credentials and personal runtime state were not copied into the repository or release artifacts.
 
 ## September 14 continuation
 

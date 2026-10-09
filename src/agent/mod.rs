@@ -21,3 +21,26 @@ pub use system::{load_project_instructions, load_project_instructions_in, DEFAUL
 
 #[cfg(test)]
 mod tests;
+
+/// Restore a resumable tool ledger after interruption without assuming effects were rolled back.
+pub(crate) fn complete_cancelled_tool_results(session: &mut harness_memory::Session) {
+    let completed: std::collections::HashSet<&str> = session
+        .messages
+        .iter()
+        .filter_map(|message| message.tool_call_id.as_deref())
+        .collect();
+    let unfinished: Vec<String> = session
+        .messages
+        .iter()
+        .filter(|message| message.role == harness_provider_core::Role::Assistant)
+        .filter_map(|message| message.content.as_str().strip_prefix("__tool_calls__:"))
+        .filter_map(|json| serde_json::from_str::<Vec<harness_provider_core::ToolCall>>(json).ok())
+        .flatten()
+        .filter(|call| !completed.contains(call.id.as_str()))
+        .map(|call| call.id.clone())
+        .collect();
+    for id in unfinished {
+        session.push(harness_provider_core::Message::tool_result(&id,
+            "Cancelled before a result was recorded. Effects may be partial; inspect the workspace before retrying."));
+    }
+}

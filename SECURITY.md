@@ -37,7 +37,7 @@ Full detail: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) (v2, 2026-08-03).
 
 ## License
 
-**Proprietary — NextEleven LLC.** See [`LICENSE`](LICENSE). Unauthorized use or redistribution is prohibited.
+**MIT licensed.** See [`LICENSE`](LICENSE). Third-party dependencies retain their own licenses.
 
 ## Public repository hygiene
 

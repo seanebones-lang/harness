@@ -1,3 +1,5 @@
+> Historical team update. The current source is MIT licensed. See [PERSONAL_USE.md](PERSONAL_USE.md) for current acceptance.
+
 # Team update — 2026-08-03
 
 > **Historical snapshot** (max-opt day). **Current gates:** [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md) · [`COVERAGE.md`](../COVERAGE.md) · [`TODO.md`](../TODO.md)  

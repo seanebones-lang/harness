@@ -1,5 +1,7 @@
 # Changelog
 
+Current licensing is MIT. Historical entries describe the policy and results at their recorded dates.
+
 All notable changes to NextEleven Harness will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
@@ -8,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Personal-use acceptance record and real terminal cancellation/session recovery smoke tests
 - Isolated real-binary CLI and synthetic provider/HTTP release smoke, including tool execution, exact model routing, session persistence, and export
 - Installer and Homebrew checksum contract tests with failure-preservation checks
 - Provider-neutral `harness route show|set|model|add|remove|move|custom` commands with explicit global/project scope
@@ -15,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `api_key_env` and `kind = "openai-compatible"` configuration for future bearer-authenticated endpoints without source changes
 
 ### Changed
+- Aligned first-party packaging and contribution terms with MIT; moved competition and promotion material into history
+- Consolidated the active personal-use workflow and verification command
 - Setup now asks for one or more exact `provider:model` entries and preserves their order; no provider or model is marked recommended
 - Runtime no longer chooses a provider priority, inserts implicit fallbacks, or silently falls back to Ollama
 - Browser setup edits the same exact route as the CLI and no longer collects API keys
@@ -23,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Current product, contributor, roadmap, translated quick-start, audit, release, and competition documents now distinguish the exact user-owned route from superseded automatic-router behavior and separate current `main` evidence from tagged-release history
 
 ### Fixed
+- UTF-8 truncation and split transport chunks, combined stream events, incomplete-response and provider-error reporting
+- Failed and cancelled session recovery, complete exports, safe context compaction, and bounded cosmetic naming
+- Correct fallback model selection, current OpenAI reasoning request parameters, and selected embedding models
+- Compilation with default features disabled
 - Browser disconnect/Stop cancels backend turns; interrupted tool batches remain resumable and session-save failures are reported
 - Shell cancellation and timeouts terminate the owned child and its Unix process group, preventing delayed descendant writes
 - Browser startup initializes the saved resume preference before reading it; DOM regressions cover fresh profiles and authenticated streaming chat

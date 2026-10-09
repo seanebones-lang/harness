@@ -65,8 +65,8 @@ First-run wizard: `harness setup` or just `harness`.
 ### Docs
 
 - [Install guide](https://github.com/seanebones-lang/harness/blob/main/docs/INSTALL.md)
-- [Comparison vs Aider / Claude Code / Cursor](https://github.com/seanebones-lang/harness/blob/main/docs/COMPARISON.md)
-- [Promotion report](https://github.com/seanebones-lang/harness/blob/main/docs/PROMOTION_REPORT.md)
+- [Comparison vs Aider / Claude Code / Cursor](https://github.com/seanebones-lang/harness/blob/main/docs/history/COMPARISON.md)
+- [Promotion report](https://github.com/seanebones-lang/harness/blob/main/docs/history/PROMOTION_REPORT.md)
 
 ### Known limitations (beta)
 

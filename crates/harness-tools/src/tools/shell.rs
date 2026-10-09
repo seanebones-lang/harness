@@ -262,12 +262,12 @@ impl Tool for ShellTool {
 
         // Cap output to avoid flooding the context window.
         if result.len() > 32_768 {
-            let head = &result[..16_384];
-            let tail = &result[result.len() - 4_096..];
+            let head = crate::text::byte_prefix(&result, 16_384);
+            let tail = crate::text::byte_suffix(&result, 4_096);
             result = format!(
                 "{}\n... [{} bytes omitted] ...\n{}",
                 head,
-                result.len() - 20_480,
+                result.len() - head.len() - tail.len(),
                 tail
             );
         }

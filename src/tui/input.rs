@@ -59,7 +59,10 @@ pub(crate) fn handle_voice(state: &Arc<Mutex<AppState>>) {
                 st.input.push_str(&t);
                 st.cursor_pos = st.input.len();
                 st.status = "Transcribed — press Enter to send.".to_string();
-                st.push_event(format!("[voice] {}", &t[..t.len().min(80)]));
+                st.push_event(format!(
+                    "[voice] {}",
+                    harness_tools::text::char_prefix(&t, 80)
+                ));
             }
             Ok(_) => {
                 st.status = "Voice: no speech detected.".to_string();
@@ -605,8 +608,8 @@ pub(crate) async fn handle_slash_command(
                 let mut st = state.lock();
                 st.push_event(format!("[runs] {} run(s):", runs.len()));
                 for run in &runs {
-                    let p = if run.prompt.len() > 50 {
-                        format!("{}…", &run.prompt[..50])
+                    let p = if run.prompt.chars().count() > 50 {
+                        format!("{}…", harness_tools::text::char_prefix(&run.prompt, 50))
                     } else {
                         run.prompt.clone()
                     };

@@ -1,3 +1,11 @@
+# Current acceptance status
+
+Harness is now MIT licensed and developed for personal use. The current assessment and validation are in [PERSONAL_USE.md](PERSONAL_USE.md), with priorities in [CTO_BACKLOG.md](CTO_BACKLOG.md).
+
+The entries below are dated historical evidence. Earlier proprietary license policies, competition goals, billing blocks, test totals, and stable-release gates do not describe the current source or personal-use acceptance target.
+
+---
+
 # Release status — NextEleven Harness
 
 This file records the latest **go / no-go** assessment for sharing the repo publicly. Update it when you run [`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md).
@@ -381,11 +389,11 @@ Detailed repairs, evidence, risk decisions, and restart order: [PRODUCTION_READI
 
 | Item | Result |
 |------|--------|
-| Promotion assessment | [`PROMOTION_REPORT.md`](PROMOTION_REPORT.md) — **GO** for public beta |
+| Promotion assessment | [`PROMOTION_REPORT.md`](history/PROMOTION_REPORT.md) — **GO** for public beta |
 | Tier 0 (docs, CI, screenshots) | **Complete** |
 | Tier 1 (REL-01, Homebrew, tag) | **Pending** — maintainer-only |
 | Draft release notes | [`RELEASE_NOTES_v0.1.2-beta.md`](RELEASE_NOTES_v0.1.2-beta.md) |
-| Comparison table refresh | [`COMPARISON.md`](COMPARISON.md) updated |
+| Comparison table refresh | [`COMPARISON.md`](history/COMPARISON.md) updated |
 
 **Go / no-go:** **GO** to promote public beta now. **Stable** still blocked on REL-01 manual smoke §3 per OS + P2-10 Homebrew post-tag.
 
@@ -433,7 +441,7 @@ Detailed repairs, evidence, risk decisions, and restart order: [PRODUCTION_READI
 | `cargo clippy --all-targets --all-features -- -D warnings` | Pass |
 | `cargo test --all` (incl. doctests) | Pass — **114 tests** |
 | `cargo build --profile release-lto` | Not re-run this session (prior May 2026 pass still valid) |
-| Coverage CI | [`.github/workflows/coverage.yml`](.github/workflows/coverage.yml) — PR gate **≥ 60%** line coverage |
+| Coverage CI | [`.github/workflows/coverage.yml`](../.github/workflows/coverage.yml) — PR gate **≥ 60%** line coverage |
 | Manual smoke §3 | **Pending** — needs API keys (one-shot, TUI, serve, export, sessions) |
 
 | Delivered | Browser tests + `Err` semantics; `AmbientConfig` + consolidation tests; session title fixes; PowerShell shell; daemon TCP (Windows) + VS Code TCP; Tauri `serve` autospawn; `missing_docs` on core/tools; proptest; docs (`BROWSER_CDP`, `COOKBOOK`, `i18n/es`) |

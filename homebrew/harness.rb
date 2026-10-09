@@ -3,7 +3,7 @@ class Harness < Formula
   homepage "https://github.com/seanebones-lang/harness"
   # Refresh SHA256s after tagging: bash scripts/update-homebrew-sha.sh vX.Y.Z
   version "1.3.0"
-  license "LicenseRef-NextEleven-Proprietary"
+  license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?

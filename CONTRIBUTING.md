@@ -10,8 +10,8 @@ Thank you for your interest in contributing. NextEleven Harness is a Rust coding
 |-----|---------------|
 | [`README.md`](README.md) | Install, run, daily workflow |
 | [`CLAUDE.md`](CLAUDE.md) | Module map, key types, agent loop, adding providers/tools |
-| [`TODO.md`](TODO.md) | Prioritised backlog — promotion tiers + audit items |
-| [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md) | Public beta readiness and launch checklist |
+| [`TODO.md`](TODO.md) | Current personal-use priorities |
+| [`docs/PROMOTION_REPORT.md`](docs/history/PROMOTION_REPORT.md) | Historical public beta checklist |
 | [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md) | TUI keyboard reference |
 | [`docs/MIGRATION.md`](docs/MIGRATION.md) | Breaking changes across phases |
 | [`config/default.toml`](config/default.toml) | Annotated config reference |
@@ -56,7 +56,7 @@ These are well-scoped, self-contained, and unblock the next person reviewing the
 - **Provider adapters** — add a native adapter only when an API cannot use the custom OpenAI-format route
 - **Route UX** — improve validation, migration diagnostics, and setup tests without introducing a preferred vendor or model
 - **Tool depth** — harden the existing config-gated database, notebook, Docker, browser, and computer-use paths
-- **Demo GIF** — 15–30s TUI recording for README (see [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md))
+- **Demo GIF** — 15–30s TUI recording for README (see [`docs/PROMOTION_REPORT.md`](docs/history/PROMOTION_REPORT.md))
 - **Coverage uplift** — voice/mlx/lsp client integration paths (Round 2 added unit tests for detect/availability; deeper paths still welcome)
 
 ~~**`ambient.rs` consolidation test**~~ — **Done** (May 2026).
@@ -142,7 +142,7 @@ CI runs `fmt`, `clippy --all-features`, `test --all`, `build --all-targets`, `bu
 
 - **Issues** — bugs, feature requests, and **`good first issue`** candidates
 - **Discussions** — setup help, workflows, provider tips (enable on GitHub if not already)
-- **Discord / Matrix** — optional; not required for beta (see [`docs/PROMOTION_REPORT.md`](docs/PROMOTION_REPORT.md) Tier 3)
+- **Discord / Matrix** — optional; not required for beta (see [`docs/PROMOTION_REPORT.md`](docs/history/PROMOTION_REPORT.md) Tier 3)
 
 When opening a PR, link the issue if one exists. For new features, a short design note in the issue helps reviewers.
 
@@ -159,7 +159,7 @@ Open an issue with:
 
 ## License
 
-By contributing, you agree that your contributions are assigned to **NextEleven LLC** and are governed by the project's proprietary [`LICENSE`](LICENSE). This is **not** an open-source / MIT project.
+Contributions are provided under the project's [MIT license](LICENSE). Contributors retain their copyright; no copyright assignment is required.
 
 ---
 

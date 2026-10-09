@@ -5,6 +5,17 @@ use harness_memory::Session;
 use harness_provider_core::{ArcProvider, ChatRequest, Delta, Message, Role};
 
 pub async fn suggest_session_name(provider: &ArcProvider, session: &Session) -> Option<String> {
+    // Cosmetic naming must not hold up a finished or cancelled conversation.
+    tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        suggest_name_inner(provider, session),
+    )
+    .await
+    .ok()
+    .flatten()
+}
+
+async fn suggest_name_inner(provider: &ArcProvider, session: &Session) -> Option<String> {
     if session.name.is_some() {
         return None;
     }
@@ -20,7 +31,7 @@ pub async fn suggest_session_name(provider: &ArcProvider, session: &Session) -> 
         return None;
     }
 
-    let snippet = &first_user[..first_user.len().min(200)];
+    let snippet = harness_tools::text::char_prefix(&first_user, 200);
     let prompt = format!(
         "Summarise this task in 4 to 6 words. No punctuation, no quotes. \
          Reply with ONLY the title.\n\nTask: {snippet}"
@@ -32,12 +43,23 @@ pub async fn suggest_session_name(provider: &ArcProvider, session: &Session) -> 
         return None;
     };
     let mut title = String::new();
-    while let Some(Ok(Delta::Text(chunk))) = stream.next().await {
-        title.push_str(&chunk);
+    let mut completed = false;
+    while let Some(delta) = stream.next().await {
+        match delta {
+            Ok(Delta::Text(chunk)) => title.push_str(&chunk),
+            Ok(Delta::Done {
+                stop_reason: harness_provider_core::StopReason::EndTurn,
+            }) => completed = true,
+            Ok(Delta::Done { .. }) | Err(_) => return None,
+            _ => {}
+        }
+    }
+    if !completed {
+        return None;
     }
 
     let title = title.trim().to_string();
-    if !title.is_empty() && title.len() < 80 {
+    if !title.is_empty() && title.chars().count() < 80 {
         return Some(title);
     }
     None

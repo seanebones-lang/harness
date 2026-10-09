@@ -516,25 +516,7 @@ fn error_sse(msg: impl std::fmt::Display) -> Sse<BoxSseStream> {
 /// Keep resumed provider conversations valid after cancellation midway through
 /// a tool batch: every announced tool call must have a corresponding result.
 fn complete_cancelled_tool_results(session: &mut Session) {
-    let completed: std::collections::HashSet<&str> = session
-        .messages
-        .iter()
-        .filter_map(|message| message.tool_call_id.as_deref())
-        .collect();
-    let unfinished: Vec<String> = session
-        .messages
-        .iter()
-        .filter(|message| message.role == harness_provider_core::Role::Assistant)
-        .filter_map(|message| message.content.as_str().strip_prefix("__tool_calls__:"))
-        .filter_map(|json| serde_json::from_str::<Vec<harness_provider_core::ToolCall>>(json).ok())
-        .flatten()
-        .filter(|call| !completed.contains(call.id.as_str()))
-        .map(|call| call.id.clone())
-        .collect();
-    for id in unfinished {
-        session.push(Message::tool_result(&id,
-            "Cancelled before a result was recorded. Effects may be partial; inspect the workspace before retrying."));
-    }
+    crate::agent::complete_cancelled_tool_results(session);
 }
 
 async fn chat(
@@ -655,7 +637,7 @@ async fn chat(
                 format!(
                     r#"{{"type":"tool_result","name":{},"result":{}}}"#,
                     serde_json::to_string(&name).unwrap_or_default(),
-                    serde_json::to_string(&result[..result.len().min(500)]).unwrap_or_default()
+                    serde_json::to_string(harness_tools::text::char_prefix(&result, 500)).unwrap_or_default()
                 )
             }
             AgentEvent::MemoryRecall { count } => {

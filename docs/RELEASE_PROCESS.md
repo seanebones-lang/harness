@@ -1,6 +1,6 @@
 # Release process
 
-Harness is distributed under the proprietary NextEleven LLC evaluation license. Stable release acceptance is recorded in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) and [RELEASE_STATUS.md](RELEASE_STATUS.md).
+Harness is distributed under the MIT license. Releases are optional for personal use. Stable release acceptance is recorded in [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) and [RELEASE_STATUS.md](RELEASE_STATUS.md).
 
 ## Prepare a candidate
 

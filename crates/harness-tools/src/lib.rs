@@ -8,6 +8,8 @@ pub mod executor;
 pub mod policy;
 /// Tool trait and registry.
 pub mod registry;
+/// UTF-8-safe output and preview limits.
+pub mod text;
 /// Built-in tool implementations.
 pub mod tools;
 /// Workspace path sandboxing for filesystem tools.

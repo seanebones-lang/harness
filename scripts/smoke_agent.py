@@ -56,7 +56,8 @@ def main():
         with tempfile.TemporaryDirectory(prefix='harness-agent-smoke-') as scratch:
             root = Path(scratch)
             (root / '.harness').mkdir()
-            (root / 'fixture.txt').write_text('SYNTHETIC_FIXTURE_CONTENT')
+            fixture = 'SYNTHETIC_FIXTURE_CONTENT' + 'x' * 99 + '🦀中é' * 700
+            (root / 'fixture.txt').write_text(fixture)
             (root / '.harness/config.toml').write_text(f'''[router]
 default = "smoke"
 [providers.smoke]
@@ -114,7 +115,8 @@ enabled = false
                         stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15)
                     assert exported.returncode == 0, exported.stderr
                     assert 'HARNESS_SMOKE_OK' in exported.stdout, exported.stdout
-                    print('PASS HTTP auth, chat SSE, persistent sessions, Markdown export')
+                    assert fixture in exported.stdout, 'Tool output was lost or truncated in export'
+                    print('PASS HTTP auth, Unicode tool previews, chat SSE, sessions, full Markdown export')
                 finally:
                     server.terminate()
                     try:

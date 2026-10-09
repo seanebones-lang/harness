@@ -397,7 +397,7 @@ fn parse_anthropic_sse(
 
     struct State {
         stream: ByteStream,
-        buf: String,
+        buf: harness_provider_core::LineBuffer,
         tool_id: String,
         tool_name: String,
         tool_args: String,
@@ -412,7 +412,7 @@ fn parse_anthropic_sse(
 
     let state = State {
         stream: Box::pin(byte_stream),
-        buf: String::new(),
+        buf: Default::default(),
         tool_id: String::new(),
         tool_name: String::new(),
         tool_args: String::new(),
@@ -437,13 +437,38 @@ fn parse_anthropic_sse(
         }
 
         loop {
-            while let Some(nl) = s.buf.find('\n') {
-                let line = s.buf[..nl].trim_end_matches('\r').to_string();
-                s.buf = s.buf[nl + 1..].to_string();
-
+            while let Some(line) = match s.buf.next_line() {
+                Ok(line) => line,
+                Err(error) => {
+                    s.done = true;
+                    return Some((Err(error), s));
+                }
+            } {
                 if let Some(data) = line.strip_prefix("data: ") {
-                    if let Ok(event) = serde_json::from_str::<Value>(data) {
+                    let event = match serde_json::from_str::<Value>(data) {
+                        Ok(event) => event,
+                        Err(error) => {
+                            s.done = true;
+                            return Some((
+                                Err(ProviderError::Other(format!(
+                                    "invalid Anthropic stream event: {error}"
+                                ))),
+                                s,
+                            ));
+                        }
+                    };
+                    {
                         match event["type"].as_str() {
+                            Some("error") => {
+                                s.done = true;
+                                return Some((
+                                    Err(ProviderError::Other(format!(
+                                        "Anthropic stream error: {}",
+                                        event["error"]
+                                    ))),
+                                    s,
+                                ));
+                            }
                             Some("content_block_start") => {
                                 if event["content_block"]["type"] == "tool_use" {
                                     s.in_tool = true;
@@ -487,7 +512,8 @@ fn parse_anthropic_sse(
                                 let sr = match stop_reason {
                                     "tool_use" => StopReason::ToolUse,
                                     "max_tokens" => StopReason::MaxTokens,
-                                    _ => StopReason::EndTurn,
+                                    "end_turn" | "stop_sequence" => StopReason::EndTurn,
+                                    other => StopReason::Other(other.to_string()),
                                 };
                                 let it = s.input_tokens;
                                 let ot = s.output_tokens;
@@ -549,19 +575,14 @@ fn parse_anthropic_sse(
             }
 
             match s.stream.next().await {
-                Some(Ok(chunk)) => s.buf.push_str(&String::from_utf8_lossy(&chunk)),
+                Some(Ok(chunk)) => s.buf.push(&chunk),
                 Some(Err(e)) => {
                     s.done = true;
                     return Some((Err(ProviderError::Other(e.to_string())), s));
                 }
                 None => {
                     s.done = true;
-                    return Some((
-                        Ok(Delta::Done {
-                            stop_reason: StopReason::EndTurn,
-                        }),
-                        s,
-                    ));
+                    return Some((Err(ProviderError::StreamEnded), s));
                 }
             }
         }
@@ -572,6 +593,19 @@ fn parse_anthropic_sse(
 mod anthropic_sse_tests {
     use super::*;
     use futures::StreamExt;
+
+    #[tokio::test]
+    async fn rejects_error_events_and_malformed_json() {
+        for payload in [
+            "data: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"busy\"}}\n",
+            "data: {broken\n",
+        ] {
+            let stream = parse_anthropic_sse(futures::stream::iter(vec![Ok(bytes::Bytes::from(payload))]));
+            tokio::pin!(stream);
+            assert!(matches!(stream.next().await, Some(Err(ProviderError::Other(_)))));
+            assert!(stream.next().await.is_none());
+        }
+    }
 
     fn sse_bytes(lines: &[&str]) -> bytes::Bytes {
         let mut s = String::new();
@@ -649,5 +683,31 @@ mod anthropic_sse_tests {
             }
         }
         assert_eq!(cache, Some((50, 25)));
+    }
+    #[tokio::test]
+    async fn preserves_unicode_split_across_transport_chunks() {
+        let payload = concat!(
+            "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hé中🦀\"}}\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n"
+        );
+        for split in 0..=payload.len() {
+            let chunks = vec![
+                Ok(bytes::Bytes::copy_from_slice(&payload.as_bytes()[..split])),
+                Ok(bytes::Bytes::copy_from_slice(&payload.as_bytes()[split..])),
+            ];
+            let parsed = parse_anthropic_sse(futures::stream::iter(chunks));
+            tokio::pin!(parsed);
+            let mut text = String::new();
+            let mut done = false;
+            while let Some(delta) = parsed.next().await {
+                match delta.unwrap() {
+                    Delta::Text(part) => text.push_str(&part),
+                    Delta::Done { .. } => done = true,
+                    _ => {}
+                }
+            }
+            assert_eq!(text, "hé中🦀");
+            assert!(done);
+        }
     }
 }

@@ -48,7 +48,9 @@ pub(super) async fn run_terminal_loop(
 ) -> Result<()> {
     let highlighter = Highlighter::new();
     let (agent_tx, mut agent_rx) = crate::events::channel();
-    let (done_tx, mut done_rx) = mpsc::unbounded_channel::<harness_memory::Session>();
+    let (done_tx, mut done_rx) = mpsc::unbounded_channel::<(harness_memory::Session, bool)>();
+
+    let mut active_cancel: Option<tokio::sync::oneshot::Sender<()>> = None;
 
     loop {
         // Spinner tick
@@ -132,11 +134,14 @@ pub(super) async fn run_terminal_loop(
         }
 
         // Finished session
-        if let Ok(finished) = done_rx.try_recv() {
+        if let Ok((finished, completed)) = done_rx.try_recv() {
+            active_cancel.take();
             let mut to_save = finished.clone();
-            if let Some(title) = agent::suggest_session_name(provider, &to_save).await {
-                let _ = session_store.set_name_if_missing(&to_save.id, &title);
-                to_save.name = Some(title);
+            if completed {
+                if let Some(title) = agent::suggest_session_name(provider, &to_save).await {
+                    let _ = session_store.set_name_if_missing(&to_save.id, &title);
+                    to_save.name = Some(title);
+                }
             }
             *session = to_save.clone();
             session_store.save(session)?;
@@ -158,7 +163,12 @@ pub(super) async fn run_terminal_loop(
             st.busy = false;
             st.tool_start = None;
             st.session_id = session.id[..8].to_string();
-            st.status = "Done".to_string();
+            st.status = if completed {
+                "Done"
+            } else {
+                "Run stopped — session saved"
+            }
+            .to_string();
             let turns = super::resume::count_user_turns(session).max(1);
             st.status_right = st.format_status_right(&session.id[..8], turns);
             st.scroll_to_bottom();
@@ -214,6 +224,15 @@ pub(super) async fn run_terminal_loop(
                     // ── Quit ─────────────────────────────────────────────────
                     (KeyCode::Char('c'), KeyModifiers::CONTROL)
                     | (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
+                        if let Some(cancel) = active_cancel.take() {
+                            let _ = cancel.send(());
+                            if let Ok(Some((finished, _))) =
+                                tokio::time::timeout(Duration::from_secs(5), done_rx.recv()).await
+                            {
+                                *session = finished;
+                            }
+                        }
+                        session_store.save(session)?;
                         if let Some(tx) = &ambient_shutdown {
                             let _ = tx.send(());
                         }
@@ -499,8 +518,8 @@ pub(super) async fn run_terminal_loop(
 
                         {
                             let mut st = state.lock();
-                            let label = if prompt.len() > 100 {
-                                format!("{}…", &prompt[..100])
+                            let label = if prompt.chars().count() > 100 {
+                                format!("{}…", harness_tools::text::char_prefix(&prompt, 100))
                             } else {
                                 prompt.clone()
                             };
@@ -518,6 +537,7 @@ pub(super) async fn run_terminal_loop(
 
                         let send_prompt = if expanded != prompt { expanded } else { prompt };
                         session.push(Message::user(&send_prompt));
+                        session_store.save(session)?;
 
                         let p2 = provider.clone();
                         let t2 = tools.clone();
@@ -530,8 +550,10 @@ pub(super) async fn run_terminal_loop(
                         let think_budget = state.lock().thinking_budget;
                         let resp_schema = state.lock().response_schema.clone();
 
+                        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+                        active_cancel = Some(cancel_tx);
                         tokio::spawn(async move {
-                            let res = agent::drive_agent_full(
+                            let drive = agent::drive_agent_full(
                                 &p2,
                                 &t2,
                                 mem2.as_ref(),
@@ -544,15 +566,22 @@ pub(super) async fn run_terminal_loop(
                                 native_code_execution,
                                 native_x_search,
                                 resp_schema,
-                            )
-                            .await;
+                            );
+                            let res = tokio::select! {
+                                result = drive => result,
+                                _ = cancel_rx => Err(anyhow::anyhow!("run cancelled; session saved for resume")),
+                            };
+                            let completed = res.is_ok();
+                            if !completed {
+                                agent::complete_cancelled_tool_results(&mut sess_clone);
+                            }
                             if let Err(e) = res {
                                 try_emit(
                                     Some(&atx),
                                     AgentEvent::Error(format!("Agent error: {e}")),
                                 );
                             }
-                            let _ = dtx.send(sess_clone);
+                            let _ = dtx.send((sess_clone, completed));
                         });
                     }
 

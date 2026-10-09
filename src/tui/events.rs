@@ -136,6 +136,14 @@ pub(crate) fn apply_agent_event(state: &Arc<Mutex<AppState>>, event: AgentEvent)
             st.scroll_to_bottom();
         }
         AgentEvent::Error(msg) => {
+            if !st.streaming.is_empty() {
+                let text = std::mem::take(&mut st.streaming);
+                st.chat.push(ChatMessage {
+                    role: "assistant".into(),
+                    content: text,
+                    ts: Instant::now(),
+                });
+            }
             // Keep event_log + a dedicated error chat bubble (don't use push_event —
             // that would also inject a role=event line and double the transcript).
             let line = format!("⚠ error: {msg}");

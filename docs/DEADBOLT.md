@@ -2,7 +2,7 @@
 
 Deadbolt is an out-of-band lease gate. It is not a model tool. The model cannot call pause, clip, resume, kill, or drill. There is no fleet halt and no shutdown tool in the tool list.
 
-Harness calls the Apache-2.0 crate at <https://github.com/seanebones-lang/deadbolt>. This repository stays proprietary. Harness is a consumer. The sidecar still does not shut down frontier models. It cuts tool, MCP, and spawn for one agent id. `harness deadbolt serve` keeps `~/.harness/deadbolt.sock`. The standalone `deadbolt` binary defaults to `~/.deadbolt/deadbolt.sock`.
+Harness calls the Apache-2.0 crate at <https://github.com/seanebones-lang/deadbolt>. Harness is MIT licensed; the dependency retains its Apache-2.0 license. Harness is a consumer. The sidecar still does not shut down frontier models. It cuts tool, MCP, and spawn for one agent id. `harness deadbolt serve` keeps `~/.harness/deadbolt.sock`. The standalone `deadbolt` binary defaults to `~/.deadbolt/deadbolt.sock`.
 
 ## Operator CLI
 

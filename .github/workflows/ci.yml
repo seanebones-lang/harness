@@ -50,6 +50,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: cargo check workspace
         run: cargo check --locked --workspace --all-targets
+      - name: Check without default features
+        run: cargo clippy --locked --no-default-features -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})
@@ -190,8 +192,10 @@ jobs:
           HARNESS_BIN: ${{ github.workspace }}/target/debug/harness
         run: bash scripts/smoke_rel01.sh
 
-      - name: Agent and HTTP integration smoke
-        run: python3 scripts/smoke_agent.py target/debug/harness
+      - name: Agent, HTTP, and terminal integration smoke
+        run: |
+          python3 scripts/smoke_agent.py target/debug/harness
+          python3 scripts/smoke_tui.py target/debug/harness
 
   web-ui:
     name: Embedded web UI regression tests

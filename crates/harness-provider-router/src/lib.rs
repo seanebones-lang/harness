@@ -785,7 +785,13 @@ impl Provider for ProviderRouter {
             let Some(p) = self.providers.get(name) else {
                 continue;
             };
-            match p.stream_chat(req.clone()).await {
+            let mut routed_request = req.clone();
+            if name != &self.default_name {
+                // A fallback is an explicit provider:model entry, not a provider swap
+                // that sends the primary model id to a different backend.
+                routed_request.model = p.model().to_owned();
+            }
+            match p.stream_chat(routed_request).await {
                 Ok(stream) => {
                     if name != &self.default_name {
                         info!(provider = name, "router: fallback provider used");
@@ -1169,5 +1175,73 @@ mod tests {
         .err()
         .expect("unknown provider must fail");
         assert!(error.to_string().contains("unknown provider"));
+    }
+    #[tokio::test]
+    async fn fallback_uses_its_configured_model_after_a_primary_override() {
+        struct RecordingProvider {
+            name: &'static str,
+            model: &'static str,
+            fail: bool,
+            requests: std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>,
+        }
+        #[async_trait]
+        impl Provider for RecordingProvider {
+            fn name(&self) -> &str {
+                self.name
+            }
+            fn model(&self) -> &str {
+                self.model
+            }
+            async fn stream_chat(
+                &self,
+                request: ChatRequest,
+            ) -> Result<DeltaStream, ProviderError> {
+                self.requests
+                    .lock()
+                    .unwrap()
+                    .push((self.name.into(), request.model));
+                if self.fail {
+                    return Err(ProviderError::Api {
+                        status: 503,
+                        message: "unavailable".into(),
+                    });
+                }
+                Ok(Box::pin(stream::iter(vec![Ok(Delta::Done {
+                    stop_reason: StopReason::EndTurn,
+                })])))
+            }
+        }
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let router = ProviderRouter::new("primary")
+            .add(
+                "primary",
+                Arc::new(RecordingProvider {
+                    name: "primary",
+                    model: "primary-model",
+                    fail: true,
+                    requests: requests.clone(),
+                }),
+            )
+            .add(
+                "fallback",
+                Arc::new(RecordingProvider {
+                    name: "fallback",
+                    model: "fallback-model",
+                    fail: false,
+                    requests: requests.clone(),
+                }),
+            )
+            .with_fallback(vec!["fallback".into()]);
+        let _response = router
+            .stream_chat(ChatRequest::new("primary-override"))
+            .await
+            .unwrap();
+        assert_eq!(
+            *requests.lock().unwrap(),
+            vec![
+                ("primary".into(), "primary-override".into()),
+                ("fallback".into(), "fallback-model".into())
+            ]
+        );
     }
 }

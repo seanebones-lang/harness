@@ -120,8 +120,12 @@ pub(crate) fn parse_color(s: &str) -> Option<Color> {
 
 /// Truncate tool result previews for resume chat rows.
 pub(crate) fn tool_result_preview(result: &str, max_chars: usize) -> String {
-    if result.len() > max_chars {
-        format!("{}… ({} bytes)", &result[..max_chars], result.len())
+    if result.chars().count() > max_chars {
+        format!(
+            "{}… ({} bytes)",
+            harness_tools::text::char_prefix(result, max_chars),
+            result.len()
+        )
     } else {
         result.to_string()
     }

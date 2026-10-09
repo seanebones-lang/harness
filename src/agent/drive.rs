@@ -135,10 +135,9 @@ pub async fn drive_agent_full(
 
     loop {
         if tool_loops >= MAX_TOOL_LOOPS {
-            emit(AgentEvent::Error(format!(
-                "stopped after {MAX_TOOL_LOOPS} tool-call rounds (safety limit)"
-            )));
-            break;
+            let error = format!("stopped after {MAX_TOOL_LOOPS} tool-call rounds (safety limit)");
+            emit(AgentEvent::Error(error.clone()));
+            anyhow::bail!(error);
         }
         // Auto-compact context when approaching 70% of the model context window.
         maybe_compact(provider, session, 0.70, Some(&emit)).await;
@@ -155,15 +154,25 @@ pub async fn drive_agent_full(
 
         let mut stream: DeltaStream = provider.stream_chat(req).await?;
 
-        let mut text_buf = String::new();
+        let mut assistant_index: Option<usize> = None;
         let mut pending_tool_calls = Vec::new();
-        let mut stop_reason = StopReason::EndTurn;
+        let mut stop_reason = None;
 
         while let Some(item) = stream.next().await {
-            match item? {
+            let delta = item?;
+            match delta {
                 Delta::Text(chunk) => {
                     emit(AgentEvent::TextChunk(chunk.clone()));
-                    text_buf.push_str(&chunk);
+                    if let Some(index) = assistant_index {
+                        if let harness_provider_core::MessageContent::Text(text) =
+                            &mut session.messages[index].content
+                        {
+                            text.push_str(&chunk);
+                        }
+                    } else {
+                        assistant_index = Some(session.messages.len());
+                        session.push(Message::assistant(chunk));
+                    }
                 }
                 Delta::ToolCall(call) => {
                     pending_tool_calls.push(call);
@@ -187,13 +196,21 @@ pub async fn drive_agent_full(
                     });
                 }
                 Delta::Done { stop_reason: sr } => {
-                    stop_reason = sr;
+                    stop_reason = Some(sr);
                 }
             }
         }
 
-        if !text_buf.is_empty() {
-            session.push(Message::assistant(&text_buf));
+        let stop_reason = stop_reason.ok_or(harness_provider_core::ProviderError::StreamEnded)?;
+
+        if matches!(stop_reason, StopReason::MaxTokens) {
+            let error = "response exceeded the token limit; resume the session to continue";
+            emit(AgentEvent::Error(error.into()));
+            anyhow::bail!(error);
+        }
+
+        if let StopReason::Other(reason) = &stop_reason {
+            anyhow::bail!("provider stopped before completing the response: {reason}");
         }
 
         if !pending_tool_calls.is_empty() {
@@ -241,9 +258,6 @@ pub async fn drive_agent_full(
             continue;
         }
 
-        if matches!(stop_reason, StopReason::MaxTokens) {
-            emit(AgentEvent::Error("hit max_tokens limit".into()));
-        }
         break;
     }
 

@@ -10,7 +10,7 @@ NextEleven Harness is an AI coding assistant you run in your terminal. You type 
 
 **You choose the route.** Harness has no preferred provider or model. During setup you enter one or more `provider:model` pairs in the exact order you want Harness to try them.
 
-**Operational truth (September 14, 2026):** Public **beta / proof of concept**, version **1.3.0**, P0 security work closed ([`docs/THREAT_MODEL.md`](../docs/THREAT_MODEL.md)). Candidate commit `3aa38c5` passes 775 workspace tests on macOS arm64 and Linux arm64, plus Linux container runtime acceptance. Stable release remains blocked on the remote native matrix, signed release artifacts, and GitHub Actions billing ([`docs/RELEASE_STATUS.md`](../docs/RELEASE_STATUS.md)). Proprietary NextEleven LLC software — **not MIT / not open source**; see [`LICENSE`](../LICENSE).
+**Current direction (October 9, 2026):** Personal coding tool, version 1.3.0, under the [MIT license](../LICENSE). Build and verify the current source. [The acceptance record](../docs/PERSONAL_USE.md) distinguishes verified core workflows from optional integrations. Earlier release records are historical.
 
 **More docs:** [`docs/BROWSER_CDP.md`](../docs/BROWSER_CDP.md) · [`docs/COOKBOOK.md`](../docs/COOKBOOK.md) · [`docs/PEER_REVIEW_AUDIT.md`](../docs/PEER_REVIEW_AUDIT.md)
 

@@ -201,136 +201,119 @@ impl Provider for OllamaProvider {
 fn parse_ollama_stream(
     byte_stream: impl futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 ) -> impl futures::Stream<Item = Result<Delta, ProviderError>> + Send {
-    use std::pin::Pin;
+    use std::{collections::VecDeque, pin::Pin};
     type ByteStream =
         Pin<Box<dyn futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>;
-
     struct State {
         stream: ByteStream,
-        buf: String,
+        lines: harness_provider_core::LineBuffer,
+        queue: VecDeque<Delta>,
         done: bool,
-        pending_tools: Vec<ToolCall>,
+        eof: bool,
+        tool_count: usize,
     }
-
     let state = State {
         stream: Box::pin(byte_stream),
-        buf: String::new(),
+        lines: Default::default(),
+        queue: VecDeque::new(),
         done: false,
-        pending_tools: Vec::new(),
+        eof: false,
+        tool_count: 0,
     };
-
-    futures::stream::unfold(state, |mut s| async move {
-        if s.done {
-            return None;
-        }
-
-        if let Some(call) = s.pending_tools.first().cloned() {
-            s.pending_tools.remove(0);
-            return Some((Ok(Delta::ToolCall(call)), s));
-        }
-
+    futures::stream::unfold(state, |mut state| async move {
         loop {
-            while let Some(nl) = s.buf.find('\n') {
-                let line = s.buf[..nl].trim().to_string();
-                s.buf = s.buf[nl + 1..].to_string();
-
-                if line.is_empty() {
+            if let Some(delta) = state.queue.pop_front() {
+                return Some((Ok(delta), state));
+            }
+            if state.done {
+                return None;
+            }
+            let line = match state.lines.next_line() {
+                Ok(line) => line,
+                Err(error) => {
+                    state.done = true;
+                    return Some((Err(error), state));
+                }
+            };
+            if let Some(line) = line {
+                if line.trim().is_empty() {
                     continue;
                 }
-
-                if let Ok(v) = serde_json::from_str::<Value>(&line) {
-                    if let Some(calls) = v["message"]["tool_calls"].as_array() {
-                        for call in calls {
-                            let id = call["id"].as_str().unwrap_or("tool_0").to_string();
-                            let name = call["function"]["name"].as_str().unwrap_or("").to_string();
-                            let args = call["function"]["arguments"].to_string();
-                            s.pending_tools.push(ToolCall {
-                                id,
-                                kind: "function".into(),
-                                function: ToolCallFunction {
-                                    name,
-                                    arguments: args,
-                                },
-                            });
-                        }
-                        if let Some(call) = s.pending_tools.first().cloned() {
-                            s.pending_tools.remove(0);
-                            return Some((Ok(Delta::ToolCall(call)), s));
-                        }
+                let value: Value = match serde_json::from_str(&line) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        state.done = true;
+                        return Some((Err(error.into()), state));
                     }
-
-                    // Text content
-                    if let Some(content) = v["message"]["content"].as_str() {
-                        if !content.is_empty() {
-                            return Some((Ok(Delta::Text(content.to_string())), s));
-                        }
-                    }
-
-                    // Done
-                    if v["done"].as_bool() == Some(true) {
-                        let in_tok = v["prompt_eval_count"].as_u64().unwrap_or(0) as u32;
-                        let out_tok = v["eval_count"].as_u64().unwrap_or(0) as u32;
-                        s.done = true;
-                        if in_tok > 0 || out_tok > 0 {
-                            return Some((
-                                Ok(Delta::Usage {
-                                    input_tokens: in_tok,
-                                    output_tokens: out_tok,
-                                }),
-                                s,
-                            ));
-                        }
-                        return Some((
-                            Ok(Delta::Done {
-                                stop_reason: StopReason::EndTurn,
-                            }),
-                            s,
-                        ));
+                };
+                if let Some(error) = value.get("error") {
+                    state.done = true;
+                    return Some((
+                        Err(ProviderError::Other(format!(
+                            "Ollama stream error: {error}"
+                        ))),
+                        state,
+                    ));
+                }
+                if let Some(content) = value["message"]["content"]
+                    .as_str()
+                    .filter(|text| !text.is_empty())
+                {
+                    state.queue.push_back(Delta::Text(content.to_owned()));
+                }
+                if let Some(calls) = value["message"]["tool_calls"].as_array() {
+                    for call in calls {
+                        state.tool_count += 1;
+                        let id = call["id"]
+                            .as_str()
+                            .map(str::to_owned)
+                            .unwrap_or_else(|| format!("ollama-call-{}", state.tool_count));
+                        let name = call["function"]["name"].as_str().unwrap_or("").to_owned();
+                        let arguments = match &call["function"]["arguments"] {
+                            Value::String(text) => text.clone(),
+                            value => value.to_string(),
+                        };
+                        state.queue.push_back(Delta::ToolCall(ToolCall {
+                            id,
+                            kind: "function".into(),
+                            function: ToolCallFunction { name, arguments },
+                        }));
                     }
                 }
+                if value["done"].as_bool() == Some(true) {
+                    let input_tokens = value["prompt_eval_count"].as_u64().unwrap_or(0) as u32;
+                    let output_tokens = value["eval_count"].as_u64().unwrap_or(0) as u32;
+                    if input_tokens > 0 || output_tokens > 0 {
+                        state.queue.push_back(Delta::Usage {
+                            input_tokens,
+                            output_tokens,
+                        });
+                    }
+                    let stop_reason = if value["done_reason"].as_str() == Some("length") {
+                        StopReason::MaxTokens
+                    } else if state.tool_count > 0 {
+                        StopReason::ToolUse
+                    } else {
+                        StopReason::EndTurn
+                    };
+                    state.queue.push_back(Delta::Done { stop_reason });
+                    state.done = true;
+                }
+                continue;
             }
-
-            match s.stream.next().await {
-                Some(Ok(chunk)) => s.buf.push_str(&String::from_utf8_lossy(&chunk)),
-                Some(Err(e)) => {
-                    s.done = true;
-                    return Some((Err(ProviderError::Other(e.to_string())), s));
+            if state.eof {
+                state.done = true;
+                return Some((Err(ProviderError::StreamEnded), state));
+            }
+            match state.stream.next().await {
+                Some(Ok(chunk)) => state.lines.push(&chunk),
+                Some(Err(error)) => {
+                    state.done = true;
+                    return Some((Err(ProviderError::Other(error.to_string())), state));
                 }
                 None => {
-                    // Flush a final NDJSON line that may lack a trailing newline.
-                    let line = s.buf.trim().to_string();
-                    s.buf.clear();
-                    if !line.is_empty() {
-                        if let Ok(v) = serde_json::from_str::<Value>(&line) {
-                            if let Some(calls) = v["message"]["tool_calls"].as_array() {
-                                for call in calls {
-                                    let id = call["id"].as_str().unwrap_or("tool_0").to_string();
-                                    let name =
-                                        call["function"]["name"].as_str().unwrap_or("").to_string();
-                                    let args = call["function"]["arguments"].to_string();
-                                    s.pending_tools.push(ToolCall {
-                                        id,
-                                        kind: "function".into(),
-                                        function: ToolCallFunction {
-                                            name,
-                                            arguments: args,
-                                        },
-                                    });
-                                }
-                                if let Some(call) = s.pending_tools.first().cloned() {
-                                    s.pending_tools.remove(0);
-                                    return Some((Ok(Delta::ToolCall(call)), s));
-                                }
-                            }
-                        }
-                    }
-                    s.done = true;
-                    return Some((
-                        Ok(Delta::Done {
-                            stop_reason: StopReason::EndTurn,
-                        }),
-                        s,
-                    ));
+                    state.eof = true;
+                    state.lines.finish();
                 }
             }
         }
@@ -362,6 +345,10 @@ mod ollama_stream_tests {
         let body = ndjson(
             r#"{"message":{"tool_calls":[{"id":"a","function":{"name":"read_file","arguments":"{}"}},{"id":"b","function":{"name":"shell","arguments":"{\"command\":\"ls\"}"}}]}}"#,
         );
+        let body = bytes::Bytes::from(format!(
+            "{}\n{{\"done\":true}}",
+            String::from_utf8_lossy(&body)
+        ));
         let names: Vec<String> = collect(body)
             .await
             .into_iter()
@@ -392,5 +379,33 @@ mod ollama_stream_tests {
         }
         assert_eq!(text, "hello");
         assert_eq!(usage, Some((1, 2)));
+    }
+    #[tokio::test]
+    async fn combined_final_line_preserves_unicode_usage_and_completion() {
+        let payload =
+            r#"{"message":{"content":"hé中🦀"},"done":true,"prompt_eval_count":3,"eval_count":2}"#;
+        for split in 0..=payload.len() {
+            let chunks = vec![
+                Ok(bytes::Bytes::copy_from_slice(&payload.as_bytes()[..split])),
+                Ok(bytes::Bytes::copy_from_slice(&payload.as_bytes()[split..])),
+            ];
+            let parsed = parse_ollama_stream(futures::stream::iter(chunks));
+            tokio::pin!(parsed);
+            assert!(matches!(parsed.next().await, Some(Ok(Delta::Text(text))) if text == "hé中🦀"));
+            assert!(matches!(
+                parsed.next().await,
+                Some(Ok(Delta::Usage {
+                    input_tokens: 3,
+                    output_tokens: 2
+                }))
+            ));
+            assert!(matches!(
+                parsed.next().await,
+                Some(Ok(Delta::Done {
+                    stop_reason: StopReason::EndTurn
+                }))
+            ));
+            assert!(parsed.next().await.is_none());
+        }
     }
 }

@@ -1,10 +1,10 @@
-# NextEleven Harness — Codebase Guide (August 2026)
+# Harness — Codebase Guide
 
 NextEleven Harness — Rust multi-provider coding agent (binary/crate still `harness`). Provider-neutral route across native and OpenAI-compatible cloud/local backends. Swarm, MCP, serve, TUI.
 
-**Release:** Public **beta / POC** GO — version **1.3.0** · **`cargo test --bin harness` → 376 tests** (no API keys), P0 security closed. **Stable** blocked on REL-01 smoke matrix ([`TODO.md`](TODO.md)).
+**Current scope:** Personal coding tool, version 1.3.0. Current acceptance is recorded in [`docs/PERSONAL_USE.md`](docs/PERSONAL_USE.md); priorities are in [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md). Older test counts and coverage notes below are historical.
 **Ship branch:** **`main`** only.  
-**License:** proprietary NextEleven LLC ([`LICENSE`](LICENSE)). Public repo = proof-of-concept visibility only — **not MIT / not open source**.
+**License:** MIT ([`LICENSE`](LICENSE)). Personal coding tool; current priorities are in `docs/CTO_BACKLOG.md`.
 
 ## Build & Test
 
@@ -15,7 +15,7 @@ cargo build --profile release-lto
 cargo test --bin harness              # binary unit/integration (prefer this)
 cargo test -p harness-tools
 cargo test -p harness-provider-router
-cargo test --all                      # full workspace
+cargo test --locked --workspace --all-features # full workspace
 cargo clippy -p harness --bin harness -- -D warnings
 cargo fmt --all
 
@@ -154,7 +154,7 @@ harness/
 ├── docs/                           user + eng docs (CTO_BACKLOG, COOKBOOK, THREAT_MODEL, …)
 ├── apps/desktop/                   Tauri 2
 ├── extensions/vscode/
-├── TODO.md · CONTRIBUTING.md · COVERAGE.md · LICENSE (proprietary)
+├── TODO.md · CONTRIBUTING.md · COVERAGE.md · LICENSE (MIT)
 └── scripts/                        install, smoke_rel01, smoke_linux_docker, vendor
 ```
 

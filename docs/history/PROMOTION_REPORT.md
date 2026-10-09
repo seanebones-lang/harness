@@ -1,6 +1,8 @@
+> Historical material. Retained for reference; excluded from the personal-use roadmap. Current licensing is MIT; earlier proprietary language below describes the prior policy. See [the current backlog](../CTO_BACKLOG.md).
+
 # NextEleven Harness — Public Beta Promotion Report
 
-> **Historical launch report:** the dated tables below preserve the May 2026 beta decision. They are not the current product description. As of 2026-08-24, Harness uses an exact user-owned `provider:model` route with 18 built-in names plus custom OpenAI chat-completions-compatible endpoints; it has no preferred vendor, model, credential-derived priority, or implicit Ollama fallback. The current binary suite has 376 tests, and all 11 cross-platform CI jobs passed in [run 32784381876](https://github.com/seanebones-lang/harness/actions/runs/32784381876). See [`RELEASE_STATUS.md`](RELEASE_STATUS.md).
+> **Historical launch report:** the dated tables below preserve the May 2026 beta decision. They are not the current product description. As of 2026-08-24, Harness uses an exact user-owned `provider:model` route with 18 built-in names plus custom OpenAI chat-completions-compatible endpoints; it has no preferred vendor, model, credential-derived priority, or implicit Ollama fallback. The current binary suite has 376 tests, and all 11 cross-platform CI jobs passed in [run 32784381876](https://github.com/seanebones-lang/harness/actions/runs/32784381876). See [`RELEASE_STATUS.md`](../RELEASE_STATUS.md).
 
 **Date:** 2026-05-24  
 **Verdict:** **GO** for public beta promotion now. **Stable** remains blocked on maintainer-only REL-01 manual smoke (§3) per target OS and post-tag Homebrew tap publish (P2-10).
@@ -26,7 +28,7 @@ NextEleven Harness is a fast, safety-focused, Rust-native terminal coding agent 
 | `cargo fmt --check` | **Pass** | |
 | `cargo build --profile release-lto` | **Pass** | CI + local |
 | `scripts/smoke_rel01.sh` | **Pass** | Automated REL-01 subset; doctor no longer blocks on setup wizard |
-| P0 security | **Closed** | See [`PEER_REVIEW_AUDIT.md`](PEER_REVIEW_AUDIT.md) |
+| P0 security | **Closed** | See [`PEER_REVIEW_AUDIT.md`](../PEER_REVIEW_AUDIT.md) |
 | Manual smoke §3 (REL-01) | **Partial** | macOS: export, serve, auth verified; one-shot/TUI need API keys; Linux/Windows pending |
 | Homebrew tap (P2-10) | **Partial** | macOS arm64 SHA in `homebrew/harness.rb`; full tap after CI billing restored |
 | Prebuilt binaries | **Partial** | macOS arm64 on [v0.1.2-beta Release](https://github.com/seanebones-lang/harness/releases/tag/v0.1.2-beta); Linux/Windows blocked on GitHub Actions billing |
@@ -52,15 +54,15 @@ NextEleven Harness is a fast, safety-focused, Rust-native terminal coding agent 
 | REL-01 | Manual smoke §3 on macOS, Linux, Windows | Partial | macOS subset done; see RELEASE_STATUS |
 | P2-10 | Homebrew tap SHA update | Partial | macOS arm64 only |
 | REL-02 | Tag + GitHub Release + verify prebuilts | Partial | [v0.1.2-beta](https://github.com/seanebones-lang/harness/releases/tag/v0.1.2-beta) — macOS arm64; CI billing blocks rest |
-| REL-03 | Log REL-01 results in [`RELEASE_STATUS.md`](RELEASE_STATUS.md) | Done | macOS partial logged 2026-05-25 |
+| REL-03 | Log REL-01 results in [`RELEASE_STATUS.md`](../RELEASE_STATUS.md) | Done | macOS partial logged 2026-05-25 |
 
 ### Tier 2 — High-impact polish (1–2 days)
 
 | Task | Status | Notes |
 |------|--------|-------|
 | Refresh [`COMPARISON.md`](COMPARISON.md) | Done (this report) | Grok 4.x, MCP 2025, daemon, cost DB |
-| [`CONTRIBUTING.md`](../CONTRIBUTING.md) pathways | Done | Tools, providers, tests, docs, community |
-| Draft release notes | Done | [`RELEASE_NOTES_v0.1.2-beta.md`](RELEASE_NOTES_v0.1.2-beta.md) |
+| [`CONTRIBUTING.md`](../../CONTRIBUTING.md) pathways | Done | Tools, providers, tests, docs, community |
+| Draft release notes | Done | [`RELEASE_NOTES_v0.1.2-beta.md`](../RELEASE_NOTES_v0.1.2-beta.md) |
 | GitHub `good first issue` label | Done | Label exists on repo; apply when issues are opened |
 | Demo GIF (15–30s TUI) | Optional | Record `harness` session; link from README |
 
@@ -141,7 +143,7 @@ flowchart TD
 
 ## References
 
-- Backlog: [`TODO.md`](../TODO.md)
-- Latest verdict log: [`RELEASE_STATUS.md`](RELEASE_STATUS.md)
-- Draft release notes: [`RELEASE_NOTES_v0.1.2-beta.md`](RELEASE_NOTES_v0.1.2-beta.md)
+- Backlog: [`TODO.md`](../../TODO.md)
+- Latest verdict log: [`RELEASE_STATUS.md`](../RELEASE_STATUS.md)
+- Draft release notes: [`RELEASE_NOTES_v0.1.2-beta.md`](../RELEASE_NOTES_v0.1.2-beta.md)
 - Comparison table: [`COMPARISON.md`](COMPARISON.md)

@@ -81,18 +81,9 @@ pub fn export_session(
             }
             Role::Tool => {
                 let result = msg.content.as_str();
-                let display = if result.len() > 2000 {
-                    format!(
-                        "{}\n\n_… ({} bytes truncated)_",
-                        &result[..2000],
-                        result.len() - 2000
-                    )
-                } else {
-                    result.to_string()
-                };
                 writeln!(md, "**← tool result**")?;
                 writeln!(md, "```")?;
-                writeln!(md, "{display}")?;
+                writeln!(md, "{result}")?;
                 writeln!(md, "```")?;
                 writeln!(md)?;
             }

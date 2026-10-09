@@ -1,3 +1,5 @@
+> Historical material. Retained for reference; excluded from the personal-use roadmap. Current licensing is MIT; earlier proprietary language below describes the prior policy. See [the current backlog](../CTO_BACKLOG.md).
+
 # Submission Manifest
 
 Historical competition / evaluation checklist. **License and gates below match the public `main` tree (2026-08-09).** Older MIT / 218-test language is retired.
@@ -32,7 +34,7 @@ docker build -t harness:latest .
 - `docs/TECHNICAL_REPORT.md`
 
 ### License
-- **Proprietary — NextEleven LLC** ([`LICENSE`](../LICENSE))
+- **Proprietary — NextEleven LLC** ([`LICENSE`](../../LICENSE))
 - **Not MIT / not open source**
 - Licensing contact: `legal@nexteleven.com`
 
@@ -43,10 +45,10 @@ docker build -t harness:latest .
 ## Quick verification
 
 - [x] `cargo build --profile release-lto`
-- [x] `cargo test --bin harness` (live count — see [`TODO.md`](../TODO.md) / [`docs/RELEASE_STATUS.md`](RELEASE_STATUS.md); **376** as of 2026-08-24)
+- [x] `cargo test --bin harness` (live count — see [`TODO.md`](../../TODO.md) / [`docs/RELEASE_STATUS.md`](../RELEASE_STATUS.md); **376** as of 2026-08-24)
 - [x] `cargo test -p harness-tools` (**179** Swarm-51)
 - [x] `cargo clippy -p harness --bin harness -- -D warnings`
-- [x] Coverage measured **61.65%**; CI ≥60% **met** ([`COVERAGE.md`](../COVERAGE.md))
+- [x] Coverage measured **61.65%**; CI ≥60% **met** ([`COVERAGE.md`](../../COVERAGE.md))
 - [x] License proprietary notice present
 - [ ] REL-01 full multi-OS live smoke (offline helpers exist)
 - [ ] Multi-arch prebuilts (billing 📌)

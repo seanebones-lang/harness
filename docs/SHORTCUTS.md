@@ -1,6 +1,6 @@
 # NextEleven Harness TUI — Keyboard Shortcuts Cheat Sheet
 
-> All shortcuts work in the main TUI (`harness` or `harness serve` + browser).
+> These shortcuts apply to the terminal TUI (`harness`). The browser interface has its own controls.
 
 ## Sending & Navigation
 
@@ -19,7 +19,8 @@
 | Key | Action |
 |-----|--------|
 | `Ctrl+A` / `Home` | Move cursor to start of line |
-| `Ctrl+E` / `End` | Move cursor to end of line |
+| `End` | Move cursor to end of line |
+| `Ctrl+E` | Fork mode |
 | `Ctrl+W` | Delete word backwards |
 | `Ctrl+U` | Delete to start of line |
 | `Ctrl+K` | Delete to end of line |

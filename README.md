@@ -1,365 +1,98 @@
-# NextEleven Harness — Rust Coding Agent
+# Harness
 
 [![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
-[![MSRV](https://img.shields.io/badge/MSRV-1.95%2B-orange)](rust-toolchain.toml)
-[![Toolchain](https://img.shields.io/badge/pinned-1.95.0-blue)](rust-toolchain.toml)
-[![Coverage](https://img.shields.io/badge/coverage-64.39%25%20(gate%2060%25%20met)-brightgreen)](COVERAGE.md)
-[![Version](https://img.shields.io/badge/version-1.3.0-informational)](Cargo.toml)
+[![Coverage](https://github.com/seanebones-lang/harness/actions/workflows/coverage.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/coverage.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**NextEleven Harness** is a terminal-native AI coding agent written in Rust by **NextEleven LLC**. It edits your repo with sandboxed tools, tracks cost and sessions, runs parallel swarm workers, speaks MCP, and can serve a local HTTP/SSE UI — multi-provider, multi-agent, local-first.
+Harness is Sean McDonnell's personal coding agent, written in Rust. It reads and edits repositories, runs tools, keeps resumable sessions, and offers a terminal interface and a local web interface. The repository is public and [MIT licensed](LICENSE). Development is focused on dependable personal use.
 
-**Provider-neutral by design:** Harness does not choose, recommend, or rank a vendor, model, or fallback order. Setup saves your exact `provider:model` route; the first entry is primary and every later entry is tried in the order you chose. Eighteen alphabetized built-in names are convenience configurations, not a closed catalogue: custom OpenAI chat-completions-compatible HTTP(S) endpoints can be added from the CLI without changing Rust code.
+You choose the exact `provider:model` route. The first entry is primary; optional fallbacks run in your chosen order. Credentials never rank providers or insert a fallback. Built-in provider names are presets, and custom OpenAI-compatible endpoints can be configured without adding Rust code.
 
-**Status (2026-09-14):** public **beta / POC** (daily-driver capable). Version **1.3.0**. Candidate commit **`3aa38c5`** passes 775 workspace tests on macOS arm64 and Linux arm64, and the optimized Linux container passes runtime acceptance. **Stable** remains blocked on remote native matrix execution, signed release artifacts, and the GitHub Actions billing lock (see [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md)).
-**Branch:** ship on **`main`** only.  
-**License:** proprietary — NextEleven LLC ([`LICENSE`](LICENSE)). **Not MIT. Not open source.** Public repo = proof-of-concept visibility only.
+**Current status:** version 1.3.0, under active maintenance. Build and verify the current source before use; a successful build does not establish every optional integration or operating system. [The assessment and acceptance record](docs/PERSONAL_USE.md) distinguishes verified workflows from remaining checks. Earlier competition, promotion, and release notes are historical.
 
-| Doc | Purpose |
-|-----|---------|
-| [`docs/INSTALL.md`](docs/INSTALL.md) | Per-OS install, PATH, FAQ |
-| [`Start Here/USER MANUAL.md`](Start%20Here/USER%20MANUAL.md) | Plain-language first run |
-| [`docs/COOKBOOK.md`](docs/COOKBOOK.md) | Worked prompts + tool recipes |
-| [`docs/SHORTCUTS.md`](docs/SHORTCUTS.md) | TUI keys + slash + CLI |
-| [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md) | Ordered engineering backlog |
-| [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) | Go / no-go log |
-| [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | Trust boundaries (v2) |
-| [`CLAUDE.md`](CLAUDE.md) | Developer map of the tree |
-| [`COVERAGE.md`](COVERAGE.md) | Measured coverage SoT |
+## Build and verify
 
----
+Install Git and Rust through [rustup](https://rustup.rs). The repository pins Rust 1.95.0.
 
-## What you get
-
-- **User-owned multi-provider routing** — 18 built-in names: Anthropic, AWS Bedrock, Cerebras, DeepSeek, Fireworks, Google Gemini, Groq, Hugging Face, Mistral, MLX, NVIDIA, Ollama, OpenAI, OpenRouter, Perplexity, SambaNova, Together, and xAI; plus custom OpenAI chat-completions-compatible endpoints
-- **Agentic tools** — `read_file` / `write_file` / `patch_file` / `apply_patch` / `list_dir` / `search_code` / `shell` / `git` / `gh` / `test_runner` / LSP (`find_definition`, …) / `spawn_agent` / `spawn_swarm`
-- **Config-gated extras** (default **off**) — `database` (SQLite readonly), `notebook` (`.ipynb`), `docker` (allowlisted CLI), `browser` (Chrome CDP), `computer_use` (see [`docs/COMPUTER_USE.md`](docs/COMPUTER_USE.md))
-- **Parallel swarm** — SQLite registry (`~/.harness/swarm.db`), CLI + TUI panel (F2 / `/swarm`), cancel-all, auto-GC, `--json`, worker tool allowlist + wall timeout, optional remote registry hook
-- **Sessions + memory** — SQLite sessions, semantic recall, project memory (`.harness/memory/`), ambient consolidation
-- **Plan mode** — `--plan` pauses destructive tools for y/n
-- **Deadbolt** — out-of-band lease (`harness deadbolt status|pause|clip|resume|kill|drill`). Not a model tool. Kill requires `--agent`. See [`docs/DEADBOLT.md`](docs/DEADBOLT.md).
-- **Serve / daemon** — local HTTP+SSE (`harness serve`), Unix-socket daemon, collab WS when enabled
-- **MCP** — tools + resources/roots CLI + inbound sampling approval (TUI y/n or auto)
-- **Ops** — `doctor`, `cost`, `sync` (age-encrypted), `bench` (offline pack), `trace` / OTLP notes, bridges (Obsidian/Notes/Calendar/Projects)
-
----
-
-## Prerequisites
-
-- **Rust** via [rustup](https://rustup.rs) — pinned channel and honest dependency-derived MSRV: **1.95.0**
-- **Git**
-- **macOS / Linux / Windows** — CI runs fmt, clippy, test, build on all three
-
----
-
-## Quick start
-
-### One-click install (prebuilt)
-
-```bash
-# macOS / Linux — downloads the matching binary from GitHub Releases
-curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.sh | bash
-
-# pin a version
-curl -fsSL https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.sh | bash -s -- v1.3.0
-```
-
-```powershell
-# Windows PowerShell
-irm https://raw.githubusercontent.com/seanebones-lang/harness/main/scripts/install.ps1 | iex
-```
-
-Installs to `~/.local/bin/harness` (override with `HARNESS_INSTALL_DIR`). Falls back to building from source if no prebuilt exists for your OS/arch.
-
-**Homebrew (macOS, when formula SHAs are current):**
-
-```bash
-brew install --formula ./homebrew/harness.rb   # from a clone
-```
-
-### Build from source
-
-### macOS / Linux
-
-```bash
+```sh
 git clone https://github.com/seanebones-lang/harness.git
 cd harness
-cargo build --profile release-lto
+cargo build --locked
+./target/debug/harness --version
+./target/debug/harness --help
+make verify
+```
+
+`make verify` runs workspace formatting, strict linting, tests, and synthetic agent/HTTP acceptance. Its tests do not require API keys. For an optimized binary:
+
+```sh
+cargo build --locked --profile release-lto
+mkdir -p ~/.local/bin
 install -m 755 target/release-lto/harness ~/.local/bin/harness
-export PATH="$HOME/.local/bin:$PATH"
-
-export ANTHROPIC_API_KEY="sk-ant-..."   # or XAI_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / …
-cd /path/to/your/project
-harness init        # optional: seed ~/.harness/config.toml
-harness setup       # choose provider(s), model(s), and exact order
-harness             # interactive TUI
 ```
 
-Installer script: [`scripts/install.sh`](scripts/install.sh).
+On Windows, copy `target\release-lto\harness.exe` into a directory on your user PATH. The [installation guide](docs/INSTALL.md) covers platform tooling and installer scripts. Prebuilt releases may lag source; use the freshly built executable when checking new behavior.
 
-### Windows (PowerShell)
+## First use
 
-```powershell
-git clone https://github.com/seanebones-lang/harness.git
-cd harness
-cargo build --profile release-lto
-New-Item -ItemType Directory -Force -Path "$HOME\.local\bin" | Out-Null
-Copy-Item -Force .\target\release-lto\harness.exe "$HOME\.local\bin\harness.exe"
-# add %USERPROFILE%\.local\bin to User PATH, new terminal
+Make the chosen provider's credential available through its documented environment variable, or run a local backend such as Ollama. Harness setup stores environment-variable names rather than new secret values.
 
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-cd C:\path\to\your\project
+```sh
+cd /path/to/your/project
+harness setup
+harness route show
+harness doctor
 harness
 ```
 
-Installer: [`scripts/install.ps1`](scripts/install.ps1). Prefer **MSVC** toolchain + Git for Windows.
+Select your own provider and model in setup. An explicit ordered route can also be saved with `harness route set <provider>:<model> [...]`. Run `harness route --help` for scope and custom-endpoint options. [Provider configuration](docs/PROVIDERS_OPENAI_COMPAT.md) explains compatible endpoints; [the user manual](Start%20Here/USER%20MANUAL.md) covers first use.
 
-### One-shot & common commands
-
-```bash
-# Prefer freshly built binary while developing
-./target/debug/harness --help
-
-harness "summarize this crate layout"
-harness --plan "refactor src/agent into modules"
-harness --model grok-4.3 --think 8000 "design a migration"
-harness --resume <session-id-prefix> "continue"
-
-harness doctor
-harness models
-harness route show
-harness route set anthropic:claude-opus-4-7 openai:gpt-5.5 ollama:qwen3-coder:30b
-harness route model openai gpt-5.4
+```sh
+harness "explain this repository"
+harness --plan "refactor this function and show the proposed changes"
+harness --resume <session-id> "continue"
+harness sessions
+harness export <session-id>
 harness cost today
+```
 
-harness swarm run "audit auth" -n 3
-harness swarm list
-harness swarm status <id> --json
-harness swarm gc --dry-run
+A failed or token-limited one-shot run exits with an error and saves its session for inspection or resume. Session exports retain full tool results. Tool execution limits stop an incomplete run rather than claiming completion.
 
-harness mcp roots
-harness mcp resources
-harness bench                 # offline pack; no API keys
-harness bench --json
+## Useful capabilities
 
+- **Repository tools:** reading, writing, patches, search, shell commands, Git, GitHub CLI, and test execution.
+- **Sessions and memory:** SQLite conversation storage, session export, project instructions, optional semantic recall and ambient consolidation.
+- **Workers:** tracked swarm tasks, cancellation, cleanup, wall-time limits, tool allowlists, and explicit worker model routes.
+- **Interfaces:** terminal UI, one-shot commands, local HTTP/SSE server, and a daemon. VS Code and Tauri clients are optional.
+- **Interop:** MCP tools/resources/sampling and LSP lookups. Browser, computer use, database, notebook, Docker, voice, and platform bridges are optional integrations with their own setup.
+- **Deadbolt:** an out-of-band control for agent tool/MCP/spawn authority. See [its scope and commands](docs/DEADBOLT.md).
+
+Use optional integrations when they solve a real task. They are not requirements for the core coding workflow.
+
+## Local web interface
+
+```sh
 harness serve --addr 127.0.0.1:8787
-harness bridge obsidian "Title" "body"
-harness completions zsh > ~/.zsh/completions/_harness
 ```
 
-**PATH pitfall:** install under `~/.local/bin` can lag the tree. After CLI changes, smoke with **`./target/debug/harness`**.
+Open the address printed by the server. API requests require its bearer token; keep the service on loopback for personal use. [Container instructions](docs/CONTAINERS.md) cover a separate runtime environment.
 
----
+## Trust and recovery
 
-## Providers & keys
+Tools act with the authority of your account. Filesystem restrictions, plan approvals, and Deadbolt controls do not establish arbitrary-code isolation for a shell command. Review the [trust boundaries](docs/THREAT_MODEL.md), use plan mode for changes you want to inspect, and keep work in version control. Cancellation and timeouts are part of the agent's runtime contract.
 
-Provider discovery is informational only. Credentials never determine route priority. Every selected provider has an explicit model, and Harness follows the saved order exactly. If more than one provider is available but no route has been saved, startup fails closed and directs the user to setup instead of guessing.
+Credentials and personal state belong outside the public repository. Local `.env` files are ignored. The automated acceptance scripts use isolated temporary homes and synthetic providers.
 
-| Provider | Typical env | Notes |
-|----------|-------------|--------|
-| Anthropic | `ANTHROPIC_API_KEY` | Prompt cache + thinking |
-| Bedrock | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (+ region / `BEDROCK_MODEL_ID`) | Converse + SigV4 |
-| Cerebras | `CEREBRAS_API_KEY` | OpenAI-compatible hosted API |
-| DeepSeek | `DEEPSEEK_API_KEY` | OpenAI-compatible hosted API |
-| Fireworks | `FIREWORKS_API_KEY` | OpenAI-compatible hosted API |
-| Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | OpenAI-compat Generative Language API — [`docs/PROVIDERS_GEMINI_BEDROCK.md`](docs/PROVIDERS_GEMINI_BEDROCK.md) |
-| Generic | chosen with `--api-key-env` | Bearer-authenticated OpenAI-format endpoint |
-| Groq | `GROQ_API_KEY` | OpenAI-compatible hosted API |
-| Hugging Face | `HF_TOKEN` | OpenAI-compatible Inference Providers router |
-| Mistral | `MISTRAL_API_KEY` | OpenAI-compatible client |
-| MLX | macOS Apple Silicon | `mlx_lm.server` OpenAI-compat |
-| NVIDIA | `NVIDIA_API_KEY` | OpenAI-compat — deepseek-ai/deepseek-v4-flash-0731, nemotron 3 super/ultra — [`docs/PROVIDERS_OPENAI_COMPAT.md`](docs/PROVIDERS_OPENAI_COMPAT.md) |
-| Ollama | local daemon | User-selected local model |
-| OpenAI | `OPENAI_API_KEY` | GPT-5.x family |
-| OpenRouter | `OPENROUTER_API_KEY` | OpenAI-compatible routing API |
-| Perplexity | `PERPLEXITY_API_KEY` | OpenAI-compatible Sonar chat API |
-| SambaNova | `SAMBANOVA_API_KEY` | OpenAI-compatible hosted API |
-| Together | `TOGETHER_API_KEY` | OpenAI-compatible hosted API |
-| xAI | `XAI_API_KEY` | Grok 4.x family |
+## Development
 
-```bash
-export GEMINI_API_KEY=...
-harness route set gemini:gemini-2.0-flash
-harness "ping"
+[The current backlog](docs/CTO_BACKLOG.md) orders the remaining work. [The developer map](CLAUDE.md) explains the modules, and [the architecture](ARCHITECTURE.md) describes the existing design. [The cookbook](docs/COOKBOOK.md) and [keyboard reference](docs/SHORTCUTS.md) cover detailed workflows. Coverage measurements in [COVERAGE.md](COVERAGE.md) are dated evidence; the workflow badge reflects CI status.
 
-export AWS_REGION=us-east-1
-export BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
-# AWS_* keys as usual
+```sh
+make verify
+make web-test
+make supply-chain
 ```
 
-The route is explicit and exact. Use `harness route set` to replace it, `route add/remove/move` to edit its order, `route model` to change one model, and `route custom` to register a future OpenAI chat-completions-compatible endpoint without changing Harness code. Custom services using a different request schema or authentication protocol need a native adapter. Router policy + catalogue tests live in `crates/harness-provider-router`.
+Provider changes should include mock transport tests for split network chunks, terminal conditions, and tool-result continuation. Preserve exact user-selected routes. OpenAI's [Codex repository](https://github.com/openai/codex), [Agents SDK](https://github.com/openai/openai-agents-python), and [Python SDK](https://github.com/openai/openai-python) are implementation references; their licenses remain separate, and Harness does not imply complete API or feature parity.
 
----
-
-## Optional tools (config-gated)
-
-All default **disabled**. Enable in `~/.harness/config.toml` or project `.harness/config.toml`:
-
-```toml
-[tools.database]
-enabled = true
-readonly = true      # SELECT / WITH / PRAGMA / EXPLAIN only
-max_rows = 500
-
-[tools.notebook]
-enabled = true
-
-[tools.docker]
-enabled = true
-allow_mutating = false   # compose_up only if true
-timeout_secs = 60
-
-[computer_use]
-# enabled = true         # DANGER: mouse/keyboard — Claude 4.x models; see docs/COMPUTER_USE.md
-
-[browser]
-# use CLI --browser or config; needs Chrome CDP — docs/BROWSER_CDP.md
-```
-
-Cookbook sections 14–16: [`docs/COOKBOOK.md`](docs/COOKBOOK.md).
-
-### Swarm worker gates
-
-```toml
-[swarm]
-max_concurrency = 4
-# auto_gc_stale_secs = 86400
-# worker_tool_allowlist = ["read_file", "list_dir", "search_code", "test_runner"]
-# worker_max_wall_secs = 600
-# registry_url = ""    # optional remote registry hook (see docs/WAVE7_SCALE.md)
-```
-
-TUI: **F2** or `/swarm` dumps swarm registry lines into the single-panel transcript (Hermes-style layout; no side panel).
-
----
-
-## CLI surface (authoritative: `./target/debug/harness --help`)
-
-| Area | Commands |
-|------|----------|
-| Chat | (default TUI), `run`, `--resume`, `--plan`, `--think`, `--image`, `--browser` |
-| Sessions | `sessions`, `export`, `delete`, `undo`, `checkpoint` |
-| Swarm | `swarm run\|list\|status\|result\|cancel\|wait\|gc` |
-| MCP | `mcp resources\|roots\|read` |
-| Ops | `doctor`, `status`, `init`, `setup`, `models`, `cost`, `update` |
-| Memory | `memorize`, `forget`, `memories` |
-| Network | `serve`, `connect`, `daemon`, `daemon-status` |
-| Bridges | `bridge …` |
-| Misc | `pr`, `voice`, `sync`, `trace`, `bench`, `trust` / `untrust`, `completions`, `self-dev`, `project` |
-
----
-
-## Build, test, quality
-
-```bash
-cargo build
-cargo build --profile release-lto
-  cargo test --bin harness          # 454 tests (2026-09-14; no API keys)
-cargo test -p harness-tools       # 179 tests (Swarm-51)
-cargo test -p harness-provider-router
-cargo clippy -p harness --bin harness -- -D warnings
-cargo fmt --all -- --check
-
-# Coverage SoT (badge = measured; CI fail-under 60% met)
-cargo llvm-cov --workspace --all-features --summary-only
-# Last measured: **64.39%** lines (2026-09-13 production hardening) — see COVERAGE.md
-
-# Offline microbench pack
-./target/debug/harness bench
-cargo bench                       # criterion (memory search, JSON-RPC)
-
-# Offline REL smoke helpers
-bash scripts/smoke_rel01.sh
-python3 scripts/smoke_agent.py target/release-lto/harness
-python3 scripts/test_install.py
-# bash scripts/smoke_linux_docker.sh   # needs Docker
-```
-Root package is a **binary** — use `cargo test --bin harness <filter>`, not `--lib`. One test filter only per invocation.
-
----
-
-## Workspace layout
-
-```
-harness/
-├── src/                    # binary: agent/, server/, tui/, swarm, bench, CLI
-├── crates/
-│   ├── harness-provider-*  # core, anthropic, openai, xai, ollama, mlx, gemini, bedrock, router
-│   ├── harness-tools       # tool trait + builtins (+ database/notebook/docker)
-│   ├── harness-memory      # sessions + vector memory
-│   ├── harness-mcp         # MCP client
-│   ├── harness-browser     # CDP
-│   ├── harness-lsp / voice / term-graphics
-├── config/default.toml
-├── demo/                   # scenarios + bench_tasks pack + DEMO_SCRIPT
-├── docs/                   # user + eng docs
-├── apps/desktop            # Tauri shell
-├── extensions/vscode
-└── scripts/                # install, smoke, vendor, homebrew SHA
-```
-
-Developer narrative: [`CLAUDE.md`](CLAUDE.md) · architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md).
-
----
-
-## Security
-
-- Workspace path jail (strict by default)
-- Confirm gate / plan mode for destructive tools
-- HTTP bearer auth on `serve`; daemon token on loopback socket
-- MCP command allowlist; sampling approval path
-- Optional tools off by default
-- Threat model v2 + audit checklist: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)
-- Report vulnerabilities per [`SECURITY.md`](SECURITY.md) — do not open public issues for sensitive reports
-
----
-
-## Release posture
-
-| Item | State |
-|------|--------|
-| Public beta | **GO** |
-| Supported stable release | Blocked — REL-01 full OS smoke + verified prebuilt matrix; choose the next version only at release time |
-| Coverage CI gate | **Met** — measured **64.39%** lines (llvm-cov 2026-09-13); badge 64.39% |
-| Billing / full Release matrix | 📌 pinned (maintainer) |
-| Branch | **`main`** |
-
-Current hardening evidence: [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md). Container setup: [`docs/CONTAINERS.md`](docs/CONTAINERS.md).
-
-Details: [`docs/RELEASE_STATUS.md`](docs/RELEASE_STATUS.md) · [`docs/PUBLIC_RELEASE.md`](docs/PUBLIC_RELEASE.md) · ordered work: [`docs/CTO_BACKLOG.md`](docs/CTO_BACKLOG.md).
-
----
-
-## Contributing
-
-1. Branch from **`main`**
-2. `cargo fmt` · `cargo clippy -p harness --bin harness -- -D warnings` · `cargo test --bin harness`
-3. Keep docs honest (coverage badge = measured; no vaporware flags)
-4. See [`CONTRIBUTING.md`](CONTRIBUTING.md)
-
----
-
-## Demo & evaluation
-
-```bash
-docker compose run --rm harness   # configure first: docs/CONTAINERS.md
-demo/DEMO_SCRIPT_5-10min.md       # doctor → one-shot → tools → swarm → gc
-./target/debug/harness bench      # offline pack under demo/bench_tasks/
-```
-
-Competition / submission notes: [`docs/SUBMISSION_MANIFEST.md`](docs/SUBMISSION_MANIFEST.md), [`docs/TECHNICAL_REPORT.md`](docs/TECHNICAL_REPORT.md).
-
----
-
-## License
-
-**Proprietary — NextEleven LLC.** See [`LICENSE`](LICENSE). Unauthorized use, copying, distribution, or derivative works are prohibited.
-
-Public GitHub hosting is for **proof-of-concept evaluation only**. This is **not** an MIT or open-source grant.
-
----
-
-## Links
-
-- Issues / PRs: https://github.com/seanebones-lang/harness  
-- Releases: https://github.com/seanebones-lang/harness/releases · notes [`docs/RELEASE_NOTES_v1.3.0.md`](docs/RELEASE_NOTES_v1.3.0.md)  
-- Comparison notes: [`docs/COMPARISON.md`](docs/COMPARISON.md)
+Contributions follow the [MIT license and contribution guide](CONTRIBUTING.md).

@@ -396,7 +396,7 @@ async fn type_text(text: &str) -> Result<String> {
     }
     Ok(format!(
         "Type '{}' — no control tool available",
-        &text[..text.len().min(40)]
+        crate::text::char_prefix(text, 40)
     ))
 }
 

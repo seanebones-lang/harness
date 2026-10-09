@@ -22,7 +22,7 @@
 ## Rules
 
 1. Non-overlapping paths in parallel.
-2. Docs: no MIT claims; license = proprietary NextEleven LLC.
+2. License: MIT. The owner explicitly changed the scope to personal use on 2026-10-09; earlier proprietary and commercial instructions are superseded.
 3. Coverage badge = measured SoT in `COVERAGE.md`.
 4. CLI flags: verify with `./target/debug/harness`, not PATH.
 5. Children do not commit; orchestrator ships to **`main`**.

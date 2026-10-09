@@ -1,3 +1,5 @@
+> Historical material. Retained for reference; excluded from the personal-use roadmap. Current licensing is MIT; earlier proprietary language below describes the prior policy. See [the current backlog](../CTO_BACKLOG.md).
+
 # Harness: A Multi-Provider Rust Coding Agent with Semantic Memory and Parallel Execution
 
 **Technical Report — International Engineering Competition Submission**
