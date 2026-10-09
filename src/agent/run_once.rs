@@ -23,6 +23,8 @@ pub struct RunOnceOptions {
     pub native_code_execution: bool,
     /// Enable provider-native X search (xAI).
     pub native_x_search: bool,
+    /// Save observed build-run evidence independently of model-written notes.
+    pub record_build_progress: bool,
 }
 
 impl RunOnceOptions {
@@ -33,6 +35,7 @@ impl RunOnceOptions {
             native_web_search: cfg.native_tools.web_search_enabled(),
             native_code_execution: cfg.native_tools.code_execution_enabled(),
             native_x_search: cfg.native_tools.x_search_enabled(),
+            record_build_progress: false,
         }
     }
 }
@@ -51,6 +54,8 @@ pub async fn run_once(
     resume_id: Option<&str>,
     opts: RunOnceOptions,
 ) -> Result<()> {
+    let record_build_progress = opts.record_build_progress;
+    let mut observed_commands = Vec::new();
     let mut session = match resume_id {
         Some(id) => store
             .find(id)?
@@ -108,6 +113,9 @@ pub async fn run_once(
             }
             AgentEvent::ToolStart { name, .. } => eprintln!("\n[→ {name}]"),
             AgentEvent::ToolResult { name, result, .. } => {
+                if record_build_progress && matches!(name.as_str(), "shell" | "test_runner") {
+                    observed_commands.push((name.clone(), result.clone()));
+                }
                 let preview = harness_tools::text::char_prefix(result, 100);
                 eprintln!("[← {name}] {preview}");
             }
@@ -135,6 +143,19 @@ pub async fn run_once(
     // Keep completed tools and partial responses resumable even when the run fails.
     store.save(&final_session)?;
     eprintln!("[session {}]", final_session.short_id());
+    if record_build_progress {
+        let progress = crate::build_workflow::record_run(
+            &std::env::current_dir()?,
+            &final_session.id,
+            result.is_ok(),
+            &observed_commands,
+        );
+        if result.is_ok() {
+            progress?;
+        } else if let Err(error) = progress {
+            eprintln!("Could not save build progress: {error}");
+        }
+    }
     result?;
 
     if let Some(title) = suggest_session_name(provider, &final_session).await {

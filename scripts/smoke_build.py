@@ -28,6 +28,7 @@ CHECK = shlex.quote(sys.executable) + ' -m unittest -v'
 
 class Provider(http.server.BaseHTTPRequestHandler):
     requests = []
+    fail = False
 
     def log_message(self, *_):
         pass
@@ -35,6 +36,14 @@ class Provider(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         self.requests.append(request)
+        if self.fail:
+            payload = json.dumps({'error': {'message': 'build failure fixture'}}).encode()
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         tools = [m for m in request['messages'] if m['role'] == 'tool']
         calls = []
         if request.get('tools') and not tools:
@@ -94,6 +103,8 @@ enabled = false
             assert any('Ran 2 tests' in str(m) and 'OK' in str(m) for r in Provider.requests
                        for m in r['messages'] if m['role'] == 'tool')
             assert (root / 'retrieval.py').is_file()
+            progress = (root / '.harness/BUILD_PROGRESS.md').read_text()
+            assert 'Ran 2 tests' in progress and 'not certification' in progress
             assert any('Every result has a source' in str(r['messages'][0]) and
                        'Preserve the existing output contract' in str(r['messages'][0]) for r in Provider.requests)
             print('PASS build brief reaches actual agent; backend files are created and two real tests execute')
@@ -102,6 +113,15 @@ enabled = false
             run('build')
             assert any('NEXT_USEFUL_ACTION' in str(r['messages'][0]) for r in Provider.requests)
             print('PASS fresh build session reloads the saved outcome and prior progress')
+            Provider.fail = True
+            result = subprocess.run([binary, 'build'], cwd=root, env=env, stdin=subprocess.DEVNULL,
+                                    capture_output=True, text=True, timeout=45)
+            assert result.returncode != 0, 'Failed build returned success'
+            progress = (root / '.harness/BUILD_PROGRESS.md').read_text()
+            assert progress.index('Agent turn: stopped') < progress.index('Agent turn: finished')
+            assert 'Verification remains open' in progress and 'NEXT_USEFUL_ACTION' in progress
+            assert '[session ' in result.stderr
+            print('PASS failed build saves its session and observed failure without losing prior progress')
         finally:
             server.shutdown()
             server.server_close()

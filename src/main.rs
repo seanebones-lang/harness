@@ -581,7 +581,10 @@ async fn main() -> Result<()> {
                 cfg.agent.system_prompt.as_deref(),
                 build_prompt.as_deref().expect("build prompt prepared"),
                 cli.resume.as_deref(),
-                run_opts,
+                agent::RunOnceOptions {
+                    record_build_progress: true,
+                    ..run_opts
+                },
             )
             .await?;
         }

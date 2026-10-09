@@ -57,6 +57,20 @@ Enter provider names in the order you want them tried, then enter one exact mode
 
 ## Daily Use (normal flow)
 
+For an ongoing backend, retrieval, or automation build, save the outcome and what must work:
+
+```bash
+cd /path/to/your/project
+harness build "Add a document retrieval API to this backend" \
+  --accept "Each retrieved result retains its source identifier" \
+  --accept "Empty retrieval and malformed requests are handled explicitly" \
+  --check "python3 -m pytest"
+```
+
+Use a verification command appropriate to your project. Without `--check`, Harness discovers commands from existing root manifests. Add `--prepare-only` to save and inspect `.harness/build.toml` before any API call. Continue later with `harness build`; use `harness --resume <session-id> build` to also restore a conversation. A different outcome archives the previous brief and progress notes. Acceptance criteria and progress guide the agent; completion still requires observed checks against the actual files and runtime.
+
+For an interactive terminal session:
+
 ```bash
 cd /path/to/your/project
 harness

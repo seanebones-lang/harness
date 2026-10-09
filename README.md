@@ -73,7 +73,7 @@ harness build "Build a local document retrieval API in Python" \
 
 This saves an editable `.harness/build.toml` and runs the existing agent. It discovers verification commands from existing root manifests when none are supplied. Use `--prepare-only` to review the brief without API calls. Repeating `--accept` or `--check` supplies the respective list; omitted lists keep existing values when continuing the same outcome. A different outcome archives the prior brief and progress notes.
 
-Run `harness build` to continue the saved outcome, or `harness --resume <session-id> build` to also reuse a conversation. The terminal and HTTP agent load the same brief and `.harness/BUILD_PROGRESS.md` alongside project instructions. Progress notes are guidance to recheck against the workspace. The brief itself does not prove completion or execute checks; the agent must run them and report their evidence. Supply checks appropriate to your repository and review any detected commands.
+Run `harness build` to continue the saved outcome, or `harness --resume <session-id> build` to also reuse a conversation. Build runs save their session ID, turn status, and recent shell/test output in `.harness/BUILD_PROGRESS.md`, even when the model omits notes or the run fails. The terminal and HTTP agent load the same brief and progress alongside project instructions. Recheck those observations against the workspace; a finished turn does not certify acceptance. The brief itself does not prove completion or execute checks; the agent must run them and report their evidence. Supply checks appropriate to your repository and review any detected commands.
 
 ## Useful capabilities
 

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Build runs save their session ID, turn status, and observed shell/test output even when the model omits progress notes
 - Persistent `harness build` workflow with editable outcomes, acceptance criteria, existing-project check discovery, offline brief preparation, and cross-session progress context
 - Personal-use acceptance record and real terminal cancellation/session recovery smoke tests
 - Isolated real-binary CLI and synthetic provider/HTTP release smoke, including tool execution, exact model routing, session persistence, and export

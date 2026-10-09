@@ -180,6 +180,60 @@ fn detected_checks(root: &Path) -> Vec<String> {
     checks
 }
 
+/// Persist actual runner observations, without treating turn completion as acceptance.
+pub fn record_run(
+    root: &Path,
+    session_id: &str,
+    finished: bool,
+    observed_commands: &[(String, String)],
+) -> Result<()> {
+    let directory = root.join(".harness");
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("BUILD_PROGRESS.md");
+    let previous = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error).context("reading prior build progress"),
+    };
+    let status = if finished {
+        "finished"
+    } else {
+        "stopped with an error or cancellation"
+    };
+    let mut record = format!(
+        "# Observed Harness build run — {}\n\nSession: `{session_id}`\nAgent turn: {status}. This is turn status, not certification that the acceptance criteria passed.\n\n## Recent command/tool output excerpts\n\n",
+        chrono::Utc::now().to_rfc3339()
+    );
+    if observed_commands.is_empty() {
+        record.push_str("No completed shell or test-runner output was observed in this turn. Verification remains open.\n");
+    }
+    let start = observed_commands.len().saturating_sub(4);
+    if start > 0 {
+        record.push_str(&format!("Showing the last four command results; {start} earlier results remain in the saved session.\n\n"));
+    }
+    for (name, output) in &observed_commands[start..] {
+        let excerpt = if output.len() > 3_000 {
+            format!(
+                "{}\n[... output excerpt omitted ...]\n{}",
+                harness_tools::text::byte_prefix(output, 1_500),
+                harness_tools::text::byte_suffix(output, 1_500)
+            )
+        } else {
+            output.clone()
+        };
+        record.push_str(&format!("### {name}\n\n~~~text\n{}\n~~~\n\n", excerpt));
+    }
+    record.push_str("Inspect the saved session for exact commands and full results. Recheck these observations against the actual workspace before continuing.\n");
+    if !previous.trim().is_empty() {
+        record.push_str(&format!(
+            "\n## Earlier progress and project notes\n\n{previous}"
+        ));
+    }
+    let tmp = directory.join(format!(".progress-{}.tmp", uuid::Uuid::new_v4()));
+    std::fs::write(&tmp, record)?;
+    std::fs::rename(tmp, path).context("saving build progress")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,5 +301,41 @@ mod tests {
         std::fs::create_dir(dir.path().join(".harness")).unwrap();
         std::fs::write(dir.path().join(BRIEF_PATH), "version = 99\ngoal = 'x'").unwrap();
         assert!(BuildBrief::load(dir.path()).is_err());
+    }
+
+    #[test]
+    fn runner_observations_preserve_notes_without_certifying_acceptance() {
+        let dir = tempdir().unwrap();
+        prepare(dir.path(), Some("Build retrieval"), &[], &[]).unwrap();
+        let path = dir.path().join(".harness/BUILD_PROGRESS.md");
+        std::fs::write(&path, "Next: verify empty retrieval").unwrap();
+        record_run(
+            dir.path(),
+            "session-one",
+            true,
+            &[("shell".into(), "Ran 2 tests\nOK".into())],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("session-one"));
+        assert!(text.contains("Ran 2 tests"));
+        assert!(text.contains("Next: verify empty retrieval"));
+        assert!(text.contains("not certification"));
+        record_run(dir.path(), "session-two", false, &[]).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(text.find("session-two").unwrap() < text.find("session-one").unwrap());
+        assert!(text.contains("stopped with an error"));
+        assert!(text.contains("Verification remains open"));
+        let long_failure = format!("{}CHECK_FAILED", "é".repeat(2_000));
+        record_run(
+            dir.path(),
+            "session-three",
+            false,
+            &[("shell".into(), long_failure)],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(dir.path().join(".harness/BUILD_PROGRESS.md")).unwrap();
+        assert!(text.contains("CHECK_FAILED"));
+        assert!(text.contains("output excerpt omitted"));
     }
 }
