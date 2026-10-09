@@ -22,8 +22,8 @@ Updated October 9, 2026. The owner's direction is a dependable personal coding t
 - [x] Treat safety/token limits and incomplete provider responses as failures.
 - [x] Reconcile MIT metadata and retire competition/promotion documents from the active roadmap.
 - [x] Complete local acceptance of the final candidate and record exact results in [PERSONAL_USE.md](PERSONAL_USE.md).
-- [x] Verify the configured provider with bounded live text checks and exercise the terminal workflow with a synthetic provider. Record live tool-check limitations.
-- [ ] Commit and synchronize the verified candidate; check its remote CI.
+- [x] Verify the configured provider with bounded live text/tool checks, exercise terminal cancellation, and start the installed executable with the actual configuration.
+- [x] Commit and synchronize the verified candidate; all 13 remote CI jobs and coverage passed.
 
 ## Decisions
 
