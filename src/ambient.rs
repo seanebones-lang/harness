@@ -191,16 +191,25 @@ pub(crate) async fn consolidate(
         .await
         .map_err(|e| ConsolidateError::Other(anyhow::anyhow!("stream_chat failed: {e}")))?;
     let mut summary = String::new();
-
+    let mut completed = false;
     while let Some(delta) = stream.next().await {
-        if let Ok(Delta::Text(chunk)) = delta {
-            summary.push_str(&chunk);
+        match delta {
+            Ok(Delta::Text(chunk)) => summary.push_str(&chunk),
+            Ok(Delta::Done {
+                stop_reason: harness_provider_core::StopReason::EndTurn,
+            }) => completed = true,
+            Ok(Delta::Done { .. }) | Err(_) => {
+                return Err(ConsolidateError::Other(anyhow::anyhow!(
+                    "consolidation response did not complete"
+                )))
+            }
+            _ => {}
         }
     }
 
-    if summary.trim().is_empty() {
+    if !completed || summary.trim().is_empty() {
         return Err(ConsolidateError::Other(anyhow::anyhow!(
-            "consolidation produced empty summary"
+            "consolidation produced an empty or incomplete summary"
         )));
     }
 
@@ -294,6 +303,60 @@ mod tests {
 
     fn providers_from_arc(p: ArcProvider) -> AmbientProviders {
         AmbientProviders::same(p)
+    }
+
+    struct InterruptedProvider(u8);
+
+    #[async_trait]
+    impl Provider for InterruptedProvider {
+        fn name(&self) -> &str {
+            "interrupted"
+        }
+        fn model(&self) -> &str {
+            "m"
+        }
+        async fn stream_chat(&self, _req: ChatRequest) -> Result<DeltaStream, ProviderError> {
+            let mut events = vec![Ok(Delta::Text("partial summary".into()))];
+            match self.0 {
+                1 => events.push(Err(ProviderError::StreamEnded)),
+                2 => events.push(Ok(Delta::Done {
+                    stop_reason: StopReason::MaxTokens,
+                })),
+                _ => {}
+            }
+            Ok(Box::pin(stream::iter(events)))
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupted_consolidation_preserves_original_memories() {
+        for failure in 0..3 {
+            let dir = tempdir().unwrap();
+            let store = MemoryStore::open(dir.path().join("mem.db")).unwrap();
+            let mut ids = Vec::new();
+            for i in 0..5 {
+                ids.push(
+                    store
+                        .insert("sess", &format!("m{i}"), &sample_embedding(i as f32))
+                        .unwrap(),
+                );
+            }
+            let providers = AmbientProviders {
+                summary: Arc::new(InterruptedProvider(failure)),
+                embed: Arc::new(FakeProvider {
+                    summary: "unused".into(),
+                    embed: sample_embedding(0.42),
+                }),
+            };
+            assert!(consolidate(&providers, &store, "embed-model", 5, 20, None)
+                .await
+                .is_err());
+            let remaining = store.recent_memories(20).unwrap();
+            assert_eq!(remaining.len(), 5);
+            assert!(ids
+                .iter()
+                .all(|id| remaining.iter().any(|memory| &memory.id == id)));
+        }
     }
 
     #[test]

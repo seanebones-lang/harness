@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Failed and cancelled session recovery, complete exports, safe context compaction, and bounded cosmetic naming
 - Correct fallback model selection, current OpenAI reasoning request parameters, and selected embedding models
 - Compilation with default features disabled
+- Ambient consolidation preserves original memories on interrupted summaries; GPT-OSS uses its actual context window
 - Browser disconnect/Stop cancels backend turns; interrupted tool batches remain resumable and session-save failures are reported
 - Shell cancellation and timeouts terminate the owned child and its Unix process group, preventing delayed descendant writes
 - Browser startup initializes the saved resume preference before reading it; DOM regressions cover fresh profiles and authenticated streaming chat

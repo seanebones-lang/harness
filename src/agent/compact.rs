@@ -17,7 +17,10 @@ pub fn estimate_tokens(messages: &[harness_provider_core::Message]) -> usize {
 /// Rough context window (tokens) for compaction heuristics.
 pub fn context_limit_for_model(model: &str) -> usize {
     let m = model.to_lowercase();
-    if m.contains("gpt") || m.contains("grok") {
+    if m.contains("gpt-oss") {
+        // OpenAI's open-weight models have a 131,072-token window.
+        131_072
+    } else if m.contains("gpt") || m.contains("grok") {
         1_000_000
     } else if m.contains("claude")
         || m.contains("opus")
