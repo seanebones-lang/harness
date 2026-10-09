@@ -61,6 +61,8 @@ The first bounded live build on the saved NVIDIA GPT-OSS model returned eight HT
 
 The model omitted the progress file, which motivated the automatic runner receipt verified in the final executable smoke. The live evidence establishes a small lexical retrieval component with source identifiers and honest empty results, with a manual resume between bounded attempts. It does not establish an autonomous full RAG service, embedding/generation integration, API startup, or large unattended builds.
 
+Final code commit `71996ca2b7ba44fd7a9553f5dd1797b6fd08298d` passed all [13 CI jobs](https://github.com/seanebones-lang/harness/actions/runs/38005839706) and [coverage](https://github.com/seanebones-lang/harness/actions/runs/38005839723). Optimized Mac compilation and CLI/HTTP/build/terminal smoke passed, including the automatic receipt on success and failure. Both installed executables were refreshed and verified against the compiled binary; the two source checkouts were synchronized. Terminal startup and clean quit also passed with the owner's actual configuration in the Desktop workspace. A subsequent documentation-only receipt does not alter this tested code.
+
 ## Limits of this acceptance
 
 This establishes a personal Mac CLI/terminal and loopback HTTP workflow. Other providers have local parser/request tests, not paid live acceptance. Desktop/editor compilation does not establish interactive operation of every optional client, MCP server, voice backend, computer control, or remote swarm. Verify each optional integration against the actual service when it is used. No signed distribution, marketplace release, or commercial-readiness claim is made.
