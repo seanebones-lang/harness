@@ -6,11 +6,11 @@ This guide explains how to use NextEleven Harness in plain English.
 
 ## What NextEleven Harness Does
 
-NextEleven Harness is an AI coding assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports native and OpenAI-compatible cloud/local providers, has a full TUI with syntax highlighting, remembers past sessions semantically, integrates with your language server, and can orchestrate multiple linked repos via **`harness project`** or use an optional **`harness serve`** browser UI alongside the **`browser`** Chrome tool when enabled.
+NextEleven Harness is an AI work assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports native and OpenAI-compatible cloud/local providers, has a full TUI with syntax highlighting, remembers past sessions semantically, integrates with your language server, and can orchestrate multiple linked repos via **`harness project`** or use an optional **`harness serve`** browser UI alongside the **`browser`** Chrome tool when enabled.
 
 **You choose the route.** Harness has no preferred provider or model. During setup you enter one or more `provider:model` pairs in the exact order you want Harness to try them.
 
-**Current direction (October 9, 2026):** Personal coding tool, version 1.3.0, under the [MIT license](../LICENSE). Build and verify the current source. [The acceptance record](../docs/PERSONAL_USE.md) distinguishes verified core workflows from optional integrations. Earlier release records are historical.
+**Current direction (October 9, 2026):** Personal work assistant, version 1.3.0, under the [MIT license](../LICENSE). Build and verify the current source. [The acceptance record](../docs/PERSONAL_USE.md) distinguishes verified core workflows from optional integrations. Earlier release records are historical.
 
 **More docs:** [`docs/BROWSER_CDP.md`](../docs/BROWSER_CDP.md) · [`docs/COOKBOOK.md`](../docs/COOKBOOK.md) · [`docs/PEER_REVIEW_AUDIT.md`](../docs/PEER_REVIEW_AUDIT.md)
 
@@ -56,6 +56,22 @@ Enter provider names in the order you want them tried, then enter one exact mode
 ---
 
 ## Daily Use (normal flow)
+
+Choose an existing folder directly and save the outcome for the type of work:
+
+```bash
+harness -C "/path/to/work" work --kind research "Read these sources and save a cited comparison"
+harness -C "/path/to/work" work --kind documents "Revise this proposal and check its figures"
+harness -C "/path/to/site" work --kind website "Fix the booking flow and verify phone layout"
+harness -C "/path/to/job" work --kind automation "Add a dry run and prevent duplicates"
+harness -C "/path/to/app" work --kind apple "Fix the simulator build"
+```
+
+Use `--kind software` for backend, RAG, and developer tools. Add `--prepare-only` to prepare without API calls, or `--accept` and `--check` to define what must work. Continue later with `harness -C "/path/to/work" work`; it retains the kind and outcome. The same brief and skills are available in the terminal and local HTTP sessions. A finished model turn does not certify acceptance.
+
+Matching skills are installed into `.agents/skills/` without replacing your edits. `harness skills list` shows what is available and diagnoses invalid metadata. You can add reviewed skill folders with YAML `name` and `description` in `SKILL.md`; the agent loads their detailed instructions only when relevant. See [the broader workflow guide](../README.md#use-it-across-your-work) for dependencies, document extraction, and importing skills from OpenAI's repository.
+
+Research depends on the actual available search tools or supplied sources. Formatted artifact creation and visual review depend on the appropriate libraries, browser, and model capabilities. Harness reports those gates separately from text extraction or compilation.
 
 For an ongoing backend, retrieval, or automation build, save the outcome and what must work:
 

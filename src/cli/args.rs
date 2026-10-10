@@ -6,8 +6,8 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
     name = "harness",
-    about = "NextEleven Harness — provider-neutral, multi-provider AI coding agent",
-    long_about = "NextEleven Harness is a Rust-native AI coding agent by NextEleven LLC. Choose any supported provider/model as primary, save an exact fallback chain, or register a bearer-authenticated OpenAI-compatible endpoint. Run `harness setup` to create the route, then `harness` to start.",
+    about = "NextEleven Harness — provider-neutral, multi-provider AI work assistant",
+    long_about = "NextEleven Harness is a Rust-native AI work assistant by NextEleven LLC. Choose any supported provider/model as primary, save an exact fallback chain, or register a bearer-authenticated OpenAI-compatible endpoint. Run `harness setup` to create the route, then `harness` to start.",
     version
 )]
 pub struct Cli {
@@ -24,6 +24,10 @@ pub struct Cli {
     /// Config file path (default: ~/.harness/config.toml or .harness/config.toml).
     #[arg(long)]
     pub config: Option<PathBuf>,
+
+    /// Work in this existing folder; resolves project config, tools, and briefs there.
+    #[arg(long, short = 'C', global = true)]
+    pub directory: Option<PathBuf>,
 
     /// Model override (e.g. grok-4.3, grok-4.1-fast, claude-opus-4-7).
     #[arg(long, short)]
@@ -62,6 +66,25 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Work toward a persistent outcome across coding, research, or artifact tasks.
+    Work {
+        goal: Option<String>,
+        /// Workflow kind. Omit to continue the saved kind, or use software for new work.
+        #[arg(long, value_enum)]
+        kind: Option<crate::work_skills::WorkKind>,
+        #[arg(long)]
+        accept: Vec<String>,
+        #[arg(long)]
+        check: Vec<String>,
+        /// Prepare locally without provider calls or executing checks.
+        #[arg(long)]
+        prepare_only: bool,
+    },
+    /// Discover project skills or install a bundled workflow into this project.
+    Skills {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
     /// List recent sessions.
     Sessions,
     /// Manage linked projects in a local registry.
@@ -279,6 +302,14 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+}
+
+#[derive(Subcommand)]
+pub enum SkillAction {
+    /// Show bundled workflows, project skills, and invalid skill diagnostics.
+    List,
+    /// Install a bundled workflow without replacing existing project instructions.
+    Install { name: crate::work_skills::WorkKind },
 }
 
 #[derive(Subcommand)]

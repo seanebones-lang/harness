@@ -29,6 +29,23 @@ pub async fn dispatch_lightweight(cli: &Cli, cfg: &Config) -> Result<()> {
         }) => {
             println!("Edit .harness/build.toml if needed, then run `harness build` to begin.");
         }
+        Some(Commands::Work {
+            prepare_only: true, ..
+        }) => {
+            println!("Edit .harness/build.toml if needed, then run `harness work` to continue.");
+        }
+        Some(Commands::Skills { action }) => {
+            let root = std::env::current_dir()?;
+            match action {
+                crate::cli::args::SkillAction::List => crate::work_skills::print_list(&root),
+                crate::cli::args::SkillAction::Install { name } => {
+                    println!(
+                        "Skill: {}",
+                        crate::work_skills::install(&root, *name)?.display()
+                    );
+                }
+            }
+        }
 
         Some(Commands::Sessions) => {
             let store = open_session_store(cfg)?;

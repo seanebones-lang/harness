@@ -4,7 +4,7 @@ Updated October 9, 2026. This document governs the current work; historical publ
 
 ## Direction and decisions
 
-Harness is Sean McDonnell's personal coding tool under the existing MIT license. Keep the Rust provider abstraction, exact user-selected routes, repository tool executor, SQLite sessions, terminal UI, local web interface, MCP/LSP, and bounded workers. Repair their runtime contracts before expanding the feature surface.
+Harness is Sean McDonnell's personal work assistant under the existing MIT license. Keep the Rust provider abstraction, exact user-selected routes, repository tool executor, SQLite sessions, terminal UI, local web interface, MCP/LSP, and bounded workers. Repair their runtime contracts before expanding the feature surface.
 
 Competition and promotion documents have moved to `docs/history/`. Their earlier policies and claims do not govern current work. Signed distribution, marketplace publication, and commercial launch are outside personal-use acceptance. Optional integrations remain available and must be verified when used.
 
@@ -62,6 +62,22 @@ The first bounded live build on the saved NVIDIA GPT-OSS model returned eight HT
 The model omitted the progress file, which motivated the automatic runner receipt verified in the final executable smoke. The live evidence establishes a small lexical retrieval component with source identifiers and honest empty results, with a manual resume between bounded attempts. It does not establish an autonomous full RAG service, embedding/generation integration, API startup, or large unattended builds.
 
 Final code commit `71996ca2b7ba44fd7a9553f5dd1797b6fd08298d` passed all [13 CI jobs](https://github.com/seanebones-lang/harness/actions/runs/38005839706) and [coverage](https://github.com/seanebones-lang/harness/actions/runs/38005839723). Optimized Mac compilation and CLI/HTTP/build/terminal smoke passed, including the automatic receipt on success and failure. Both installed executables were refreshed and verified against the compiled binary; the two source checkouts were synchronized. Terminal startup and clean quit also passed with the owner's actual configuration in the Desktop workspace. A subsequent documentation-only receipt does not alter this tested code.
+
+## Broader work acceptance — October 9, 2026
+
+`harness work` uses the existing runner and durable brief for software, research, documents, websites, automation, and Apple projects. `-C/--directory` selects an existing workspace before environment, configuration, sessions, and tool initialization. Old briefs without a kind load as software. Continuation retains the saved kind and custom acceptance/check lists; replacing the kind with an explicit outcome archives earlier progress. Research and document preparation does not infer repository test commands.
+
+The matching original Harness skill is installed with embedded resources into `.agents/skills/`, preserving user edits. Shared CLI/terminal/HTTP context lists validated YAML metadata and paths; detailed instructions and references are loaded only when needed. Invalid metadata, duplicates, and outside-workspace symlinks are diagnosed. The discovery limits are 32 skills, 256 directory entries per root, and 64 KiB per SKILL.md. Harness supports project-local `.agents/skills` and `.harness/skills`; this does not claim upstream plugin, connector, or invocation-policy parity.
+
+OpenAI's [Codex skill metadata parser](https://github.com/openai/codex/blob/main/codex-rs/skills/src/parser.rs), [skills catalog](https://github.com/openai/skills), and [PDF workflow](https://github.com/openai/skills/blob/main/skills/.curated/pdf/SKILL.md) informed progressive discovery and separating extracted content from visual validation. The [Cookbook research MCP example](https://github.com/openai/openai-cookbook/tree/main/examples/deep_research_api/how_to_build_a_deep_research_mcp_server) informed traceable source handling. Harness retains its provider-neutral runtime and original skill instructions rather than vendoring another agent runtime.
+
+The document helper uses Python standard libraries for bounded DOCX/XLSX/PPTX/CSV/text extraction, returns source locations, reports truncation, and labels formula results as cached rather than recalculated. PDF extraction explicitly requires pdftotext. A probe reports optional libraries and rendering tools without installing them. Rendering, OCR, image interpretation, tracked-change fidelity, and formula evaluation are outside extraction acceptance.
+
+The final local candidate passed `make verify`: **816 workspace tests including doctests**, strict formatting and all-target/all-feature Clippy, no-default-feature Clippy, four installer contracts, and CLI/HTTP/build/work/terminal/cancellation smoke. Two independent Python fixture tests cover Office extraction, slide ordering, deliberately stale cached formulas, truncation, unsupported formats, entity rejection, and the missing-PDF dependency path. All six skill folders passed the skill validator. `cargo deny check` passed advisories, bans, licenses, and sources.
+
+The actual-binary synthetic work smoke exercises all six offline profiles and workspace targeting, then real skill reads, document extraction, source reads, artifact writes, and continuation. These deterministic checks validate wiring and local mechanics; they do not benchmark model judgement or autonomous completion of every workflow.
+
+A bounded live check on the saved NVIDIA GPT-OSS model made six successful HTTP requests, loaded the documents skill, and extracted `fixture.docx` paragraph 1 with the approved budget of $42. It hit the request cap before writing the report and emitted a malformed tool name that remained blocked. A bounded three-request resume produced `output/documents/report.md` with the correct amount, source paragraph, and explicit open visual-review gate. Independent inspection confirmed those contents. Both turns ended with the check proxy's request-cap error rather than a finished model response, and the session plus observed progress remained recoverable. This establishes a small extracted-source report with a resume, not unattended model completion or visual review. Logs and receipts remain in the private local recovery archive; no credential was committed.
 
 ## Limits of this acceptance
 

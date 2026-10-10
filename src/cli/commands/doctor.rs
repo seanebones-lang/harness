@@ -158,6 +158,14 @@ pub async fn handle_doctor_command(cfg: &Config) {
         ("cargo", "Rust builds"),
         ("node", "Node.js (TypeScript LSP)"),
         ("sox", "audio recording (voice)"),
+        (
+            "python3",
+            "Office/text extraction and optional artifact libraries",
+        ),
+        ("pdftotext", "PDF text extraction (Poppler)"),
+        ("pdftoppm", "PDF page rendering (Poppler)"),
+        ("libreoffice", "optional Office rendering and recalculation"),
+        ("xcodebuild", "Apple project builds (macOS with Xcode)"),
     ];
     for (tool, desc) in tools {
         // Presence on PATH is the useful dependency check here. Executing every
@@ -165,6 +173,24 @@ pub async fn handle_doctor_command(cfg: &Config) {
         let found = which::which(tool).is_ok();
         println!("  {} {} — {}", if found { "✓" } else { "○" }, tool, desc);
     }
+    println!("\n  Workflows and project skills:");
+    if let Ok(root) = std::env::current_dir() {
+        let catalog = crate::work_skills::discover(&root);
+        println!("  Workspace: {}", root.display());
+        println!("  {} discovered project skills", catalog.skills.len());
+        for warning in catalog.warnings {
+            println!("  Skill warning: {warning}");
+        }
+        match crate::build_workflow::BuildBrief::load(&root) {
+            Ok(Some(brief)) => println!("  Active {} outcome: {}", brief.kind.name(), brief.goal),
+            Ok(None) => {
+                println!("  No active brief; start with harness work --kind TYPE \"outcome\"")
+            }
+            Err(error) => println!("  Brief error: {error}"),
+        }
+    }
+    println!("  Research requires loaded search/browser/MCP tools or supplied sources/known URLs.");
+    println!("  Document package probe after installation: python3 .agents/skills/documents/scripts/extract.py --probe");
 
     println!("\n  Config:");
     let user_cfg = dirs::home_dir()

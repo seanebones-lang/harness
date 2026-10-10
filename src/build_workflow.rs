@@ -1,5 +1,6 @@
 //! A durable, editable build brief shared by CLI, terminal, and HTTP sessions.
 
+use crate::work_skills::WorkKind;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -12,6 +13,8 @@ pub const BUILD_RULES: &str = "Build a working, verifiable slice of the requeste
 pub struct BuildBrief {
     pub version: u32,
     pub goal: String,
+    #[serde(default)]
+    pub kind: WorkKind,
     #[serde(default)]
     pub acceptance: Vec<String>,
     #[serde(default)]
@@ -66,7 +69,12 @@ impl BuildBrief {
         for check in &self.checks {
             text.push_str(&format!("- `{check}`\n"));
         }
-        text.push_str(&format!("\n{BUILD_RULES}\n"));
+        text.push_str(&format!(
+            "\nWorkflow: {}\n{}\n",
+            self.kind.name(),
+            self.kind.rules()
+        ));
+        text.push_str("Use .harness/BUILD_PROGRESS.md to retain decisions, observed checks, and the next useful action. Report actual evidence and remaining gates; a finished turn is not acceptance.\n");
         text
     }
 }
@@ -79,17 +87,33 @@ pub fn prepare(
     acceptance: &[String],
     checks: &[String],
 ) -> Result<String> {
+    prepare_work(root, goal, Some(WorkKind::Software), acceptance, checks)
+}
+
+pub fn prepare_work(
+    root: &Path,
+    goal: Option<&str>,
+    kind: Option<WorkKind>,
+    acceptance: &[String],
+    checks: &[String],
+) -> Result<String> {
     let previous = BuildBrief::load(root)?;
+    let kind = kind.unwrap_or_else(|| previous.as_ref().map(|b| b.kind).unwrap_or_default());
     let mut brief = match goal {
         Some(goal) => {
             anyhow::ensure!(!goal.trim().is_empty(), "build outcome cannot be empty");
             match &previous {
-                Some(old) if old.goal == goal.trim() => old.clone(),
+                Some(old) if old.goal == goal.trim() && old.kind == kind => old.clone(),
                 _ => BuildBrief {
                     version: 1,
                     goal: goal.trim().to_string(),
-                    acceptance: vec!["A useful end-to-end path works with documented inputs, outputs, and failure behavior".into(), "Relevant checks and a local smoke example pass, with unverified integrations identified".into(), "README explains setup, configuration, and an exact local run command".into()],
-                    checks: detected_checks(root),
+                    kind,
+                    acceptance: kind.acceptance().iter().map(|s| s.to_string()).collect(),
+                    checks: if kind.is_code() {
+                        detected_checks(root)
+                    } else {
+                        Vec::new()
+                    },
                 },
             }
         }
@@ -97,6 +121,9 @@ pub fn prepare(
             .clone()
             .context("no build brief exists; run harness build \"your desired outcome\"")?,
     };
+    if brief.kind != kind {
+        anyhow::bail!("changing workflow kind requires an explicit outcome; use harness work --kind {} \"outcome\"", kind.name());
+    }
     if !acceptance.is_empty() {
         brief.acceptance = acceptance.to_vec();
     }
@@ -104,11 +131,12 @@ pub fn prepare(
         brief.checks = checks.to_vec();
     }
     brief.validate()?;
+    crate::work_skills::install(root, kind)?;
     let directory = root.join(".harness");
     std::fs::create_dir_all(&directory)?;
     let mut archived_progress = false;
     if let Some(old) = &previous {
-        if old.goal != brief.goal {
+        if old.goal != brief.goal || old.kind != brief.kind {
             let history = directory.join("build-history");
             std::fs::create_dir_all(&history)?;
             let id = uuid::Uuid::new_v4();
@@ -131,12 +159,13 @@ pub fn prepare(
     }
     println!("Build brief: {BRIEF_PATH}");
     println!("Outcome: {}", brief.goal);
+    println!("Workflow: {}", brief.kind.name());
     println!(
         "{} acceptance criteria; {} verification commands",
         brief.acceptance.len(),
         brief.checks.len()
     );
-    Ok(format!("Continue the active build brief. Inspect actual repository state and read .harness/BUILD_PROGRESS.md if it exists. Missing progress means this is a new build; proceed from the brief. Implement and verify the next useful slice toward this outcome: {}", brief.goal))
+    Ok(format!("Continue the active {} work brief. Inspect actual workspace state, read the matching skill at .agents/skills/{}/SKILL.md, and read .harness/BUILD_PROGRESS.md if it exists. Missing progress means new work; proceed from the brief. Complete and verify the next useful slice toward this outcome: {}", brief.kind.name(), brief.kind.name(), brief.goal))
 }
 
 fn detected_checks(root: &Path) -> Vec<String> {
@@ -238,6 +267,68 @@ pub fn record_run(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn research_continues_its_kind_and_archives_on_kind_change() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("Cargo.toml"), "[package]").unwrap();
+        prepare_work(
+            dir.path(),
+            Some("Investigate retrieval"),
+            Some(WorkKind::Research),
+            &[],
+            &[],
+        )
+        .unwrap();
+        let original = BuildBrief::load(dir.path()).unwrap().unwrap();
+        assert!(original.checks.is_empty());
+        std::fs::write(
+            dir.path().join(".harness/BUILD_PROGRESS.md"),
+            "Evidence so far",
+        )
+        .unwrap();
+        prepare_work(dir.path(), None, None, &[], &[]).unwrap();
+        assert_eq!(
+            BuildBrief::load(dir.path()).unwrap().unwrap().kind,
+            WorkKind::Research
+        );
+        assert!(prepare_work(dir.path(), None, Some(WorkKind::Software), &[], &[]).is_err());
+        prepare_work(
+            dir.path(),
+            Some("Investigate retrieval"),
+            Some(WorkKind::Software),
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert!(!dir.path().join(".harness/BUILD_PROGRESS.md").exists());
+        assert_eq!(
+            std::fs::read_dir(dir.path().join(".harness/build-history"))
+                .unwrap()
+                .count(),
+            2
+        );
+        assert_eq!(
+            BuildBrief::load(dir.path()).unwrap().unwrap().checks.len(),
+            2
+        );
+    }
+
+    #[test]
+    fn old_brief_without_kind_loads_as_software() {
+        let dir = tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".harness")).unwrap();
+        std::fs::write(
+            dir.path().join(BRIEF_PATH),
+            "version = 1\ngoal = 'Original build'",
+        )
+        .unwrap();
+        assert_eq!(
+            BuildBrief::load(dir.path()).unwrap().unwrap().kind,
+            WorkKind::Software
+        );
+        prepare(dir.path(), None, &[], &[]).unwrap();
+    }
 
     #[test]
     fn persists_and_reuses_brief_without_resetting_custom_checks() {

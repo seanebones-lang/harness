@@ -1,6 +1,6 @@
 # Harness personal-use backlog
 
-Updated October 9, 2026. The owner's direction is a dependable personal coding tool under MIT. This queue supersedes the earlier commercial, competition, and broad feature-expansion roadmap.
+Updated October 9, 2026. The owner's direction is a dependable personal work assistant under MIT. This queue supersedes the earlier commercial, competition, and broad feature-expansion roadmap.
 
 ## Acceptance criteria
 
@@ -24,6 +24,13 @@ Updated October 9, 2026. The owner's direction is a dependable personal coding t
 - [x] Complete local acceptance of the final candidate and record exact results in [PERSONAL_USE.md](PERSONAL_USE.md).
 - [x] Verify the configured provider with bounded live text/tool checks, exercise terminal cancellation, and start the installed executable with the actual configuration.
 - [x] Commit and synchronize the verified candidate; all 13 remote CI jobs and coverage passed.
+
+## Broader personal workflows
+
+- [x] Retain one runner while adding durable software, research, document, website, automation, and Apple briefs.
+- [x] Add direct workspace selection, offline workflow preparation, and project skill discovery with deferred instruction loading.
+- [x] Validate real Office extraction and document/research artifact writes through the executable; retain explicit search, rendering, model, and integration gates.
+- [x] Check OpenAI's Codex, skills, and research examples for useful patterns, with provenance in PERSONAL_USE.md.
 
 ## Decisions
 

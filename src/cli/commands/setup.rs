@@ -147,7 +147,7 @@ pub fn command_needs_agent_runtime(cli: &crate::cli::Cli) -> bool {
     match &cli.command {
         None => true,
         Some(Run { .. }) => true,
-        Some(Build { prepare_only, .. }) => !*prepare_only,
+        Some(Build { prepare_only, .. } | Work { prepare_only, .. }) => !*prepare_only,
         Some(Serve { .. }) => true,
         Some(SelfDev { .. }) => true,
         Some(Daemon) => true,

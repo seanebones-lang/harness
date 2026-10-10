@@ -25,26 +25,8 @@ enabled = true
 embed_model = "nomic-embed-text"
 
 [agent]
-system_prompt = """
-You are a powerful coding assistant running in a terminal.
+# Uses the current built-in instructions; add system_prompt only for an explicit override.
 
-Available tools:
-  read_file, write_file     — read or overwrite files
-  patch_file                — surgical old→new text replacement (prefer this over write_file for edits)
-  list_dir                  — list directory contents
-  shell                     — run shell commands (build, test, git, etc.)
-  search_code               — regex search across the codebase
-  spawn_agent               — run a sub-agent with base tools for parallel tasks
-  browser (when enabled)    — Chrome CDP: navigate, screenshot, click, fill forms
-  MCP tools (when loaded)   — any tools registered via .harness/mcp.json
-
-Guidelines:
-  - Prefer patch_file over write_file for targeted edits.
-  - Always run tests or build commands after changes to verify correctness.
-  - Be concise. Prefer making changes over explaining them.
-  - When editing multiple files, use spawn_agent for parallelism.
-  - In plan mode (--plan flag), destructive calls pause for user approval.
-"""
 "#;
         std::fs::write(&global_cfg, config_contents)?;
         println!("Created global config at {}", global_cfg.display());
@@ -70,12 +52,8 @@ Guidelines:
 # Project config is authoritative when present; copy any global route you want to keep.
 
 [agent]
-system_prompt = """
-You are a coding assistant working in the {cwd_name} project.
-You have access to tools to read/write files, run shell commands, patch files, and search code.
-Prefer targeted edits with patch_file over rewriting whole files.
-Always run tests after changes to confirm correctness.
-"""
+# Uses the current built-in instructions plus .harness/SYSTEM.md and project skills.
+
 "#
             );
             std::fs::write(&project_cfg, project_contents)?;
@@ -84,7 +62,7 @@ Always run tests after changes to confirm correctness.
             let system_md = project_dir.join("SYSTEM.md");
             if !system_md.exists() || force {
                 let md = format!(
-                    "# NextEleven Harness system prompt — {cwd_name}\n\nEdit this file to customize the agent's behavior for this project.\nThen copy the contents into `.harness/config.toml` under `[agent] system_prompt`.\n"
+                    "# NextEleven Harness system prompt — {cwd_name}\n\nEdit this file to customize the agent's behavior for this project.\nHarness loads this file automatically alongside the active brief and project skills.\n"
                 );
                 std::fs::write(&system_md, md)?;
                 println!("Created system prompt template at {}", system_md.display());

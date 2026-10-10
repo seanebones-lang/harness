@@ -22,10 +22,11 @@ ARG RUNTIME_IMAGE
 FROM ${RUNTIME_IMAGE}
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
-COPY scripts/smoke_runtime.py scripts/smoke_agent.py /opt/harness-smoke/
+COPY scripts/smoke_runtime.py scripts/smoke_agent.py scripts/smoke_work.py scripts/test_document_extract.py /opt/harness-smoke/
+COPY assets/workflows/documents/scripts/extract.py /opt/assets/workflows/documents/scripts/extract.py
 USER harness
 ENTRYPOINT ["sh", "-ec"]
-CMD ["python3 /opt/harness-smoke/smoke_runtime.py /usr/local/bin/harness && python3 /opt/harness-smoke/smoke_agent.py /usr/local/bin/harness"]
+CMD ["python3 /opt/harness-smoke/smoke_runtime.py /usr/local/bin/harness && python3 /opt/harness-smoke/smoke_agent.py /usr/local/bin/harness && python3 /opt/harness-smoke/smoke_work.py /usr/local/bin/harness"]
 DOCKERFILE
 docker run --rm "$TEST_IMAGE"
 printf '%s\n' 'CONTAINER_RUNTIME_SMOKE_OK'

@@ -4,7 +4,7 @@
 [![Coverage](https://github.com/seanebones-lang/harness/actions/workflows/coverage.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/coverage.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Harness is Sean McDonnell's personal coding agent, written in Rust. It reads and edits repositories, runs tools, keeps resumable sessions, and offers a terminal interface and a local web interface. The repository is public and [MIT licensed](LICENSE). Development is focused on dependable personal use.
+Harness is Sean McDonnell's personal work assistant, written in Rust. It reads and edits repositories, runs tools, keeps resumable sessions, and offers a terminal interface and a local web interface. Persistent workflows cover software, research, documents, websites, automation, and Apple projects. The repository is public and [MIT licensed](LICENSE). Development is focused on dependable personal use.
 
 You choose the exact `provider:model` route. The first entry is primary; optional fallbacks run in your chosen order. Credentials never rank providers or insert a fallback. Built-in provider names are presets, and custom OpenAI-compatible endpoints can be configured without adding Rust code.
 
@@ -74,6 +74,34 @@ harness build "Build a local document retrieval API in Python" \
 This saves an editable `.harness/build.toml` and runs the existing agent. It discovers verification commands from existing root manifests when none are supplied. Use `--prepare-only` to review the brief without API calls. Repeating `--accept` or `--check` supplies the respective list; omitted lists keep existing values when continuing the same outcome. A different outcome archives the prior brief and progress notes.
 
 Run `harness build` to continue the saved outcome, or `harness --resume <session-id> build` to also reuse a conversation. Build runs save their session ID, turn status, and recent shell/test output in `.harness/BUILD_PROGRESS.md`, even when the model omits notes or the run fails. The terminal and HTTP agent load the same brief and progress alongside project instructions. Recheck those observations against the workspace; a finished turn does not certify acceptance. The brief itself does not prove completion or execute checks; the agent must run them and report their evidence. Supply checks appropriate to your repository and review any detected commands.
+
+## Use it across your work
+
+Choose an existing project or work folder with `-C`, then describe the outcome:
+
+```sh
+harness -C "/path/to/work" work --kind research "Compare these sources and save a cited report"
+harness -C "/path/to/work" work --kind documents "Revise this proposal and verify its figures"
+harness -C "/path/to/site" work --kind website "Fix booking validation and verify the phone layout"
+harness -C "/path/to/job" work --kind automation "Add a dry run and prevent duplicate processing"
+harness -C "/path/to/app" work --kind apple "Fix the failing simulator build"
+harness -C "/path/to/backend" work --kind software "Add a sourced retrieval endpoint"
+```
+
+`work` uses the same runner, editable brief, observed receipts, and session recovery as `build`. Use `harness -C "/path/to/work" work` to continue its saved kind and outcome. Add `--prepare-only` for a local brief with no provider calls; `--accept` and `--check` customize its criteria and commands. Old build briefs still load as software. Changing the kind requires an explicit outcome and archives earlier progress. Research and document briefs do not automatically detect repository test commands.
+
+Preparation installs the matching bundled `SKILL.md` and any helper into `.agents/skills/`. CLI, terminal, and HTTP context include skill names, descriptions, and paths; the agent reads matching instructions and supporting files only as needed. Existing skills are preserved. `harness skills list` reports bundled workflows, project skills, and invalid or duplicate metadata; `harness skills install documents` installs a workflow independently of a brief.
+
+You can place a reviewed skill folder from [OpenAI's skills repository](https://github.com/openai/skills) or your own workflow in `.agents/skills/<name>/SKILL.md` (or `.harness/skills/`). Harness reads YAML `name` and `description`; it does not implement upstream plugin metadata, connectors, tool grants, or installer behavior. Supporting paths resolve relative to the skill folder. Keep the source skill's license with imported files and verify its tools and dependencies before using it. Project skills follow the existing file/shell approval boundaries and are limited to the workspace; external symlinks are rejected during discovery and installation.
+
+The document helper can extract bounded, source-labeled text from DOCX, XLSX, PPTX, CSV/TSV, Markdown, and text with Python 3. PDF extraction needs Poppler's `pdftotext`. It labels spreadsheet formula results as cached, reports truncation, and never implies layout review or recalculation:
+
+```sh
+python3 .agents/skills/documents/scripts/extract.py --probe
+python3 .agents/skills/documents/scripts/extract.py "input.xlsx"
+```
+
+Formatted document creation uses appropriate optional libraries; the dependency probe reports common packages without installing them. Browser review needs configured browser tooling and a model capable of inspecting images. Research uses the search tools actually loaded for the selected provider or MCP connection; otherwise it works from supplied sources or known URLs and reports that boundary. A workflow supplies guidance and tested local mechanics; completion remains dependent on the model and configured integrations.
 
 ## Useful capabilities
 

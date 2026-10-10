@@ -27,6 +27,7 @@ mod swarm_registry;
 mod sync;
 mod trust;
 mod tui;
+mod work_skills;
 
 mod cli;
 
@@ -46,10 +47,13 @@ use cli::{Cli, Commands, SwarmAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Auto-load .env from CWD or any parent directory (no-op if not found).
-    dotenvy::dotenv().ok();
-
     let cli = Cli::parse();
+    if let Some(directory) = &cli.directory {
+        std::env::set_current_dir(directory)
+            .with_context(|| format!("cannot work in {}", directory.display()))?;
+    }
+    // Resolve environment and configuration in the selected workspace.
+    dotenvy::dotenv().ok();
 
     let filter = if cli.verbose {
         EnvFilter::new("harness=debug,harness_provider_xai=debug,harness_mcp=debug")
@@ -59,21 +63,32 @@ async fn main() -> Result<()> {
     fmt().with_env_filter(filter).with_target(false).init();
 
     let mut cfg = config::load(cli.config.as_deref())?;
-    let build_prompt = if let Some(Commands::Build {
-        goal,
-        accept,
-        check,
-        ..
-    }) = &cli.command
-    {
-        Some(build_workflow::prepare(
+    let build_prompt = match &cli.command {
+        Some(Commands::Build {
+            goal,
+            accept,
+            check,
+            ..
+        }) => Some(build_workflow::prepare(
             &std::env::current_dir()?,
             goal.as_deref(),
             accept,
             check,
-        )?)
-    } else {
-        None
+        )?),
+        Some(Commands::Work {
+            goal,
+            kind,
+            accept,
+            check,
+            ..
+        }) => Some(build_workflow::prepare_work(
+            &std::env::current_dir()?,
+            goal.as_deref(),
+            *kind,
+            accept,
+            check,
+        )?),
+        _ => None,
     };
     swarm::configure(&cfg.swarm);
     daemon::configure(&cfg.daemon);
@@ -570,7 +585,7 @@ async fn main() -> Result<()> {
             .await?;
         }
 
-        Some(Commands::Build { .. }) => {
+        Some(Commands::Build { .. } | Commands::Work { .. }) => {
             agent::run_once(
                 &provider,
                 &session_store,

@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Persistent `harness work` workflows for software, research, documents, websites, automation, and Apple projects; `-C/--directory` selects the workspace before environment/config/tool initialization
+- Workspace skill discovery with YAML metadata, deferred instruction loading, offline bundled installation, validation diagnostics, and preservation of user edits
+- Source-labeled Office/text extraction with explicit cached-formula, truncation, and missing-PDF-dependency reporting; actual-binary document/research integration checks
 - Build runs save their session ID, turn status, and observed shell/test output even when the model omits progress notes
 - Persistent `harness build` workflow with editable outcomes, acceptance criteria, existing-project check discovery, offline brief preparation, and cross-session progress context
 - Personal-use acceptance record and real terminal cancellation/session recovery smoke tests
@@ -20,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `api_key_env` and `kind = "openai-compatible"` configuration for future bearer-authenticated endpoints without source changes
 
 ### Changed
+- Default and newly initialized instructions support broader work; config scaffolds use the current built-in prompt rather than stale duplicated coding-only instructions
 - Aligned first-party packaging and contribution terms with MIT; moved competition and promotion material into history
 - Consolidated the active personal-use workflow and verification command
 - Setup now asks for one or more exact `provider:model` entries and preserves their order; no provider or model is marked recommended

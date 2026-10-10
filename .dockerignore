@@ -1,6 +1,7 @@
 .git
 .env*
 .harness
+.agents
 .obsidian
 Vault
 target
