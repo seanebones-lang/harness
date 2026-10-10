@@ -48,6 +48,15 @@ use cli::{Cli, Commands, SwarmAction};
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    if cli.image.is_some() {
+        anyhow::ensure!(
+            matches!(
+                &cli.command,
+                Some(Commands::Run { .. } | Commands::Build { .. } | Commands::Work { .. })
+            ) || (cli.command.is_none() && cli.prompt.is_some()),
+            "--image requires a positional prompt, run, build, or work command"
+        );
+    }
     if let Some(directory) = &cli.directory {
         std::env::set_current_dir(directory)
             .with_context(|| format!("cannot work in {}", directory.display()))?;
@@ -219,7 +228,8 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    let run_opts = agent::RunOnceOptions::from_config(&cfg, cli.think);
+    let mut run_opts = agent::RunOnceOptions::from_config(&cfg, cli.think);
+    run_opts.image_path = cli.image.clone();
 
     match cli.command {
         Some(Commands::Run { prompt }) => {

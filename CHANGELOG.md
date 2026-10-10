@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Current product, contributor, roadmap, translated quick-start, audit, release, and competition documents now distinguish the exact user-owned route from superseded automatic-router behavior and separate current `main` evidence from tagged-release history
 
 ### Fixed
+- Image attachments now reach the provider as multipart bytes and persist in sessions for positional, run, build, and work requests; unsupported command uses and oversized/empty/unsupported images fail clearly
 - Malformed provider tool names remain blocked and return exact available names instead of only a confusing lease error
 - Test-runner compile failures cannot report success; Cargo workspace totals accumulate across suites, and unknown counts are not presented as passing tests
 - Test-runner cancellation and timeouts clean up owned Unix process groups

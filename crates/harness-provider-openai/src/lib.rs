@@ -137,7 +137,7 @@ fn build_api_messages(req: &ChatRequest) -> Vec<Value> {
                 msgs.push(json!({"role": "system", "content": msg.content.as_str()}));
             }
             Role::User => {
-                msgs.push(json!({"role": "user", "content": msg.content.as_str()}));
+                msgs.push(json!({"role": "user", "content": msg.content}));
             }
             Role::Assistant => {
                 let s = msg.content.as_str();

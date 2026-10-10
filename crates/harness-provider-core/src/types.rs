@@ -94,9 +94,27 @@ impl MessageContent {
     /// Build a multipart message with text and an image from a file path.
     pub fn with_image(text: impl Into<String>, image_path: &str) -> anyhow::Result<Self> {
         use std::io::Read;
+        const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
+        let extension = std::path::Path::new(image_path)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        anyhow::ensure!(
+            matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp"),
+            "unsupported image extension; use PNG, JPEG, GIF, or WebP"
+        );
         let mut f = std::fs::File::open(image_path)?;
+        anyhow::ensure!(
+            f.metadata()?.len() <= MAX_IMAGE_BYTES,
+            "image exceeds Harness's 10 MiB attachment limit"
+        );
         let mut buf = Vec::new();
-        f.read_to_end(&mut buf)?;
+        (&mut f).take(MAX_IMAGE_BYTES + 1).read_to_end(&mut buf)?;
+        anyhow::ensure!(
+            !buf.is_empty() && buf.len() as u64 <= MAX_IMAGE_BYTES,
+            "image must be nonempty and at most 10 MiB"
+        );
         let b64 = base64_encode(&buf);
         let mime = mime_for_path(image_path);
         Ok(Self::Parts(vec![
@@ -393,6 +411,18 @@ impl ResponseSchema {
 }
 
 impl ChatRequest {
+    /// Adapters that flatten user content must reject images rather than silently omit them.
+    pub fn ensure_text_only(&self, adapter: &str) -> Result<(), crate::ProviderError> {
+        if self.messages.iter().any(|message| match &message.content {
+            MessageContent::Parts(parts) => parts.iter().any(|part| part.image_url.is_some()),
+            MessageContent::Text(_) => false,
+        }) {
+            return Err(crate::ProviderError::Unsupported(format!(
+                "{adapter} adapter currently handles text-only input; image attachments cannot be forwarded"
+            )));
+        }
+        Ok(())
+    }
     /// Create a request with Harness defaults for the given model.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
@@ -564,5 +594,20 @@ mod tests {
         assert_eq!(req.effective_model("default-model"), "override-model");
         let empty = ChatRequest::new("");
         assert_eq!(empty.effective_model("default-model"), "default-model");
+    }
+
+    #[test]
+    fn text_only_adapters_reject_image_content_without_losing_text_requests() {
+        let mut req = ChatRequest::new("model");
+        req.messages.push(Message::user("Text request"));
+        assert!(req.ensure_text_only("test").is_ok());
+        req.messages[0].content = MessageContent::Parts(vec![
+            ContentPart::text("Review"),
+            ContentPart::image_base64("image/png", "YWJj"),
+        ]);
+        assert!(matches!(
+            req.ensure_text_only("test"),
+            Err(crate::ProviderError::Unsupported(_))
+        ));
     }
 }

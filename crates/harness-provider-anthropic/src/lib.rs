@@ -259,6 +259,7 @@ impl Provider for AnthropicProvider {
     }
 
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
+        req.ensure_text_only("anthropic")?;
         let messages = build_api_messages(&req);
         let mut tools = build_tool_schemas(&req.tools);
         let system = req

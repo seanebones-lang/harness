@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real binary: selected workspace, skill loading, Office read, research artifacts, continuation."""
 import http.server
+import base64
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import sqlite3
 from test_document_extract import office
 
 
@@ -66,6 +68,9 @@ def main():
         print('PASS six offline workflows and skill installation target selected workspace without credentials')
         office(root / 'fixture.docx', {'word/document.xml': '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Approved budget: $42</w:t></w:r></w:p></w:body></w:document>'})
         (root / 'source.md').write_text('Budget is $42 according to the supplied record.')
+        image = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j9S8AAAAASUVORK5CYII=')
+        (root / 'preview.png').write_bytes(image)
+        expected_image = 'data:image/png;base64,' + base64.b64encode(image).decode()
         server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Provider)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
@@ -82,11 +87,19 @@ enabled = false
             for phase in ('documents', 'research'):
                 Provider.phase = phase
                 Provider.requests.clear()
-                result = run('work', 'Create a sourced report', '--kind', phase)
+                arguments = ['--image', 'preview.png'] if phase == 'documents' else []
+                result = run(*arguments, 'work', 'Create a sourced report', '--kind', phase)
                 assert 'WORK_ARTIFACT_OK' in result.stdout
                 initial = str(Provider.requests[0]['messages'][0])
                 assert 'Available project skills' in initial and f'Workflow: {phase}' in initial
                 assert 'scripts/extract.py beside this SKILL.md' not in initial  # Body deferred.
+                if phase == 'documents':
+                    user = next(m for m in Provider.requests[0]['messages'] if m['role'] == 'user')
+                    assert any(p.get('image_url', {}).get('url') == expected_image for p in user['content'])
+                    with sqlite3.connect(Path(scratch) / '.harness/sessions.db') as database:
+                        saved = database.execute('SELECT data FROM sessions').fetchall()
+                    assert any(expected_image in row[0] for row in saved)
+                    print('PASS work image bytes reach provider multipart request and persist in saved session')
                 outputs = [str(m) for r in Provider.requests for m in r['messages'] if m['role'] == 'tool']
                 assert any('Approved budget: $42' in o for o in outputs) if phase == 'documents' else any('Budget is $42' in o for o in outputs)
                 report = root / f'output/{phase}/report.md'
@@ -98,6 +111,17 @@ enabled = false
             assert 'Workflow: research' in str(Provider.requests[0]['messages'][0])
             assert 'NEXT: check contradictory evidence' in str(Provider.requests[0]['messages'][0])
             print('PASS continuation retains workflow and previous evidence in fresh session')
+            for arguments in (['run', 'Review the attached preview'], ['Review the attached preview'], ['build', 'Review the attached preview']):
+                Provider.requests.clear()
+                run('--image', 'preview.png', *arguments)
+                user = next(m for m in Provider.requests[0]['messages'] if m['role'] == 'user')
+                assert any(p.get('image_url', {}).get('url') == expected_image for p in user['content'])
+            print('PASS positional, run, and build image attachments reach the provider as bytes')
+            Provider.requests.clear()
+            invalid = subprocess.run([binary, '-C', str(root), '--image', 'fixture.docx', 'run', 'Review'], cwd=scratch, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45)
+            assert invalid.returncode != 0 and not Provider.requests
+            assert 'unsupported image extension' in invalid.stderr
+            print('PASS unsupported image input fails before any provider request')
         finally:
             server.shutdown()
             server.server_close()

@@ -222,6 +222,7 @@ impl Provider for XaiProvider {
     }
 
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
+        req.ensure_text_only("xai")?;
         let messages = self.build_api_messages(&req);
         let mut tools = self.build_tool_schemas(&req.tools);
 

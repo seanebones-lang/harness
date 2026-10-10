@@ -152,6 +152,7 @@ impl Provider for OllamaProvider {
     }
 
     async fn stream_chat(&self, req: ChatRequest) -> Result<DeltaStream, ProviderError> {
+        req.ensure_text_only("ollama")?;
         let messages = build_messages(&req);
         let tools = build_tools(&req.tools);
         let has_tools = !tools.is_empty();

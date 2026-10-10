@@ -55,7 +55,7 @@ pub struct Cli {
     pub plan: bool,
 
     /// Attach an image file to the initial prompt (PNG, JPEG, GIF, WEBP).
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub image: Option<PathBuf>,
 
     /// Enable extended thinking with a token budget.

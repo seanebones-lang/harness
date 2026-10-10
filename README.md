@@ -103,6 +103,14 @@ python3 .agents/skills/documents/scripts/extract.py "input.xlsx"
 
 Formatted document creation uses appropriate optional libraries; the dependency probe reports common packages without installing them. Browser review needs configured browser tooling and a model capable of inspecting images. Research uses the search tools actually loaded for the selected provider or MCP connection; otherwise it works from supplied sources or known URLs and reports that boundary. A workflow supplies guidance and tested local mechanics; completion remains dependent on the model and configured integrations.
 
+Attach a screenshot or rendered page to a one-shot request, `run`, `build`, or `work` with `--image`:
+
+```sh
+harness -C "/path/to/site" work --kind website "Review this phone layout" --image "preview.png"
+```
+
+The OpenAI-compatible transport sends image bytes as multipart user content and retains them in the saved session. Native Anthropic, xAI, Ollama, and Bedrock adapters currently reject image attachments explicitly rather than dropping them. PNG, JPEG, GIF, and WebP attachments must be nonempty and at most 10 MiB. Choose a route that supports image input; transport acceptance does not prove a model interpreted or visually validated the image.
+
 ## Useful capabilities
 
 - **Repository tools:** reading, writing, patches, search, shell commands, Git, GitHub CLI, and test execution.

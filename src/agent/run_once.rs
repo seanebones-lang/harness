@@ -15,6 +15,8 @@ use super::system::DEFAULT_SYSTEM;
 /// Optional flags for non-interactive `run_once`.
 #[derive(Debug, Clone, Default)]
 pub struct RunOnceOptions {
+    /// Image attached to this user turn; bytes are persisted as multipart content.
+    pub image_path: Option<std::path::PathBuf>,
     /// Extended thinking token budget.
     pub thinking_budget: Option<u32>,
     /// Enable provider-native web search.
@@ -31,6 +33,7 @@ impl RunOnceOptions {
     /// Build options from harness config and optional CLI thinking budget.
     pub fn from_config(cfg: &crate::config::Config, thinking_budget: Option<u32>) -> Self {
         Self {
+            image_path: None,
             thinking_budget,
             native_web_search: cfg.native_tools.web_search_enabled(),
             native_code_execution: cfg.native_tools.code_execution_enabled(),
@@ -54,6 +57,11 @@ pub async fn run_once(
     resume_id: Option<&str>,
     opts: RunOnceOptions,
 ) -> Result<()> {
+    let mut user_message = Message::user(prompt);
+    if let Some(path) = &opts.image_path {
+        user_message.content =
+            harness_provider_core::MessageContent::with_image(prompt, &path.to_string_lossy())?;
+    }
     let record_build_progress = opts.record_build_progress;
     let mut observed_commands = Vec::new();
     let mut session = match resume_id {
@@ -63,7 +71,7 @@ pub async fn run_once(
         None => Session::new(model),
     };
 
-    session.push(Message::user(prompt));
+    session.push(user_message);
 
     let (tx, mut rx) = crate::events::channel();
 
