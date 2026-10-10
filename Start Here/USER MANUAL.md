@@ -6,7 +6,7 @@ This guide explains how to use NextEleven Harness in plain English.
 
 ## What NextEleven Harness Does
 
-NextEleven Harness is an AI work assistant you run in your terminal. You type a request; it reads files, writes code, runs shell commands, fixes tests, commits — whatever you ask. It supports native and OpenAI-compatible cloud/local providers, has a full TUI with syntax highlighting, remembers past sessions semantically, integrates with your language server, and can orchestrate multiple linked repos via **`harness project`** or use an optional **`harness serve`** browser UI alongside the **`browser`** Chrome tool when enabled.
+NextEleven Harness is an AI work assistant you run in your terminal. Give it an outcome and a project folder; its configured model can read sources, write code and artifacts, and run verification through the available tools. It supports native and OpenAI-compatible cloud/local providers, a terminal UI, saved sessions, and project instructions. Optional semantic memory requires an embedding backend; language servers, linked projects, the local **`harness serve`** browser UI, and the **`browser`** Chrome tool require their own configuration.
 
 **You choose the route.** Harness has no preferred provider or model. During setup you enter one or more `provider:model` pairs in the exact order you want Harness to try them.
 
@@ -72,6 +72,14 @@ Use `--kind software` for backend, RAG, and developer tools. Add `--prepare-only
 Matching skills are installed into `.agents/skills/` without replacing your edits. `harness skills list` shows what is available and diagnoses invalid metadata. You can add reviewed skill folders with YAML `name` and `description` in `SKILL.md`; the agent loads their detailed instructions only when relevant. See [the broader workflow guide](../README.md#use-it-across-your-work) for dependencies, document extraction, and importing skills from OpenAI's repository.
 
 Research depends on the actual available search tools or supplied sources. Formatted artifact creation and visual review depend on the appropriate libraries, browser, and model capabilities. Harness reports those gates separately from text extraction or compilation.
+
+Attach a screenshot or rendered document page with `--image` on a one-shot prompt, `run`, `build`, or `work`:
+
+```bash
+harness -C "/path/to/site" work --kind website "Review this phone layout" --image "preview.png"
+```
+
+Use an OpenAI-compatible route and model that accepts images. The native Anthropic, xAI, Ollama, and Bedrock adapters currently reject attachments explicitly. Files must be nonempty PNG/JPEG/GIF/WebP images, at most 10 MiB. Transport and saved-session checks passed; live visual interpretation is a separate model capability.
 
 For an ongoing backend, retrieval, or automation build, save the outcome and what must work:
 
