@@ -27,6 +27,12 @@ def extract(path):
         raise ValueError('input exceeds 32 MiB')
     kind = path.suffix.lower().lstrip('.')
     result = {'source': str(path), 'format': kind, 'segments': [], 'truncated': False,
+              'coverage': {
+                  'docx': 'Main body paragraphs and tables only; headers, footers, comments, footnotes, and revision fidelity are not verified.',
+                  'xlsx': 'Worksheet cell text and cached formula values only; charts, comments, styles, and recalculation are not verified.',
+                  'pptx': 'Slide text only; speaker notes, charts, and image content are not verified.',
+                  'pdf': 'Text returned by pdftotext only; scanned and image-only content requires separate OCR.'
+              }.get(kind, 'Text content only.'),
               'limitations': 'Text extraction only; layout, OCR, images, and formula evaluation are unverified.'}
     remaining = MAX_TEXT
 
@@ -99,7 +105,7 @@ def extract(path):
                 text = stream.read(MAX_TEXT + 1)
             result['truncated'] |= len(text) > MAX_TEXT
             for i, page in enumerate(text[:MAX_TEXT].split('\f'), 1):
-                if not add(f'page:{i}', page):
+                if page.strip() and not add(f'page:{i}', page):
                     break
     elif kind in ('csv', 'tsv'):
         with path.open(encoding='utf-8-sig', newline='') as stream:

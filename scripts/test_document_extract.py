@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'assets/workflows/documents/scripts/extract.py'
@@ -22,6 +23,16 @@ def office(path, parts):
 
 
 class ExtractionTests(unittest.TestCase):
+    def test_pdf_trailing_page_break_does_not_invent_a_source_page(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'single-page.pdf'
+            path.write_bytes(b'%PDF fixture')
+            def extractor(args, **_):
+                Path(args[-1]).write_text('Approved budget: $42\f')
+            with patch.object(helper.shutil, 'which', return_value='pdftotext'), patch.object(helper.subprocess, 'run', side_effect=extractor):
+                result = helper.extract(path)
+            self.assertEqual(result['segments'], [{'location': 'page:1', 'text': 'Approved budget: $42'}])
+
     def test_office_sources_and_cached_formulas(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
