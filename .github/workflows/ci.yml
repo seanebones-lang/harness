@@ -90,6 +90,15 @@ jobs:
       - name: Test
         run: cargo test --locked --workspace --all-features
 
+      - name: Windows optimized workflow acceptance
+        if: runner.os == 'Windows'
+        run: |
+          python3 scripts/test_document_extract.py
+          python3 scripts/smoke_runtime.py target/release-lto/harness.exe
+          python3 scripts/smoke_agent.py target/release-lto/harness.exe
+          python3 scripts/smoke_build.py target/release-lto/harness.exe
+          python3 scripts/smoke_work.py target/release-lto/harness.exe
+
   install-scripts:
     name: Install script (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

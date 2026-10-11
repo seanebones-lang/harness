@@ -8,7 +8,7 @@ Harness is Sean McDonnell's personal work assistant, written in Rust. It reads a
 
 You choose the exact `provider:model` route. The first entry is primary; optional fallbacks run in your chosen order. Credentials never rank providers or insert a fallback. Built-in provider names are presets, and custom OpenAI-compatible endpoints can be configured without adding Rust code.
 
-**Current status:** version 1.4.0-beta.1, a prerelease for developer evaluation and personal use. [Download the candidate and follow the quickstart](docs/QUICKSTART.md). A successful build does not establish every optional integration or operating system. [The assessment and acceptance record](docs/PERSONAL_USE.md) distinguishes verified workflows from remaining checks. Earlier competition, promotion, and release notes are historical.
+**Current status:** version 1.4.0-beta.2, a prerelease for developer evaluation and personal use. [Download the candidate and follow the quickstart](docs/QUICKSTART.md). A successful build does not establish every optional integration or operating system. [The assessment and acceptance record](docs/PERSONAL_USE.md) distinguishes verified workflows from remaining checks. Earlier competition, promotion, and release notes are historical.
 
 ## Build and verify
 

@@ -1552,7 +1552,7 @@ dependencies = [
 
 [[package]]
 name = "harness-desktop"
-version = "1.4.0-beta.1"
+version = "1.4.0-beta.2"
 dependencies = [
  "dirs-next",
  "reqwest 0.12.28",

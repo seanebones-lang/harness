@@ -56,18 +56,18 @@ def main():
         env = {k: v for k, v in os.environ.items() if k in ('PATH', 'LANG', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT')}
         env.update(HOME=scratch, USERPROFILE=scratch, HARNESS_SKIP_LSP='1')
         def run(*args):
-            result = subprocess.run([binary, '-C', str(root), *args], cwd=scratch, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45)
+            result = subprocess.run([binary, '-C', str(root), *args], cwd=scratch, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8', timeout=45)
             assert result.returncode == 0, result.stdout + result.stderr
             return result
         for kind in ('software', 'research', 'documents', 'website', 'automation', 'apple'):
             run('work', 'Deliver a verified artifact', '--kind', kind, '--prepare-only')
-            assert f'kind = "{kind}"' in (root / '.harness/build.toml').read_text()
+            assert f'kind = "{kind}"' in (root / '.harness/build.toml').read_text(encoding='utf-8')
             assert (root / f'.agents/skills/{kind}/SKILL.md').exists()
         assert not (Path(scratch) / '.harness/build.toml').exists()
         assert 'documents' in run('skills', 'list').stdout
         print('PASS six offline workflows and skill installation target selected workspace without credentials')
-        office(root / 'fixture.docx', {'word/document.xml': '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Approved budget: $42</w:t></w:r></w:p></w:body></w:document>'})
-        (root / 'source.md').write_text('Budget is $42 according to the supplied record.')
+        office(root / 'fixture.docx', {'word/document.xml': '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Approved budget: $42. Client: 東京</w:t></w:r></w:p></w:body></w:document>'})
+        (root / 'source.md').write_text('Budget is $42 according to the supplied record.', encoding='utf-8')
         image = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j9S8AAAAASUVORK5CYII=')
         (root / 'preview.png').write_bytes(image)
         expected_image = 'data:image/png;base64,' + base64.b64encode(image).decode()
@@ -83,7 +83,7 @@ base_url = "http://127.0.0.1:{server.server_port}/v1"
 enabled = false
 [ambient]
 enabled = false
-''')
+''', encoding='utf-8')
             for phase in ('documents', 'research'):
                 Provider.phase = phase
                 Provider.requests.clear()
@@ -101,11 +101,11 @@ enabled = false
                     assert any(expected_image in row[0] for row in saved)
                     print('PASS work image bytes reach provider multipart request and persist in saved session')
                 outputs = [str(m) for r in Provider.requests for m in r['messages'] if m['role'] == 'tool']
-                assert any('Approved budget: $42' in o for o in outputs) if phase == 'documents' else any('Budget is $42' in o for o in outputs)
+                assert any('Approved budget: $42' in o and '東京' in o for o in outputs) if phase == 'documents' else any('Budget is $42' in o for o in outputs)
                 report = root / f'output/{phase}/report.md'
-                assert '$42' in report.read_text()
+                assert '$42' in report.read_text(encoding='utf-8')
                 print(f'PASS {phase} workflow loads its skill, reads actual source, and writes artifact through tools')
-            (root / '.harness/BUILD_PROGRESS.md').write_text('NEXT: check contradictory evidence')
+            (root / '.harness/BUILD_PROGRESS.md').write_text('NEXT: check contradictory evidence', encoding='utf-8')
             Provider.requests.clear()
             run('work')
             assert 'Workflow: research' in str(Provider.requests[0]['messages'][0])
@@ -118,7 +118,7 @@ enabled = false
                 assert any(p.get('image_url', {}).get('url') == expected_image for p in user['content'])
             print('PASS positional, run, and build image attachments reach the provider as bytes')
             Provider.requests.clear()
-            invalid = subprocess.run([binary, '-C', str(root), '--image', 'fixture.docx', 'run', 'Review'], cwd=scratch, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45)
+            invalid = subprocess.run([binary, '-C', str(root), '--image', 'fixture.docx', 'run', 'Review'], cwd=scratch, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8', timeout=45)
             assert invalid.returncode != 0 and not Provider.requests
             assert 'unsupported image extension' in invalid.stderr
             print('PASS unsupported image input fails before any provider request')
