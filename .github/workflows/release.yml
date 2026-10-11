@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to attach assets to (e.g. v1.3.0). Empty = use github.ref_name."
+        description: "Existing tag to attach assets to (e.g. v1.4.0-beta.1). Empty = use github.ref_name."
         required: false
         default: ""
 
@@ -148,6 +148,15 @@ jobs:
       - name: Agent and HTTP integration smoke
         run: python3 scripts/smoke_agent.py ${{ matrix.artifact }}
 
+      - name: Build and work workflow acceptance
+        run: |
+          python3 scripts/smoke_build.py ${{ matrix.artifact }}
+          python3 scripts/smoke_work.py ${{ matrix.artifact }}
+
+      - name: Terminal acceptance (Unix)
+        if: runner.os != 'Windows'
+        run: python3 scripts/smoke_tui.py ${{ matrix.artifact }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -163,6 +172,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+
+      - uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -170,18 +183,18 @@ jobs:
           path: artifacts/
           merge-multiple: true
 
-      - name: Generate checksums
+      - name: Install pinned license report tool
+        run: cargo install cargo-about --version 0.9.2 --locked --features cli
+
+      - name: Gather dependency license information
         run: |
-          cd artifacts
-          shopt -s nullglob
-          files=(harness-*)
-          if [ ${#files[@]} -ne 5 ]; then
-            echo "Expected all five platform artifacts" >&2
-            exit 1
-          fi
-          ls -la
-          sha256sum "${files[@]}" > checksums.txt
-          cat checksums.txt
+          mkdir -p target/release-license
+          cargo about generate --locked --fail --format json -o target/release-license/licenses.json
+
+      - name: Package exact source and complete artifact matrix
+        run: |
+          python3 scripts/test_release_package.py
+          python3 scripts/package_release.py --artifacts artifacts --tag "${{ needs.validate.outputs.tag }}" --sha "${{ needs.validate.outputs.sha }}" --licenses target/release-license/licenses.json
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -193,3 +206,4 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: false
           draft: true
+          prerelease: ${{ contains(needs.validate.outputs.tag, '-') }}

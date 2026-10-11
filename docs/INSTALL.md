@@ -1,8 +1,8 @@
 # NextEleven Harness — installation guide
 
-This guide walks through installing NextEleven Harness on every OS the project **tests in CI** and supports in the field: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
+This guide walks through installing NextEleven Harness on every OS the project **tests in CI** with automated checks: **macOS**, **Linux**, and **Windows** (native and **WSL2**). Optional features differ by platform; see **Optional features** at the end.
 
-**Current direction:** MIT-licensed personal coding tool. Prefer a current source build and run the acceptance checks described in [PERSONAL_USE.md](PERSONAL_USE.md). The operating systems below have CI configurations; current verification is recorded separately.
+**Current candidate:** MIT-licensed **1.4.0-beta.1** for developer evaluation and personal use. Start with the [version-pinned quickstart](QUICKSTART.md) for checked binary downloads and no-credential preparation. The unqualified latest-release installers may select historical v1.3.0; use an explicit candidate tag. Platform CI and current verification are recorded separately.
 
 **Quick links:** [macOS](#macos) · [Linux](#linux) · [Windows](#windows-native) · [WSL2](#windows-subsystem-for-linux-wsl2) · [After installing](#after-installing) · [Updating](#updating) · [Uninstall](#uninstall)
 

@@ -2,6 +2,8 @@
 
 Harness is now MIT licensed and developed for personal use. The current assessment and validation are in [PERSONAL_USE.md](PERSONAL_USE.md), with priorities in [CTO_BACKLOG.md](CTO_BACKLOG.md).
 
+The **1.4.0-beta.1** developer candidate has version-pinned first-use instructions in [QUICKSTART.md](QUICKSTART.md), a complete native binary draft workflow, source/asset identity and license packaging. Publication status and remaining manual gates are recorded in the GitHub release; this header is not a claim that staging or publication has completed.
+
 The entries below are dated historical evidence. Earlier proprietary license policies, competition goals, billing blocks, test totals, and stable-release gates do not describe the current source or personal-use acceptance target.
 
 ---

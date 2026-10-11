@@ -8,7 +8,7 @@ Harness is Sean McDonnell's personal work assistant, written in Rust. It reads a
 
 You choose the exact `provider:model` route. The first entry is primary; optional fallbacks run in your chosen order. Credentials never rank providers or insert a fallback. Built-in provider names are presets, and custom OpenAI-compatible endpoints can be configured without adding Rust code.
 
-**Current status:** version 1.3.0, under active maintenance. Build and verify the current source before use; a successful build does not establish every optional integration or operating system. [The assessment and acceptance record](docs/PERSONAL_USE.md) distinguishes verified workflows from remaining checks. Earlier competition, promotion, and release notes are historical.
+**Current status:** version 1.4.0-beta.1, a prerelease for developer evaluation and personal use. [Download the candidate and follow the quickstart](docs/QUICKSTART.md). A successful build does not establish every optional integration or operating system. [The assessment and acceptance record](docs/PERSONAL_USE.md) distinguishes verified workflows from remaining checks. Earlier competition, promotion, and release notes are historical.
 
 ## Build and verify
 
@@ -31,7 +31,7 @@ mkdir -p ~/.local/bin
 install -m 755 target/release-lto/harness ~/.local/bin/harness
 ```
 
-On Windows, copy `target\release-lto\harness.exe` into a directory on your user PATH. The [installation guide](docs/INSTALL.md) covers platform tooling and installer scripts. Prebuilt releases may lag source; use the freshly built executable when checking new behavior.
+On Windows, copy `target\release-lto\harness.exe` into a directory on your user PATH. The [installation guide](docs/INSTALL.md) covers platform tooling and installer scripts. Use the explicitly versioned prerelease download for these workflows; the unqualified latest-release installer can still select the historical v1.3.0 release.
 
 ## First use
 

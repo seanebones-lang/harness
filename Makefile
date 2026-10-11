@@ -24,6 +24,7 @@ smoke:
 	python3 scripts/smoke_work.py target/debug/harness
 	python3 scripts/smoke_tui.py target/debug/harness
 	python3 scripts/test_install.py
+	python3 scripts/test_release_package.py
 
 web-test:
 	cd static && npm ci && npm test

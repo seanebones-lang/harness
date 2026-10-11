@@ -72,6 +72,9 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Release packaging contracts
+        run: python3 scripts/test_release_package.py
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
