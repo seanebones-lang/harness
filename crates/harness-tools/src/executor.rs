@@ -231,30 +231,8 @@ impl ToolExecutor {
         }
     }
 
-    /// Kill or pause between confirm and the body. Does not re-admit.
-    /// A second admit would consume an irreversible one-shot.
-    #[cfg(feature = "deadbolt")]
-    fn deadbolt_recheck(&self, tool: &str) -> Option<String> {
-        let (Some(gate), Some(agent_id)) = (&self.admit, &self.agent_id) else {
-            return None;
-        };
-        match gate.status(Some(agent_id)) {
-            Ok(rows) => match rows.first().map(|r| r.state.as_str()).unwrap_or("") {
-                "killed" => Some(format!("[deadbolt] denied {tool}: killed")),
-                "paused" => Some(format!("[deadbolt] denied {tool}: paused")),
-                _ => None,
-            },
-            Err(_) => Some(format!("[deadbolt] denied {tool}: store_unavailable")),
-        }
-    }
-
     #[cfg(not(feature = "deadbolt"))]
     fn deadbolt_deny(&self, _tool: &str, _args: &serde_json::Value) -> Option<String> {
-        None
-    }
-
-    #[cfg(not(feature = "deadbolt"))]
-    fn deadbolt_recheck(&self, _tool: &str) -> Option<String> {
         None
     }
 
@@ -332,19 +310,12 @@ impl ToolExecutor {
             )
         };
 
-        // Deadbolt admit is out-of-band and runs before any tool body, confirm
-        // write, or MCP adapter execute. Confirm-gate and the workspace jail stay.
-        if let Some(denied) = self.deadbolt_deny(&call.function.name, &args) {
-            return if tool.is_none() {
-                format!("{denied}\n{}", unknown_tool())
-            } else {
-                denied
-            };
-        }
-
         let Some(tool) = tool else {
             warn!(name = %call.function.name, "unknown tool requested");
-            return unknown_tool();
+            return match self.deadbolt_deny(&call.function.name, &args) {
+                Some(denied) => format!("{denied}\n{}", unknown_tool()),
+                None => unknown_tool(),
+            };
         };
 
         // In plan mode, pause and wait for confirmation before destructive calls.
@@ -365,7 +336,7 @@ impl ToolExecutor {
                             );
                         }
                         ConfirmResult::ApplyContent { path, content } => {
-                            if let Some(denied) = self.deadbolt_recheck(&call.function.name) {
+                            if let Some(denied) = self.deadbolt_deny(&call.function.name, &args) {
                                 return denied;
                             }
                             if let Err(e) = tokio::fs::write(&path, &content).await {
@@ -395,8 +366,11 @@ impl ToolExecutor {
             }
         }
 
+        // Review can outlive the lease or change operator policy. Admit only now,
+        // once, so declined reviews do not spend one-shot approval or reported cost.
+        // The reviewed-content branch above applies the same boundary before its write.
         debug!(tool = %call.function.name, "executing tool");
-        if let Some(denied) = self.deadbolt_recheck(&call.function.name) {
+        if let Some(denied) = self.deadbolt_deny(&call.function.name, &args) {
             return denied;
         }
         let result = match tool.execute(args.clone()).await {
@@ -949,6 +923,158 @@ mod tests {
         let (exec, ran) = flag_exec(&gate, "agent-a");
         let denied = exec.execute(&call("shell")).await;
         assert!(denied.contains("spend_cap"), "{denied}");
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+    async fn pending_confirmation(
+        gate: &harness_deadbolt::Deadbolt,
+    ) -> (
+        tokio::task::JoinHandle<String>,
+        crate::ConfirmRequest,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        let (exec, ran) = flag_exec(gate, "review-run");
+        let (confirm, mut requests) = crate::confirm::channel();
+        let exec = exec
+            .without_autoformat()
+            .with_confirm_gate(confirm)
+            .with_confirm_policy(ConfirmPolicy::Plan);
+        let task = tokio::spawn(async move { exec.execute(&call("shell")).await });
+        let request = tokio::time::timeout(std::time::Duration::from_secs(5), requests.recv())
+            .await
+            .expect("confirmation timeout")
+            .expect("confirmation request");
+        (task, request, ran)
+    }
+
+    #[tokio::test]
+    async fn deadbolt_policy_change_while_reviewing_blocks_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("review-run").unwrap();
+        let (task, request, ran) = pending_confirmation(&gate).await;
+        gate.set_policy(
+            "review-run",
+            harness_deadbolt::PolicyPatch {
+                tools_allow: Some(vec!["read_file".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        request.reply.send(ConfirmResult::Approve).unwrap();
+        assert!(task.await.unwrap().contains("purpose_exceeded"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn deadbolt_expiry_while_reviewing_blocks_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("review-run").unwrap();
+        let (task, request, ran) = pending_confirmation(&gate).await;
+        gate.force_expire("review-run").unwrap();
+        request.reply.send(ConfirmResult::Approve).unwrap();
+        assert!(task.await.unwrap().contains("lease_expired"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn deadbolt_declined_review_preserves_one_shot() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("review-run").unwrap();
+        gate.set_policy(
+            "review-run",
+            harness_deadbolt::PolicyPatch {
+                irreversible: Some(vec!["shell".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        gate.approve("review-run", "shell").unwrap();
+        let (task, request, ran) = pending_confirmation(&gate).await;
+        request.reply.send(ConfirmResult::Deny).unwrap();
+        assert!(task.await.unwrap().contains("skipped by user"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        let (exec, ran) = flag_exec(&gate, "review-run");
+        assert_eq!(exec.execute(&call("shell")).await, "ran");
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+        ran.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(exec.execute(&call("shell")).await.contains("needs_human"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn deadbolt_policy_change_blocks_reviewed_content_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("review-run").unwrap();
+        let (task, request, ran) = pending_confirmation(&gate).await;
+        gate.clip("review-run", "shell").unwrap();
+        let effect = dir.path().join("reviewed.txt");
+        request
+            .reply
+            .send(ConfirmResult::ApplyContent {
+                path: effect.to_string_lossy().into_owned(),
+                content: "reviewed".into(),
+            })
+            .unwrap();
+        assert!(task.await.unwrap().contains("purpose_exceeded"));
+        assert!(!effect.exists());
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn deadbolt_exact_only_requirement_blocks_legacy_executor() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("review-run").unwrap();
+        gate.require_exact_action("review-run", "shell", true)
+            .unwrap();
+        let (exec, ran) = flag_exec(&gate, "review-run");
+        assert!(exec.execute(&call("shell")).await.contains("needs_human"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn deadbolt_kill_while_reviewing_blocks_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("review-run").unwrap();
+        let (task, request, ran) = pending_confirmation(&gate).await;
+        gate.kill("review-run").unwrap();
+        request.reply.send(ConfirmResult::Approve).unwrap();
+        assert!(task.await.unwrap().contains("killed"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn deadbolt_approved_reviewed_content_consumes_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_agent("review-run").unwrap();
+        gate.set_policy(
+            "review-run",
+            harness_deadbolt::PolicyPatch {
+                irreversible: Some(vec!["shell".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        gate.approve("review-run", "shell").unwrap();
+        let (task, request, ran) = pending_confirmation(&gate).await;
+        let effect = dir.path().join("reviewed.txt");
+        request
+            .reply
+            .send(ConfirmResult::ApplyContent {
+                path: effect.to_string_lossy().into_owned(),
+                content: "reviewed".into(),
+            })
+            .unwrap();
+        assert!(task.await.unwrap().contains("applied reviewed diff"));
+        assert_eq!(std::fs::read_to_string(effect).unwrap(), "reviewed");
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        let (exec, ran) = flag_exec(&gate, "review-run");
+        assert!(exec.execute(&call("shell")).await.contains("needs_human"));
         assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

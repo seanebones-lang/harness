@@ -1,4 +1,4 @@
-# Deadbolt v0
+# DeadBolt in Harness
 
 Deadbolt is an out-of-band lease gate. It is not a model tool. The model cannot call pause, clip, resume, kill, or drill. There is no fleet halt and no shutdown tool in the tool list.
 
@@ -26,7 +26,9 @@ harness deadbolt incident --agent ID [--out PATH] [--json] [--children]
 
 `incident` writes the token file from the pinned crate. `--json` is the default. `--json=false` prints `agent= killed_at= children= codes=` and no prose. The file always lists children. `--children` does not strip them.
 
-Pinned crate: `github.com/seanebones-lang/deadbolt` rev `ec1bcf5`.
+Pinned crate: `github.com/seanebones-lang/deadbolt` at full revision
+`52a2085155b658f3d1dda5a73a8d95a7a1d88fad` (`1.1.0-rc.1` release source). Harness pins this reviewed revision; it does not follow a moving branch.
+The standalone dependency is free under Apache-2.0; Harness remains MIT.
 
 `drill` is an in-process self-check. It does not need API keys and does not touch `~/.harness`.
 
@@ -41,7 +43,11 @@ db_path = "~/.harness/deadbolt.db"
 events_path = "~/.harness/deadbolt-events.jsonl"
 ```
 
-If the store cannot be opened or written and `fail_closed` is true, every admit is Deny. The lease is rechecked on every tool action, including MCP adapters, which execute only through `ToolExecutor`. The executor passes `dest` when the tool arguments contain `url`, `uri`, `href`, `endpoint`, or `host`. Same parse as `deadbolt mcp-proxy`. If `dest_allow` is set and no host parses, admit is `purpose_exceeded` only for a network-class tool. A local tool with no host is not denied for that reason. A present foreign host is `purpose_exceeded`. The tool body does not run on deny. `needs_human` and `spend_cap` deny the same way. A live admit, allow or deny, renews the TTL. Silence expires the lease. Admit runs once, before the body. A second admit is not used, because that would consume an irreversible one-shot. Confirm-gate and the workspace jail stay.
+If the store cannot be opened or written and `fail_closed` is true, every admit is Deny. The lease is rechecked on every tool action, including MCP adapters, which execute only through `ToolExecutor`. The executor passes `dest` when the tool arguments contain `url`, `uri`, `href`, `endpoint`, or `host`. Same parse as `deadbolt mcp-proxy`. If `dest_allow` is set and no host parses, admit is `purpose_exceeded` only for a network-class tool. A local tool with no host is not denied for that reason. A present foreign host is `purpose_exceeded`. The tool body does not run on deny. `needs_human` and `spend_cap` deny the same way. A live admit, allow or deny, renews the TTL. Silence expires the lease. For registered tools, admission runs once immediately before the effect, after
+any interactive confirmation. If policy, kill, pause or expiry changes during
+review, that final admission sees it. Declining review does not consume a
+DeadBolt approval or record caller-reported spend. The reviewed-content write
+path uses the same final admission boundary. Confirm-gate and the workspace jail stay.
 
 ## Evidence
 
@@ -91,3 +97,32 @@ harness deadbolt kill --agent shop-bot
 ```
 
 The sample agent calls `ensure` once, then `admit` before each pretend tool step. A deny prints one JSON line and exits 2. It does not import Harness and does not talk to an LLM.
+
+## Candidate integration acceptance
+
+The existing wrapper/tool suites passed with both the previous dependency and
+the pinned candidate. Seven additional executor regressions cover policy changes
+and lease expiry during review, operator kill during review, declined review
+preserving a one-shot, clipped reviewed-content writes, successful reviewed-content
+writes consuming once, and exact-only policy refusing legacy dispatch. The first
+four review-timing regressions failed before the dispatcher correction.
+
+Harness currently uses the legacy admission path. This dependency update does
+**not** expose exact-action approval or credential issuance in the Harness CLI,
+or make its human review a payload-bound DeadBolt grant. When a tool is configured
+exact-only in the underlying store, this legacy executor returns `needs_human`
+and does not run the body. A future exact-action adapter must bind the actual
+validated effect arguments and consume through the exact-action API; do not
+replace this refusal with a legacy fallback.
+
+Run `cargo test --locked -p harness-deadbolt -p harness-tools` for the focused
+acceptance. Tests use disposable state and synthetic tools; no model API requests
+or real email/text sends occur. The full workspace/CI remains a separate gate.
+Post-write autoformat/test hooks and arbitrary code not routed through this
+executor are not proven contained by these tests. Kill gates later admission;
+any cancellation behavior remains owned by Harness.
+
+The pinned source is the integrated DeadBolt release commit. Check the
+[versioned prerelease](https://github.com/seanebones-lang/deadbolt/releases/tag/v1.1.0-rc.1)
+for download availability and exact acceptance evidence. This Harness adapter
+uses legacy admission; it does not issue exact-action grants automatically.
