@@ -5,7 +5,7 @@ const path = require('node:path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
-async function boot(storage = {}) {
+async function boot(storage = {}, sessionStatus = 404) {
   const errors = [];
   const requests = [];
   const console = new VirtualConsole();
@@ -22,6 +22,7 @@ async function boot(storage = {}) {
         if (url === '/api/health') return Response.json({ status: 'ok', model: 'fixture-model',
           provider_model: 'fixture-model', auth_token: 'synthetic-token', key_env: { detected: [] } });
         if (url === '/api/projects' || url === '/api/sessions') return Response.json([]);
+        if (url.startsWith('/api/sessions/')) return Response.json({ error: 'fixture failure' }, { status: sessionStatus });
         if (url === '/api/chat') {
           const events = [{ type: 'session_id', id: 'fixture-session' },
             { type: 'text_chunk', content: 'BROWSER_TEST_OK' }, { type: 'done' }];
@@ -69,5 +70,30 @@ test('disabled resume preference avoids loading a stale stored session', async (
   try {
     assert.equal(dom.window.document.getElementById('resume-last').checked, false);
     assert.equal(requests.some(request => request.url === '/api/sessions/stale-id'), false);
+  } finally { dom.window.close(); }
+});
+
+test('missing resumed session clears stale identity before the next send', async () => {
+  const { dom, requests } = await boot({ 'harness.session_id': 'missing-id' });
+  try {
+    const { document, Event, localStorage } = dom.window;
+    await waitFor(() => document.getElementById('chat').textContent.includes('no longer available'));
+    assert.equal(localStorage.getItem('harness.session_id'), null);
+    assert.doesNotMatch(document.getElementById('status').textContent, /sess missing/);
+    const prompt = document.getElementById('prompt');
+    prompt.value = 'Start fresh after the missing session';
+    prompt.dispatchEvent(new Event('input', { bubbles: true }));
+    document.getElementById('send').click();
+    await waitFor(() => document.getElementById('chat').textContent.includes('BROWSER_TEST_OK'));
+    assert.equal(JSON.parse(requests.find(request => request.url === '/api/chat').options.body).session_id, undefined);
+    assert.equal(localStorage.getItem('harness.session_id'), 'fixture-session');
+  } finally { dom.window.close(); }
+});
+
+test('temporary session load failure retains the resumable identity', async () => {
+  const { dom } = await boot({ 'harness.session_id': 'recoverable-id' }, 503);
+  try {
+    await waitFor(() => dom.window.document.getElementById('activity').textContent.includes('load failed'));
+    assert.equal(dom.window.localStorage.getItem('harness.session_id'), 'recoverable-id');
   } finally { dom.window.close(); }
 });

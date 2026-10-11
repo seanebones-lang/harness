@@ -1679,6 +1679,14 @@
     try {
       const r = await fetchWithTimeout(`/api/sessions/${encodeURIComponent(id)}`, {}, 12000);
       if (!r.ok) {
+        if (r.status === 404 && sessionId === id) {
+          sessionId = null;
+          persistSessionId();
+          clearChatAndActivity();
+          renderSessions();
+          setStatus(statusLineReadyWithSession(), true);
+          addMsg("system", "The saved session is no longer available. Your next message will start a new session.");
+        }
         addEvent(`<strong>load failed</strong><br>${escapeHtml(id)}`);
         return;
       }
