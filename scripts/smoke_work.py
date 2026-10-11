@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import sqlite3
+from contextlib import closing
 from test_document_extract import office
 
 
@@ -101,7 +102,7 @@ enabled = false
                 if phase == 'documents':
                     user = next(m for m in Provider.requests[0]['messages'] if m['role'] == 'user')
                     assert any(p.get('image_url', {}).get('url') == expected_image for p in user['content'])
-                    with sqlite3.connect(Path(scratch) / '.harness/sessions.db') as database:
+                    with closing(sqlite3.connect(Path(scratch) / '.harness/sessions.db')) as database:
                         saved = database.execute('SELECT data FROM sessions').fetchall()
                     assert any(expected_image in row[0] for row in saved)
                     print('PASS work image bytes reach provider multipart request and persist in saved session')
