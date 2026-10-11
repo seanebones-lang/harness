@@ -11,4 +11,4 @@ default = ["deadbolt"]
 deadbolt = ["deadbolt-dep"]
 
 [dependencies]
-deadbolt-dep = { package = "n11-deadbolt", git = "https://github.com/seanebones-lang/deadbolt", rev = "6bbdf109b4ce5e26d56b466179f98ed9686ddbcf", optional = true }
+deadbolt-dep = { package = "n11-deadbolt", git = "https://github.com/seanebones-lang/deadbolt", rev = "52a2085155b658f3d1dda5a73a8d95a7a1d88fad", optional = true }

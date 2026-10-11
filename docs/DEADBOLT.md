@@ -27,8 +27,7 @@ harness deadbolt incident --agent ID [--out PATH] [--json] [--children]
 `incident` writes the token file from the pinned crate. `--json` is the default. `--json=false` prints `agent= killed_at= children= codes=` and no prose. The file always lists children. `--children` does not strip them.
 
 Pinned crate: `github.com/seanebones-lang/deadbolt` at full revision
-`6bbdf109b4ce5e26d56b466179f98ed9686ddbcf` (`1.1.0-rc.1`, unreleased source
-candidate). Harness pins this reviewed revision; it does not follow a moving branch.
+`52a2085155b658f3d1dda5a73a8d95a7a1d88fad` (`1.1.0-rc.1` release source). Harness pins this reviewed revision; it does not follow a moving branch.
 The standalone dependency is free under Apache-2.0; Harness remains MIT.
 
 `drill` is an in-process self-check. It does not need API keys and does not touch `~/.harness`.
@@ -122,3 +121,8 @@ or real email/text sends occur. The full workspace/CI remains a separate gate.
 Post-write autoformat/test hooks and arbitrary code not routed through this
 executor are not proven contained by these tests. Kill gates later admission;
 any cancellation behavior remains owned by Harness.
+
+The pinned source is the integrated DeadBolt release commit. Check the
+[versioned prerelease](https://github.com/seanebones-lang/deadbolt/releases/tag/v1.1.0-rc.1)
+for download availability and exact acceptance evidence. This Harness adapter
+uses legacy admission; it does not issue exact-action grants automatically.
