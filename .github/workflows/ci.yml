@@ -92,6 +92,7 @@ jobs:
 
       - name: Windows optimized workflow acceptance
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           python3 scripts/test_document_extract.py
           python3 scripts/smoke_runtime.py target/release-lto/harness.exe

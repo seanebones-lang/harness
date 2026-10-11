@@ -150,6 +150,7 @@ jobs:
         run: python3 scripts/smoke_agent.py ${{ matrix.artifact }}
 
       - name: Build and work workflow acceptance
+        shell: bash
         run: |
           python3 scripts/smoke_build.py ${{ matrix.artifact }}
           python3 scripts/smoke_work.py ${{ matrix.artifact }}
