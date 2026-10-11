@@ -25,13 +25,14 @@ class Harness < Formula
     end
   end
 
+  release_version = version
   resource "harness-license" do
-    url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/LICENSE.txt"
+    url "https://github.com/seanebones-lang/harness/releases/download/v#{release_version}/LICENSE.txt"
     sha256 "REPLACE_WITH_ACTUAL_SHA"
   end
 
   resource "dependency-licenses" do
-    url "https://github.com/seanebones-lang/harness/releases/download/v#{version}/THIRD-PARTY-LICENSES.html"
+    url "https://github.com/seanebones-lang/harness/releases/download/v#{release_version}/THIRD-PARTY-LICENSES.html"
     sha256 "REPLACE_WITH_ACTUAL_SHA"
   end
 

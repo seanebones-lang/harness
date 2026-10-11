@@ -126,6 +126,13 @@ jobs:
         if: matrix.kind == 'unix'
         run: python3 scripts/test_install.py
 
+      - name: Homebrew formula contract (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_DEVELOPER: "1"
+        run: brew ruby scripts/test_homebrew.rb -- homebrew/harness.rb
+
       - name: Run scripts/install.sh
         if: matrix.kind == 'unix'
         env:
