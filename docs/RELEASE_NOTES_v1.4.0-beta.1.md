@@ -1,3 +1,5 @@
+> Historical unpublished candidate. The `v1.4.0-beta.1` tag is retained; its Windows release smoke failed on fixture encoding, and no complete release was published. Use [the corrected beta.2 candidate notes](RELEASE_NOTES_v1.4.0-beta.2.md).
+
 # Harness 1.4.0-beta.1
 
 This developer prerelease brings the current personal-work workflows into

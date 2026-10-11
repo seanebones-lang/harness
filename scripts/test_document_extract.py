@@ -2,6 +2,7 @@
 """Independent Office fixtures verify extraction, source locations, and formula honesty."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -23,6 +24,15 @@ def office(path, parts):
 
 
 class ExtractionTests(unittest.TestCase):
+    def test_cli_preserves_unicode_under_a_legacy_pipe_encoding(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'international.docx'
+            office(path, {'word/document.xml': '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Client: 東京. Budget: €42.</w:t></w:r></w:p></w:body></w:document>'})
+            result = subprocess.run([sys.executable, str(SCRIPT), str(path)],
+                                    env=dict(os.environ, PYTHONIOENCODING='cp1252'), capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr.decode('utf-8', errors='replace'))
+            self.assertEqual(json.loads(result.stdout)['segments'][0]['text'], 'Client: 東京. Budget: €42.')
+
     def test_pdf_trailing_page_break_does_not_invent_a_source_page(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / 'single-page.pdf'

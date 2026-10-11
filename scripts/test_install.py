@@ -2,6 +2,7 @@
 """Installer contract tests using fake downloads; no network or user state writes."""
 import hashlib
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -79,12 +80,16 @@ class HomebrewTests(unittest.TestCase):
             root = Path(td)
             tools = root / "tools"
             tools.mkdir()
-            payload = b"synthetic release binary"
-            (root / "payload").write_bytes(payload)
-            digest = hashlib.sha256(payload).hexdigest()
             artifacts = ["harness-macos-aarch64", "harness-macos-x86_64",
-                         "harness-linux-aarch64", "harness-linux-x86_64"]
-            (root / "checksums.txt").write_text("".join(f"{digest}  {a}\n" for a in artifacts))
+                         "harness-linux-aarch64", "harness-linux-x86_64",
+                         "LICENSE.txt", "THIRD-PARTY-LICENSES.html"]
+            (root / "assets").mkdir()
+            digests = {}
+            for artifact in artifacts:
+                payload = ("Synthetic fixture " + artifact).encode()
+                (root / "assets" / artifact).write_bytes(payload)
+                digests[artifact] = hashlib.sha256(payload).hexdigest()
+            (root / "checksums.txt").write_text("".join(f"{digests[a]}  {a}\n" for a in artifacts))
             curl = tools / "curl"
             curl.write_text('''#!/bin/sh
 url=""; dest=""
@@ -94,7 +99,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
  */checksums.txt) cp "$TEST_ROOT/checksums.txt" "$dest";;
- *) cp "$TEST_ROOT/payload" "$dest";;
+ *) cp "$TEST_ROOT/assets/${url##*/}" "$dest";;
 esac
 ''')
             curl.chmod(0o755)
@@ -107,9 +112,11 @@ esac
             result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             updated = formula.read_text()
-            self.assertEqual(updated.count('sha256 "' + digest + '"'), 4)
+            for artifact in artifacts:
+                pattern = r'url "[^"\n]*/' + re.escape(artifact) + r'"\s*\n\s*sha256 "([^"]+)"'
+                self.assertEqual(re.findall(pattern, updated), [digests[artifact]])
             self.assertIn('version "1.3.1"', updated)
-            (root / "payload").write_bytes(b"tampered")
+            (root / "assets" / "THIRD-PARTY-LICENSES.html").write_bytes(b"tampered license")
             result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=15)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(formula.read_text(), updated)

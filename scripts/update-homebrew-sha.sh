@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Refresh every formula checksum only after verifying the complete Unix artifact set.
+# Refresh every formula checksum only after verifying binaries and license files.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="seanebones-lang/harness"
@@ -13,11 +13,12 @@ tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 base="https://github.com/$REPO/releases/download/$VERSION"
 curl -fsSL "$base/checksums.txt" -o "$tmpdir/checksums.txt"
-for artifact in harness-macos-aarch64 harness-macos-x86_64 harness-linux-aarch64 harness-linux-x86_64; do
+release_artifacts=(harness-macos-aarch64 harness-macos-x86_64 harness-linux-aarch64 harness-linux-x86_64 LICENSE.txt THIRD-PARTY-LICENSES.html)
+for artifact in "${release_artifacts[@]}"; do
   echo "[homebrew] Verifying $artifact" >&2
   curl -fsSL "$base/$artifact" -o "$tmpdir/$artifact"
 done
-python3 - "$FORMULA" "$VERSION" "$tmpdir" <<'PY'
+python3 - "$FORMULA" "$VERSION" "$tmpdir" "${release_artifacts[@]}" <<'PY'
 import hashlib
 from pathlib import Path
 import re
@@ -25,7 +26,7 @@ import sys
 formula, version, downloads = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
 manifest = (downloads / 'checksums.txt').read_text().splitlines()
 text = formula.read_text()
-for artifact in ['harness-macos-aarch64', 'harness-macos-x86_64', 'harness-linux-aarch64', 'harness-linux-x86_64']:
+for artifact in sys.argv[4:]:
     matches = [line.split()[0] for line in manifest if len(line.split()) == 2 and line.split()[1] == artifact]
     actual = hashlib.sha256((downloads / artifact).read_bytes()).hexdigest()
     if matches != [actual]:

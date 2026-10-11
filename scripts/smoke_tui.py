@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import select
 import sqlite3
+from contextlib import closing
 import subprocess
 import sys
 import tempfile
@@ -71,7 +72,7 @@ enabled = false
                     else: raise AssertionError('Cancellation response timeout')
                     process.send_signal(signal.SIGINT)
                     assert process.wait(timeout=5) != 0, 'Cancelled one-shot returned success'
-                    with sqlite3.connect(root / '.harness/sessions.db') as db:
+                    with closing(sqlite3.connect(root / '.harness/sessions.db')) as db:
                         rows = db.execute('SELECT data FROM sessions').fetchall()
                     assert rows and 'PARTIAL_CANCEL_REPLY' in rows[0][0], rows
                     print('PASS Ctrl+C cancellation returns failure and saves the partial response for resume')
@@ -154,7 +155,7 @@ enabled = false
                 os.write(master, b'\x11')
                 drain(5)
                 assert process.wait(timeout=5) == 0, output.decode(errors='replace')[-2000:]
-                with sqlite3.connect(root / '.harness/sessions.db') as db:
+                with closing(sqlite3.connect(root / '.harness/sessions.db')) as db:
                     rows = db.execute('SELECT data FROM sessions').fetchall()
                 assert rows, 'No terminal session persisted'
                 data = json.loads(rows[-1][0])
@@ -179,7 +180,7 @@ enabled = false
                 os.write(master, b'\x11')
                 drain(5)
                 assert process.wait(timeout=5) == 0, 'Terminal cancellation did not quit cleanly'
-                with sqlite3.connect(root / '.harness/sessions.db') as db:
+                with closing(sqlite3.connect(root / '.harness/sessions.db')) as db:
                     rows = db.execute('SELECT data FROM sessions').fetchall()
                 assert any('PARTIAL_CANCEL_REPLY' in row[0] for row in rows), 'Cancelled terminal response was lost'
                 print('PASS terminal quit cancels the active provider and persists its partial response')

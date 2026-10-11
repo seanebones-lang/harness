@@ -2,7 +2,9 @@
 
 Harness is now MIT licensed and developed for personal use. The current assessment and validation are in [PERSONAL_USE.md](PERSONAL_USE.md), with priorities in [CTO_BACKLOG.md](CTO_BACKLOG.md).
 
-The **1.4.0-beta.1** developer candidate has version-pinned first-use instructions in [QUICKSTART.md](QUICKSTART.md), a complete native binary draft workflow, source/asset identity and license packaging. Publication status and remaining manual gates are recorded in the GitHub release; this header is not a claim that staging or publication has completed.
+The **1.4.0-beta.2** developer candidate has version-pinned first-use instructions in [QUICKSTART.md](QUICKSTART.md), a complete native binary draft workflow, source/asset identity and license packaging. Publication status and remaining manual gates are recorded in the GitHub release; this header is not a claim that staging or publication has completed.
+
+The unpublished `v1.4.0-beta.1` tag is retained after its Windows release smoke failed while writing a Unicode fixture with the legacy pipe encoding. The revised candidate uses explicit UTF-8 fixtures/capture, a UTF-8 document helper and Windows optimized workflow checks in PR/main CI. No beta.1 release assets were published.
 
 The entries below are dated historical evidence. Earlier proprietary license policies, competition goals, billing blocks, test totals, and stable-release gates do not describe the current source or personal-use acceptance target.
 

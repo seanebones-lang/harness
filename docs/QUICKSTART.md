@@ -1,4 +1,4 @@
-# Try Harness 1.4.0-beta.1
+# Try Harness 1.4.0-beta.2
 
 Harness is a free MIT work assistant with a terminal and local browser UI. This
 candidate provides native command-line downloads for developer evaluation and
@@ -7,7 +7,7 @@ You can prepare a project brief without either.
 
 ## Download the candidate
 
-Open the [v1.4.0-beta.1 release](https://github.com/seanebones-lang/harness/releases/tag/v1.4.0-beta.1).
+Open the [v1.4.0-beta.2 release](https://github.com/seanebones-lang/harness/releases/tag/v1.4.0-beta.2).
 Choose the binary for your machine:
 
 | Machine | Download |
@@ -46,11 +46,11 @@ The release's `install.sh` / `install.ps1` can install a specific candidate afte
 you download, checksum and review the script:
 
 ```sh
-bash ./install.sh v1.4.0-beta.1
+bash ./install.sh v1.4.0-beta.2
 ```
 
 ```powershell
-.\install.ps1 v1.4.0-beta.1
+.\install.ps1 v1.4.0-beta.2
 ```
 
 The scripts verify binary checksums and install to your user directory. Download
@@ -112,7 +112,7 @@ account. See the [user manual](../Start%20Here/USER%20MANUAL.md).
 ## Build the pinned source
 
 ```sh
-git clone --branch v1.4.0-beta.1 --depth 1 https://github.com/seanebones-lang/harness.git
+git clone --branch v1.4.0-beta.2 --depth 1 https://github.com/seanebones-lang/harness.git
 cd harness
 cargo build --locked --profile release-lto
 ./target/release-lto/harness --version

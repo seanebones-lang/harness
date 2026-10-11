@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.4.0-beta.1] — 2026-10-10
+## [1.4.0-beta.2] — 2026-10-10
+
+The beta.1 tag remains unpublished after its Windows Unicode-fixture failure. This corrected candidate retains the following current-source changes.
 
 ### Added
 - Version-pinned developer quickstart and checked prerelease downloads with source identity, license information and installation scripts
@@ -37,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Current product, contributor, roadmap, translated quick-start, audit, release, and competition documents now distinguish the exact user-owned route from superseded automatic-router behavior and separate current `main` evidence from tagged-release history
 
 ### Fixed
+- Document helper emits UTF-8 under legacy Windows pipe encodings; international names are covered by a real-binary workflow fixture
+- Native release smoke fixtures and CLI/export capture use UTF-8 explicitly, with optimized Windows workflow checks before tagging
+- Homebrew formula renames the binary to `harness` and retains first-party/dependency license files; hash refresh verifies all six payloads before mutating
 - Browser auto-resume clears a confirmed missing session before the next send while preserving identity on temporary server failures
 - DeadBolt admission runs after human review and immediately before the registered effect; policy/lease changes during review deny execution, and declined reviews preserve one-shot approval
 - Image attachments now reach the provider as multipart bytes and persist in sessions for positional, run, build, and work requests; unsupported command uses and oversized/empty/unsupported images fail clearly

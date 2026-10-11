@@ -90,6 +90,16 @@ jobs:
       - name: Test
         run: cargo test --locked --workspace --all-features
 
+      - name: Windows optimized workflow acceptance
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          python3 scripts/test_document_extract.py
+          python3 scripts/smoke_runtime.py target/release-lto/harness.exe
+          python3 scripts/smoke_agent.py target/release-lto/harness.exe
+          python3 scripts/smoke_build.py target/release-lto/harness.exe
+          python3 scripts/smoke_work.py target/release-lto/harness.exe
+
   install-scripts:
     name: Install script (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -116,6 +126,13 @@ jobs:
       - name: Installer contract tests
         if: matrix.kind == 'unix'
         run: python3 scripts/test_install.py
+
+      - name: Homebrew formula contract (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_DEVELOPER: "1"
+        run: brew ruby scripts/test_homebrew.rb -- homebrew/harness.rb
 
       - name: Run scripts/install.sh
         if: matrix.kind == 'unix'

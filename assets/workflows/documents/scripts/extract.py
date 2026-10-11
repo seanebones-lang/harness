@@ -125,6 +125,11 @@ def extract(path):
 
 
 def main():
+    # Shell tools capture UTF-8 bytes; a Windows legacy pipe encoding must not
+    # corrupt source text or reject international names before JSON reaches it.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('path', nargs='?')
     parser.add_argument('--probe', action='store_true', help='Report optional extraction/creation dependencies without installing them')

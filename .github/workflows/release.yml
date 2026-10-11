@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to attach assets to (e.g. v1.4.0-beta.1). Empty = use github.ref_name."
+        description: "Existing tag to attach assets to (e.g. v1.4.0-beta.2). Empty = use github.ref_name."
         required: false
         default: ""
 
@@ -60,6 +60,7 @@ jobs:
     needs: validate
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -149,6 +150,7 @@ jobs:
         run: python3 scripts/smoke_agent.py ${{ matrix.artifact }}
 
       - name: Build and work workflow acceptance
+        shell: bash
         run: |
           python3 scripts/smoke_build.py ${{ matrix.artifact }}
           python3 scripts/smoke_work.py ${{ matrix.artifact }}

@@ -1,5 +1,5 @@
 class Harness < Formula
-  desc "Fast, private, terminal-first Rust coding agent"
+  desc "Rust work assistant with terminal and local browser interfaces"
   homepage "https://github.com/seanebones-lang/harness"
   # Refresh SHA256s after tagging: bash scripts/update-homebrew-sha.sh vX.Y.Z
   version "1.3.0"
@@ -25,8 +25,21 @@ class Harness < Formula
     end
   end
 
+  release_version = version
+  resource "harness-license" do
+    url "https://github.com/seanebones-lang/harness/releases/download/v#{release_version}/LICENSE.txt"
+    sha256 "REPLACE_WITH_ACTUAL_SHA"
+  end
+
+  resource "dependency-licenses" do
+    url "https://github.com/seanebones-lang/harness/releases/download/v#{release_version}/THIRD-PARTY-LICENSES.html"
+    sha256 "REPLACE_WITH_ACTUAL_SHA"
+  end
+
   def install
-    bin.install Dir["harness*"].first
+    bin.install File.basename(stable.url) => "harness"
+    resource("harness-license").stage { pkgshare.install "LICENSE.txt" }
+    resource("dependency-licenses").stage { pkgshare.install "THIRD-PARTY-LICENSES.html" }
   end
 
   test do

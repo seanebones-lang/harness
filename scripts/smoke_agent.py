@@ -57,8 +57,13 @@ def main():
             root = Path(scratch)
             (root / '.harness').mkdir()
             fixture = 'SYNTHETIC_FIXTURE_CONTENT' + 'x' * 99 + '🦀中é' * 700
-            (root / 'fixture.txt').write_text(fixture)
-            (root / '.harness/config.toml').write_text(f'''[router]
+            (root / 'fixture.txt').write_text(fixture, encoding='utf-8')
+            (root / '.harness/config.toml').write_text(f'''[session]
+db_path = {json.dumps((root / '.harness/sessions.db').as_posix())}
+[deadbolt]
+db_path = {json.dumps((root / '.harness/deadbolt.db').as_posix())}
+events_path = {json.dumps((root / '.harness/deadbolt-events.jsonl').as_posix())}
+[router]
 default = "smoke"
 [providers.smoke]
 model = "smoke-model"
@@ -67,12 +72,12 @@ base_url = "http://127.0.0.1:{provider.server_port}/v1"
 enabled = false
 [ambient]
 enabled = false
-''')
+''', encoding='utf-8')
             env = {k: v for k, v in os.environ.items() if k in
                    ('PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'LANG', 'TERM')}
             env.update(HOME=scratch, USERPROFILE=scratch, HARNESS_SKIP_LSP='1')
             result = subprocess.run([binary, 'run', 'Read fixture.txt and confirm.'], cwd=root, env=env,
-                                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45)
+                                    stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8', timeout=45)
             assert result.returncode == 0, result.stderr
             assert 'HARNESS_SMOKE_OK' in result.stdout, result.stdout
             assert any('SYNTHETIC_FIXTURE_CONTENT' in str(m) for r in Provider.requests
@@ -82,7 +87,7 @@ enabled = false
                 reserve.bind(('127.0.0.1', 0))
                 port = reserve.getsockname()[1]
             base = f'http://127.0.0.1:{port}'
-            with (root / 'server.log').open('w+') as log:
+            with (root / 'server.log').open('w+', encoding='utf-8') as log:
                 server = subprocess.Popen([binary, 'serve', '--addr', f'127.0.0.1:{port}'],
                                           cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
                 try:
@@ -112,7 +117,7 @@ enabled = false
                         base + '/api/sessions', headers=headers), timeout=5))
                     assert sessions, 'No persisted sessions'
                     exported = subprocess.run([binary, 'export', sessions[0]['id']], cwd=root, env=env,
-                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15)
+                        stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8', timeout=15)
                     assert exported.returncode == 0, exported.stderr
                     assert 'HARNESS_SMOKE_OK' in exported.stdout, exported.stdout
                     assert fixture in exported.stdout, 'Tool output was lost or truncated in export'

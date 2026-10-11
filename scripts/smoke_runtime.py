@@ -18,10 +18,10 @@ def main():
         env.update(HOME=scratch, USERPROFILE=scratch, HARNESS_SKIP_LSP="1")
         (root / ".harness").mkdir()
         config = root / ".harness/config.toml"
-        config.write_text('[memory]\nenabled = false\n[ambient]\nenabled = false\n')
+        config.write_text('[session]\ndb_path = ' + json.dumps((root / '.harness/sessions.db').as_posix()) + '\n[memory]\nenabled = false\n[ambient]\nenabled = false\n', encoding='utf-8')
         def run(*args):
             result = subprocess.run([binary, *args], cwd=root, env=env, stdin=subprocess.DEVNULL,
-                                    capture_output=True, text=True, timeout=30)
+                                    capture_output=True, text=True, encoding='utf-8', timeout=30)
             if result.returncode:
                 raise RuntimeError(f"{args}: exit {result.returncode}\n{result.stderr}\n{result.stdout}")
             print(f"PASS {' '.join(args)}")
