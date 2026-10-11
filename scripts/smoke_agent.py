@@ -58,7 +58,12 @@ def main():
             (root / '.harness').mkdir()
             fixture = 'SYNTHETIC_FIXTURE_CONTENT' + 'x' * 99 + '🦀中é' * 700
             (root / 'fixture.txt').write_text(fixture, encoding='utf-8')
-            (root / '.harness/config.toml').write_text(f'''[router]
+            (root / '.harness/config.toml').write_text(f'''[session]
+db_path = {json.dumps((root / '.harness/sessions.db').as_posix())}
+[deadbolt]
+db_path = {json.dumps((root / '.harness/deadbolt.db').as_posix())}
+events_path = {json.dumps((root / '.harness/deadbolt-events.jsonl').as_posix())}
+[router]
 default = "smoke"
 [providers.smoke]
 model = "smoke-model"

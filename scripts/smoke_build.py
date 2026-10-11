@@ -88,7 +88,12 @@ def main():
         server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Provider)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
-            (root / '.harness/config.toml').write_text(f'''[router]
+            (root / '.harness/config.toml').write_text(f'''[session]
+db_path = {json.dumps((root / '.harness/sessions.db').as_posix())}
+[deadbolt]
+db_path = {json.dumps((root / '.harness/deadbolt.db').as_posix())}
+events_path = {json.dumps((root / '.harness/deadbolt-events.jsonl').as_posix())}
+[router]
 default = "smoke"
 [providers.smoke]
 model = "smoke-model"
