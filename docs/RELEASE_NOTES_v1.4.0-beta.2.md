@@ -55,3 +55,18 @@ The historical v1.3.0 release and tag are retained. GitHub's unqualified
 latest-release link may still select that release. Use the explicit
 [v1.4.0-beta.2 download](https://github.com/seanebones-lang/harness/releases/tag/v1.4.0-beta.2)
 and a pinned installer argument for this candidate.
+
+
+## Windows runtime prerequisite
+
+Inspection of the native x86-64 artifact confirms a direct `VCRUNTIME140.dll`
+import. A compatible Microsoft Visual C++ v14 x64 Redistributable is required;
+use [Microsoft's official runtime downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+Visual Studio and Rust are not required to run the native executable. Native
+CI has developer tooling and does not establish fresh consumer-machine runtime
+availability. This prerequisite was identified during artifact acceptance;
+the immutable release's source archive remains at its tagged commit.
+
+The Linux x86-64 and ARM64 downloads require glibc 2.39 or later, confirmed from
+their ELF GNU version-needs records. Native checks ran on Ubuntu 24.04; older
+glibc distributions should use the source path and validate locally.

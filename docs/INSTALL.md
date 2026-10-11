@@ -14,7 +14,7 @@ The CLI downloads are separate from optional desktop/editor sources.
 
 | Path | Required |
 | --- | --- |
-| Verified native CLI binary | Matching OS/architecture, a terminal and SHA-256 verification; no Rust compiler |
+| Verified native CLI binary | Matching OS/architecture and runtime libraries, a terminal and SHA-256 verification; no Rust compiler |
 | Version-pinned installer | Reviewed and checksum-verified `install.sh` or `install.ps1`; it verifies the matching binary and can fall back to source compilation if download fails |
 | Source build | Git, rustup with pinned Rust 1.95.0, and the platform's native compiler/linker tooling |
 | Model work | Your selected local backend or provider account and exact provider:model route; usage may cost money |
@@ -47,7 +47,10 @@ alternative.
 
 ## Linux
 
-Choose the glibc binary matching x86-64 or ARM64. Verify its checksum, then use the
+Choose the glibc binary matching x86-64 or ARM64. Both downloads require
+**glibc 2.39 or later**, confirmed in their ELF version-needs records. For an older
+glibc distribution, use the pinned source path and validate the resulting binary
+on that machine. Verify the download checksum, then use the
 same user-directory installation steps as macOS with your Linux filename. Add
 `~/.local/bin` to your shell profile if needed. Alpine/musl is outside this native
 binary matrix; do not assume a glibc download is compatible.
@@ -62,7 +65,15 @@ the pinned toolchain and locked dependency graph are used by the command below.
 
 ## Windows
 
-Choose `harness-windows-x86_64.exe`. In PowerShell, verify it against the matching
+Choose `harness-windows-x86_64.exe`. This release imports `VCRUNTIME140.dll` and
+requires a compatible Microsoft Visual C++ v14 x64 Redistributable. Install the
+matching runtime from [Microsoft's official download page](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
+if it is missing; use a runtime version at least as recent as the build tools
+used for the application. This is separate from installing Visual Studio.
+The native CI host already has developer tooling, so it does not establish that
+a fresh Windows consumer machine has this prerequisite.
+
+In PowerShell, verify the executable against the matching
 line of `checksums.txt`:
 
 ```powershell
@@ -139,6 +150,7 @@ Ctrl+C. The [user manual](../Start%20Here/USER%20MANUAL.md) covers further featu
 | Symptom | Check |
 | --- | --- |
 | Command not found | Confirm the installed path and User PATH; reopen the terminal. Run the binary by full path to separate installation from PATH. |
+| Missing VCRUNTIME140.dll on Windows | Check the Microsoft Visual C++ v14 x64 runtime prerequisite above and use Microsoft's official download. |
 | Wrong version | Use `command -v harness` on Unix or `Get-Command harness` in PowerShell to find an older executable. Verify the chosen executable reports `1.4.0-beta.2`. |
 | Historical download | Use the explicit prerelease tag. GitHub's unqualified latest-release URL may still select v1.3.0. |
 | Source build fails | Check the pinned Rust toolchain, native linker and complete error. Avoid changing platform protections as a workaround. |
