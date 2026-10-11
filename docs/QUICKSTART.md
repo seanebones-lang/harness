@@ -14,9 +14,20 @@ Choose the binary for your machine:
 | --- | --- |
 | Mac with Apple Silicon | `harness-macos-aarch64` |
 | Intel Mac | `harness-macos-x86_64` |
-| Linux with glibc, x86-64 | `harness-linux-x86_64` |
-| Linux with glibc, ARM64 | `harness-linux-aarch64` |
+| Linux with glibc 2.39+, x86-64 | `harness-linux-x86_64` |
+| Linux with glibc 2.39+, ARM64 | `harness-linux-aarch64` |
 | Windows x86-64 | `harness-windows-x86_64.exe` |
+
+The Linux downloads require glibc 2.39 or later, confirmed from their ELF
+version-needs records. Native checks ran on Ubuntu 24.04. For an older glibc
+distribution, use the pinned source path and validate the build on that machine.
+
+The Windows x86-64 executable imports `VCRUNTIME140.dll`. Its matching Microsoft
+Visual C++ v14 x64 Redistributable must be present. If the runtime is missing,
+use [Microsoft's official runtime download page](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+Running the native binary does not require Visual Studio or Rust. CI's Windows
+host already has developer tooling; a successful native check does not prove
+this prerequisite is present on a fresh consumer machine.
 
 Also download `checksums.txt`, `LICENSE.txt` and `THIRD-PARTY-LICENSES.html`.
 Keep the license files with redistributed binaries. `RELEASE-MANIFEST.json`

@@ -2,9 +2,20 @@
 
 Harness is now MIT licensed and developed for personal use. The current assessment and validation are in [PERSONAL_USE.md](PERSONAL_USE.md), with priorities in [CTO_BACKLOG.md](CTO_BACKLOG.md).
 
-The **1.4.0-beta.2** developer candidate has version-pinned first-use instructions in [QUICKSTART.md](QUICKSTART.md), a complete native binary draft workflow, source/asset identity and license packaging. Publication status and remaining manual gates are recorded in the GitHub release; this header is not a claim that staging or publication has completed.
+The **1.4.0-beta.2** developer prerelease is [published with native CLI downloads](https://github.com/seanebones-lang/harness/releases/tag/v1.4.0-beta.2). The immutable source commit is `997bf023fb0ad5882c0153c1c4e100ecd0579898`. Start with [QUICKSTART.md](QUICKSTART.md) for explicit-version downloads, checksums, platform prerequisites and offline first use.
 
-The unpublished `v1.4.0-beta.1` tag is retained after its Windows release smoke failed while writing a Unicode fixture with the legacy pipe encoding. The revised candidate uses explicit UTF-8 fixtures/capture, a UTF-8 document helper and Windows optimized workflow checks in PR/main CI. No beta.1 release assets were published.
+**2026-10-11 — developer prerelease acceptance (not stable promotion)**
+
+- Exact-source [main CI](https://github.com/seanebones-lang/harness/actions/runs/38113193609) and [Coverage](https://github.com/seanebones-lang/harness/actions/runs/38113193607) passed before tagging. Local workspace checks passed 825 Rust tests including doctests, strict linting and optimized runtime/work/build/terminal acceptance.
+- The [native release workflow](https://github.com/seanebones-lang/harness/actions/runs/38113621499) passed all five macOS ARM64/x86-64, Linux ARM64/x86-64 and Windows x86-64 build/test/runtime/workflow jobs, plus packaging. Unix final binaries also passed terminal acceptance.
+- All 12 uploaded assets were downloaded. Eleven payload hashes, source commit/version, native format/architecture headers, source/archive license and installer identity verified. The dependency notice report includes 470 locked default-graph crates; it is not legal certification or an optional-client inventory.
+- The actual downloaded Apple Silicon binary passed CLI/HTTP/build/work/session/image/terminal checks. The browser recovered from a missing saved session, ran a real file tool, and retained the actual tool output after refresh. A bounded live `nvidia:openai/gpt-oss-20b` read-only round trip passed with a 2,048-token cap; this is one provider acceptance probe, not a model-quality evaluation.
+- The public version-pinned `install.sh` installed the prebuilt binary in a disposable user folder on the available Mac. Its hash matched the verified release, its version was correct, and offline brief/workflow preparation passed without credentials or source compilation. This is not a fresh-machine or all-platform installer rehearsal.
+- Artifact inspection found Linux ELF version-needs for glibc 2.39 and a Windows `VCRUNTIME140.dll` import. Current installation docs record glibc 2.39+ and the matching Microsoft Visual C++ v14 x64 runtime prerequisite. CI's prepared native hosts do not establish every consumer machine has required runtime libraries.
+
+**Open gates:** interactive and fresh-machine acceptance on every OS, older OS/runtime compatibility, signed/notarized desktop distributions, and every optional integration. These CLI downloads are a developer evaluation release. GitHub's unqualified latest-release URL may still select historical v1.3.0; use the explicit prerelease tag. The source-tree Homebrew formula is optional metadata, not a published official tap.
+
+The unpublished `v1.4.0-beta.1` tag is retained after its Windows release smoke failed while writing a Unicode fixture with the legacy pipe encoding. Beta.2 uses explicit UTF-8 fixtures/capture, a UTF-8 document helper and Windows optimized workflow checks in PR/main CI. Fixtures explicitly select private database paths and close SQLite inspection handles before cleanup; grouped acceptance commands stop at the first failure. No beta.1 release assets were published. Existing installed document workflows are preserved; review their helper against the revised source before upgrading them.
 
 The entries below are dated historical evidence. Earlier proprietary license policies, competition goals, billing blocks, test totals, and stable-release gates do not describe the current source or personal-use acceptance target.
 
