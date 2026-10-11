@@ -23,7 +23,8 @@ class RetrievalTests(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(retrieve('missing', {'guide.md': 'Rust tools'}), [])
 '''
-CHECK = shlex.quote(sys.executable) + ' -m unittest -v'
+# Git Bash accepts Windows forward-slash executable paths in the native runner.
+CHECK = shlex.quote(sys.executable.replace('\\', '/') if os.name == 'nt' else sys.executable) + ' -m unittest -v'
 
 
 class Provider(http.server.BaseHTTPRequestHandler):

@@ -29,7 +29,7 @@ class Provider(http.server.BaseHTTPRequestHandler):
         if not results:
             calls = [('read_file', {'path': f'.agents/skills/{self.phase}/SKILL.md'})]
         elif len(results) == 1:
-            calls = [('shell', {'command': shlex.quote(sys.executable) + ' .agents/skills/documents/scripts/extract.py fixture.docx'})] if self.phase == 'documents' else [('read_file', {'path': 'source.md'})]
+            calls = [('shell', {'command': shlex.quote(sys.executable.replace('\\', '/') if os.name == 'nt' else sys.executable) + ' .agents/skills/documents/scripts/extract.py fixture.docx'})] if self.phase == 'documents' else [('read_file', {'path': 'source.md'})]
         elif len(results) == 2:
             text = 'Approved budget: $42. Source: fixture.docx, paragraph 1. Visual review remains open.' if self.phase == 'documents' else 'The supplied source says budget is $42. [Source](../../source.md). Evidence boundary: supplied local source only.'
             folder = 'documents' if self.phase == 'documents' else 'research'

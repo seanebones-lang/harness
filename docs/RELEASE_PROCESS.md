@@ -15,9 +15,11 @@ The Release workflow accepts an existing tag, checks that it belongs to `main`, 
 
 Each of five native runners builds the pinned, locked optimized candidate and runs workspace tests plus binary, isolated CLI, and synthetic provider/HTTP checks. The runners cover macOS arm64/x86_64, Linux arm64/x86_64, and Windows x86_64. The matrix uses supported labels from [GitHub's runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
-Only a completely successful matrix stages a **draft** GitHub Release with all five artifacts and `checksums.txt`. Missing platform artifacts prevent staging. GitHub Actions billing must be enabled; a job that never starts supplies no validation evidence.
+Only a completely successful matrix stages a **draft** GitHub Release with all five binaries, versioned source, installer scripts, first-party license, dependency license report, source/asset manifest and `checksums.txt`. The final binaries also run build/work/session/image-transport checks against synthetic providers. Missing platform artifacts prevent staging. GitHub Actions billing must be enabled; a job that never starts supplies no validation evidence.
 
 ## Publish after acceptance
+
+For a developer prerelease, apply the distinct gates in [RELEASE_POLICY.md](RELEASE_POLICY.md#developer-prereleases), mark the release as prerelease and explicitly list remaining manual acceptance. The steps below are required for stable promotion.
 
 1. Verify all draft downloads and SHA-256 checksums, real provider round trips, interactive TUI/browser/editor behavior, and clean-machine install on the supported systems.
 2. Include final release notes and explicit limitations; publish the draft when those gates pass.
