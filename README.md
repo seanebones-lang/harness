@@ -1,6 +1,6 @@
 # Harness
 
-[![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
+[![CI](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/seanebones-lang/harness/actions/workflows/ci.yml)
 [![Coverage](https://github.com/seanebones-lang/harness/actions/workflows/coverage.yml/badge.svg)](https://github.com/seanebones-lang/harness/actions/workflows/coverage.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
