@@ -12,12 +12,14 @@ SCRIPT = Path(__file__).resolve().with_name("install.sh")
 
 
 class InstallerTests(unittest.TestCase):
-    def run_installer(self, mode, windows=False):
-        with tempfile.TemporaryDirectory(prefix="harness-installer-test-") as td:
+    def run_installer(self, mode, windows=False, source=False):
+        with tempfile.TemporaryDirectory(prefix="harness installer test ") as td:
             root = Path(td)
             tools = root / "tools"
             tools.mkdir()
             payload = b'#!/bin/sh\necho "harness 1.3.0"\n'
+            if mode == "invalid_binary":
+                payload = b'#!/bin/sh\nexit 1\n'
             (root / "payload").write_bytes(payload)
             artifact = "harness-windows-x86_64.exe" if windows else "harness-macos-aarch64"
             digest = hashlib.sha256(payload).hexdigest()
@@ -27,7 +29,8 @@ class InstallerTests(unittest.TestCase):
                 "missing_entry": f"{digest}  unrelated\n",
                 "duplicate": f"{digest}  {artifact}\n" * 2,
             }
-            (root / "checksums").write_text(entries.get(mode, ""))
+            (root / "checksums").write_text(entries.get(
+                mode, entries["valid"] if mode in ("copy_failure", "invalid_binary") else ""))
             fake_curl = '''#!/bin/sh
 url=""; dest=""
 while [ "$#" -gt 0 ]; do
@@ -43,6 +46,21 @@ esac
             (tools / "uname").write_text('#!/bin/sh\ncase "$1" in -s) echo ' +
                                         ('MINGW64_NT' if windows else 'Darwin') +
                                         ';; -m) echo arm64;; esac\n')
+            if mode == "copy_failure":
+                (tools / "install").write_text('''#!/bin/sh
+for destination do :; done
+printf partial > "$destination"
+exit 1
+''')
+            if source:
+                (tools / "git").write_text('''#!/bin/sh
+for destination do :; done
+mkdir -p "$destination"
+''')
+                (tools / "cargo").write_text('''#!/bin/sh
+mkdir -p target/release-lto
+cp "$TEST_ROOT/payload" "target/release-lto/$TEST_BINARY"
+''')
             for p in tools.iterdir():
                 p.chmod(0o755)
             destination = root / "install"
@@ -50,11 +68,13 @@ esac
             target = destination / ("harness.exe" if windows else "harness")
             target.write_text("previous installation")
             env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
-                       HOME=td, HARNESS_INSTALL_DIR=str(destination), TEST_ROOT=td, TEST_MODE=mode)
+                       HOME=td, HARNESS_INSTALL_DIR=str(destination), TEST_ROOT=td, TEST_MODE=mode,
+                       TEST_BINARY=target.name, HARNESS_INSTALL_SOURCE="1" if source else "0")
             result = subprocess.run(["bash", str(SCRIPT), "v1.3.0"], env=env, cwd=root,
                                     capture_output=True, text=True, timeout=15)
             contents = target.read_bytes()
             self.assertFalse((root / ".harness/config.toml").exists())
+            self.assertEqual(list(destination.glob(".harness-install.*")), [])
             if mode == "valid":
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(contents, payload)
@@ -67,6 +87,19 @@ esac
 
     def test_windows_git_bash_filename(self):
         self.run_installer("valid", windows=True)
+
+    def test_source_install(self):
+        self.run_installer("valid", source=True)
+
+    def test_partial_copy_preserves_previous_installation(self):
+        for source in (False, True):
+            with self.subTest(source=source):
+                self.run_installer("copy_failure", source=source)
+
+    def test_unusable_candidate_preserves_previous_installation(self):
+        for source in (False, True):
+            with self.subTest(source=source):
+                self.run_installer("invalid_binary", source=source)
 
     def test_rejects_unverified_binary_without_overwriting(self):
         for mode in ("mismatch", "missing_entry", "duplicate", "missing_manifest"):
