@@ -1,0 +1,63 @@
+name: Security dependency refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: Branch whose Cargo.lock should be refreshed
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: security-dependency-refresh-${{ inputs.target_branch }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone requested branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$TARGET_BRANCH" \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install stable Rust
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Update security-sensitive dependencies
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          cargo update -p tokio --precise 1.54.1
+          cargo update -p rustls-webpki --precise 0.103.16
+      - name: Run tests against refreshed lockfile
+        working-directory: repo
+        run: cargo test --locked
+
+      - name: Commit and push lockfile
+        working-directory: repo
+        env:
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock already resolves to the requested patched versions."
+            exit 0
+          fi
+          git add Cargo.lock
+          git commit -m "security(deps): update vulnerable Rust dependencies"
+          git push origin "HEAD:$TARGET_BRANCH"
