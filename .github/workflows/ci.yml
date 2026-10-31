@@ -31,6 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned toolchain action
+        with:
+          toolchain: stable
       - uses: taiki-e/install-action@893917a6ab6e12657df08b058b55a4809de347a3 # cargo-audit
       - uses: taiki-e/install-action@718993db25d12d67fe704d6aa97369e03d3803c8 # cargo-deny
       - name: cargo audit
@@ -170,8 +172,9 @@ jobs:
       - name: Compile extension
         working-directory: extensions/vscode
         run: |
+          npm install --package-lock-only --ignore-scripts
           npm ci
-          npm audit
+          npm audit --audit-level=high
           npm run compile
 
   desktop-tauri:
@@ -180,6 +183,8 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned toolchain action
+        with:
+          toolchain: stable
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
