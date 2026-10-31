@@ -1,6 +1,14 @@
 name: Security dependency refresh
 
 on:
+  push:
+    branches:
+      - security/tokio-lockfile-refresh
+      - security/rust-dependency-refresh
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/security-dependency-refresh.yml'
   workflow_dispatch:
     inputs:
       target_branch:
@@ -23,7 +31,7 @@ jobs:
       - name: Clone requested branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_BRANCH: ${{ inputs.target_branch }}
+          TARGET_BRANCH: ${{ inputs.target_branch || github.ref_name }}
         run: |
           set -euo pipefail
           git clone --depth 1 --branch "$TARGET_BRANCH" \
