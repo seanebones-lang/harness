@@ -11,4 +11,7 @@ ignore = [
   { id = "RUSTSEC-2025-0080", reason = "unic-common via Tauri urlpattern parser; no patched version. Recheck on Tauri upgrades." },
   { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident via Tauri urlpattern parser; no patched version. Recheck on Tauri upgrades." },
   { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version via Tauri urlpattern parser; no patched version. Recheck on Tauri upgrades." },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained upstream and pulled by notify-rust through tauri-plugin-notification; no safe zbus 6 migration available in current plugin chain." },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained upstream and pulled by notify-rust through tauri-plugin-notification; no safe zbus 6 migration available in current plugin chain." },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained upstream and pulled by notify-rust through tauri-plugin-notification; no safe zbus 6 migration available in current plugin chain." },
 ]
