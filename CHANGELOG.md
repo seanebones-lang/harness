@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Fixed
+- Updated the separate desktop Cargo lockfile to Tokio 1.54.1, removing the `RUSTSEC-2026-0386` I/O-safety advisory from the desktop dependency graph.
+
+### Security
+- Pinned third-party GitHub Actions used by CI to verified immutable commit SHAs; retained the existing workflow permissions and behavior.
+
 ## [1.4.0-beta.2] — 2026-10-10
 
 The beta.1 tag remains unpublished after its Windows Unicode-fixture failure. This corrected candidate retains the following current-source changes.
