@@ -59,7 +59,7 @@ jobs:
       - name: Commit and push lockfile
         working-directory: repo
         env:
-          TARGET_BRANCH: ${{ inputs.target_branch }}
+          TARGET_BRANCH: ${{ inputs.target_branch || github.ref_name }}
         run: |
           set -euo pipefail
           if git diff --quiet -- Cargo.lock; then
