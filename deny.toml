@@ -9,6 +9,9 @@ ignore = [
     { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained via syntect" },
     { id = "RUSTSEC-2024-0436", reason = "paste unmaintained via ratatui" },
     { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained via age/i18n-embed-fl; no safe upgrade" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained transitively via notify-rust 4.18.0 / zbus 5.15.0; zbus 6 migration is not yet supported upstream" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained transitively via notify-rust 4.18.0 / zbus 5.15.0; zbus 6 migration is not yet supported upstream" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained transitively via notify-rust 4.18.0 / zbus 5.15.0; zbus 6 migration is not yet supported upstream" },
     # New advisories from 2026-09-14 scan
     { id = "RUSTSEC-2026-0221", reason = "event-listener 5.4.1 unsound; transitive via async-channel, no safe upgrade" },
     { id = "RUSTSEC-2026-0253", reason = "lru 0.12.5 use-after-free; transitive, no safe upgrade" },
