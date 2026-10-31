@@ -31,6 +31,10 @@ None at this time. P0 findings from the May 2026 peer review were remediated —
 - **Swarm workers**: optional tool allowlist + wall-clock timeout
 - **Supply-chain**: `cargo deny` / advisories when CI is configured
 
+## Recent main-branch hardening
+
+The current `main` source pins the third-party GitHub Actions used by CI to verified immutable commit SHAs. The desktop Tauri lockfile is synchronized to Tokio 1.54.1; the updated dependency graph passed the RustSec audit in CI. These source changes do not retroactively modify older release artifacts.
+
 ## Threat Model
 
 Full detail: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) (v2, 2026-08-03).
