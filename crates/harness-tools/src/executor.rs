@@ -217,14 +217,19 @@ impl ToolExecutor {
         let (Some(gate), Some(agent_id)) = (&self.admit, &self.agent_id) else {
             return None;
         };
-        if let Some(usd) = spend_of(args) {
-            if gate.spend_add(agent_id, usd).is_err() {
-                return Some(format!("[deadbolt] denied {tool}: store_unavailable"));
-            }
-        }
         let dest = dest_of(args);
         match gate.admit_dest(agent_id, tool, dest.as_deref()) {
-            harness_deadbolt::AdmitDecision::Allow => None,
+            harness_deadbolt::AdmitDecision::Allow => {
+                // Denied calls must not mutate spend or its evidence. As in
+                // the upstream MCP route, record caller-reported cost only
+                // after Allow; this is not a provider billing receipt.
+                if let Some(usd) = spend_of(args) {
+                    if gate.spend_add(agent_id, usd).is_err() {
+                        return Some(format!("[deadbolt] denied {tool}: store_unavailable"));
+                    }
+                }
+                None
+            }
             harness_deadbolt::AdmitDecision::Deny { code } => {
                 Some(format!("[deadbolt] denied {tool}: {}", code.as_str()))
             }
@@ -875,8 +880,8 @@ mod tests {
         let local = exec
             .execute(&call_args("shell", json!({"note": "no host"})))
             .await;
-        assert!(!local.contains("purpose_exceeded"), "{local}");
-        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(local.contains("purpose_exceeded"), "{local}");
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     #[tokio::test]
@@ -923,6 +928,99 @@ mod tests {
         let (exec, ran) = flag_exec(&gate, "agent-a");
         let denied = exec.execute(&call("shell")).await;
         assert!(denied.contains("spend_cap"), "{denied}");
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn deadbolt_denied_cost_preserves_spend_and_allowed_cost_counts_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_activity_agent("cost-run").unwrap();
+        gate.set_policy(
+            "cost-run",
+            harness_deadbolt::PolicyPatch {
+                irreversible: Some(vec!["shell".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (exec, ran) = flag_exec(&gate, "cost-run");
+        let mut cost_call = call("shell");
+        cost_call.function.arguments = json!({"usd": 3.0}).to_string();
+        let spend = || {
+            rusqlite::Connection::open(dir.path().join("deadbolt.db"))
+                .unwrap()
+                .query_row(
+                    "SELECT spend_usd FROM leases WHERE agent_id = 'cost-run'",
+                    [],
+                    |row| row.get::<_, f64>(0),
+                )
+                .unwrap()
+        };
+        assert!(exec.execute(&cost_call).await.contains("needs_human"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(spend(), 0.0);
+        assert!(!gate
+            .export("cost-run", false)
+            .unwrap()
+            .iter()
+            .any(|r| r.kind == "spend"));
+
+        gate.approve("cost-run", "shell").unwrap();
+        assert_eq!(exec.execute(&cost_call).await, "ran");
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(spend(), 3.0);
+        ran.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(exec.execute(&cost_call).await.contains("needs_human"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(spend(), 3.0);
+        assert_eq!(
+            gate.export("cost-run", false)
+                .unwrap()
+                .iter()
+                .filter(|r| r.kind == "spend")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn deadbolt_destination_policy_needs_explicit_offline_exception() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
+        gate.ensure_activity_agent("offline-run").unwrap();
+        gate.set_policy(
+            "offline-run",
+            harness_deadbolt::PolicyPatch {
+                dest_allow: Some(vec!["allowed.example".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (exec, ran) = flag_exec(&gate, "offline-run");
+        assert!(exec
+            .execute(&call("shell"))
+            .await
+            .contains("purpose_exceeded"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        gate.set_policy(
+            "offline-run",
+            harness_deadbolt::PolicyPatch {
+                offline_tools: Some(vec!["shell".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(exec.execute(&call("shell")).await, "ran");
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+        ran.store(false, std::sync::atomic::Ordering::SeqCst);
+        let mut foreign = call("shell");
+        foreign.function.arguments = json!({"url": "https://foreign.example/"}).to_string();
+        assert!(exec.execute(&foreign).await.contains("purpose_exceeded"));
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        gate.kill("offline-run").unwrap();
+        gate.ensure_activity_agent("offline-run").unwrap();
+        assert!(exec.execute(&call("shell")).await.contains("killed"));
         assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
     }
     async fn pending_confirmation(
