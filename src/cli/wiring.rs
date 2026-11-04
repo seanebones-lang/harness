@@ -424,7 +424,7 @@ pub async fn build_tools_inner(
         #[cfg(feature = "deadbolt")]
         {
             let gate = crate::deadbolt_rt::handle(&cfg.deadbolt);
-            let _ = gate.ensure_agent(&parent_id);
+            let _ = gate.ensure_activity_agent(&parent_id);
             SpawnAgentTool::new(runner).with_lineage(harness_tools::tools::agent::AgentLineage {
                 parent_agent_id: parent_id.clone(),
                 register: Arc::new(move |parent, child| {

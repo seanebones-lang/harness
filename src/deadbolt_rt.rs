@@ -128,6 +128,7 @@ pub fn dispatch(action: &DeadboltAction, cfg: &Config) -> Result<()> {
             agent,
             tools,
             dest,
+            offline_tools,
             spend_cap,
             irreversible,
         } => {
@@ -136,6 +137,7 @@ pub fn dispatch(action: &DeadboltAction, cfg: &Config) -> Result<()> {
                 PolicyPatch {
                     tools_allow: split_list(tools.as_deref()),
                     dest_allow: split_list(dest.as_deref()),
+                    offline_tools: split_list(offline_tools.as_deref()),
                     spend_cap_usd: *spend_cap,
                     irreversible: split_list(irreversible.as_deref()),
                 },
@@ -189,7 +191,9 @@ pub fn bind(exec: ToolExecutor, cfg: &DeadboltConfig, agent_id: &str) -> ToolExe
     if !gate.should_attach() {
         return exec;
     }
-    let _ = gate.ensure_agent(agent_id);
+    // Preserve Harness's existing activity-renewed roots explicitly. Existing
+    // supervised, expired, killed or deadline-bound identities remain unchanged.
+    let _ = gate.ensure_activity_agent(agent_id);
     exec.with_deadbolt(Arc::new(gate), agent_id.to_string())
 }
 
@@ -211,7 +215,7 @@ pub fn bind_swarm_child(cfg: &DeadboltConfig, parent: &str, swarm_task_id: &str)
     if !gate.should_attach() {
         return None;
     }
-    let _ = gate.ensure_agent(parent);
+    let _ = gate.ensure_activity_agent(parent);
     let child = child_for(parent, swarm_task_id);
     match gate.register_child(parent, &child, Some(swarm_task_id)) {
         Ok(true) => Some(child),
