@@ -56,6 +56,11 @@ def main():
         with tempfile.TemporaryDirectory(prefix='harness-agent-smoke-') as scratch:
             root = Path(scratch)
             (root / '.harness').mkdir()
+            if os.name == 'posix':
+                # DeadBolt 2.0.2 private-state rules reject a store whose
+                # parent directory is group/other-writable; mkdir inherits
+                # the process umask, so set the private mode explicitly.
+                os.chmod(root / '.harness', 0o700)
             fixture = 'SYNTHETIC_FIXTURE_CONTENT' + 'x' * 99 + '🦀中é' * 700
             (root / 'fixture.txt').write_text(fixture, encoding='utf-8')
             (root / '.harness/config.toml').write_text(f'''[session]

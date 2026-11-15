@@ -54,6 +54,12 @@ def main():
     with tempfile.TemporaryDirectory(prefix='harness-work-smoke-') as scratch:
         root = Path(scratch) / 'real project'
         root.mkdir()
+        if os.name == 'posix':
+            # Pre-create the state dir privately: DeadBolt 2.0.2 rejects a
+            # store under a group/other-writable parent, and the default
+            # create mode inherits the process umask.
+            (Path(scratch) / '.harness').mkdir()
+            os.chmod(Path(scratch) / '.harness', 0o700)
         env = {k: v for k, v in os.environ.items() if k in ('PATH', 'LANG', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT')}
         env.update(HOME=scratch, USERPROFILE=scratch, HARNESS_SKIP_LSP='1')
         def run(*args):
