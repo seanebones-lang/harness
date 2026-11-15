@@ -67,6 +67,26 @@ artifact_name() {
 ARTIFACT=$(artifact_name "$TARGET")
 [[ "$TARGET" != *windows* ]] || BINARY="harness.exe"
 
+# Copy and check a candidate on the destination filesystem before replacing the
+# current executable. A failed copy or unusable binary must leave it intact.
+install_candidate() {
+    local source="$1" stage
+    stage=$(mktemp -d "$INSTALL_DIR/.harness-install.XXXXXX") || error "Could not stage the installation"
+    if ! install -m 755 "$source" "$stage/$BINARY"; then
+        rm -rf "$stage"
+        error "Candidate copy failed; previous installation preserved"
+    fi
+    if ! "$stage/$BINARY" --version >/dev/null 2>&1; then
+        rm -rf "$stage"
+        error "Candidate could not start; previous installation preserved"
+    fi
+    if [[ -d "$INSTALL_DIR/$BINARY" ]] || ! mv -f "$stage/$BINARY" "$INSTALL_DIR/$BINARY"; then
+        rm -rf "$stage"
+        error "Candidate replacement failed; previous installation preserved"
+    fi
+    rmdir "$stage"
+}
+
 # Try to install a prebuilt binary from the latest release
 install_prebuilt() {
     local version="${1:-latest}"
@@ -109,7 +129,7 @@ install_prebuilt() {
         error "Checksum mismatch for $ARTIFACT"
     fi
     mkdir -p "$INSTALL_DIR"
-    install -m 755 "$tmp/harness" "$INSTALL_DIR/$BINARY"
+    install_candidate "$tmp/harness"
     rm -rf "$tmp"
     info "Checksum verified; installed $INSTALL_DIR/$BINARY"
 }
@@ -138,7 +158,7 @@ build_from_source() {
         error "Source build failed"
     fi
     mkdir -p "$INSTALL_DIR"
-    install -m 755 "$src_dir/target/release-lto/$BINARY" "$INSTALL_DIR/$BINARY"
+    install_candidate "$src_dir/target/release-lto/$BINARY"
     [[ -z "$scratch" ]] || rm -rf "$scratch"
 
     info "Built and installed from source"
