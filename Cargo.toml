@@ -41,7 +41,7 @@ tokio-stream = "0.1"
 bytes = "1"
 dirs = "5"
 clap = { version = "4", features = ["derive"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.41.1", features = ["bundled"] }
 ratatui = "0.28"
 crossterm = { version = "0.28", features = ["event-stream"] }
 walkdir = "2"

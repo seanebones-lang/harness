@@ -759,10 +759,25 @@ mod tests {
         }
     }
 
+    /// DeadBolt 2.0.2 private-state rules reject a store directory that is
+    /// group/other-writable; `tempfile` inherits the process umask, so set
+    /// the private mode explicitly for gate stores.
+    #[cfg(feature = "deadbolt")]
+    fn gate_tempdir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tmp");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700))
+                .expect("private gate dir");
+        }
+        dir
+    }
+
     #[tokio::test]
     #[cfg(feature = "deadbolt")]
     async fn deadbolt_deny_after_kill_blocks_next_admit() {
-        let dir = tempfile::tempdir().expect("tmp");
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("agent-a").expect("lease");
         let exec =
@@ -828,7 +843,7 @@ mod tests {
 
     #[tokio::test]
     async fn malformed_tool_names_remain_blocked_with_actionable_errors() {
-        let dir = tempfile::tempdir().expect("tmp");
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("agent-a").expect("lease");
         let (exec, ran) = flag_exec(&gate, "agent-a");
@@ -852,7 +867,7 @@ mod tests {
 
     #[tokio::test]
     async fn dest_policy_denies_foreign_host_and_missing_host() {
-        let dir = tempfile::tempdir().expect("tmp");
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("agent-a").expect("lease");
         gate.set_policy(
@@ -886,7 +901,7 @@ mod tests {
 
     #[tokio::test]
     async fn irreversible_needs_human_does_not_run_until_approve() {
-        let dir = tempfile::tempdir().expect("tmp");
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("agent-a").expect("lease");
         gate.set_policy(
@@ -913,7 +928,7 @@ mod tests {
 
     #[tokio::test]
     async fn spend_cap_does_not_run_body() {
-        let dir = tempfile::tempdir().expect("tmp");
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("agent-a").expect("lease");
         gate.set_policy(
@@ -933,7 +948,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_denied_cost_preserves_spend_and_allowed_cost_counts_once() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_activity_agent("cost-run").unwrap();
         gate.set_policy(
@@ -986,7 +1001,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_destination_policy_needs_explicit_offline_exception() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_activity_agent("offline-run").unwrap();
         gate.set_policy(
@@ -1046,7 +1061,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_policy_change_while_reviewing_blocks_body() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("review-run").unwrap();
         let (task, request, ran) = pending_confirmation(&gate).await;
@@ -1065,7 +1080,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_expiry_while_reviewing_blocks_body() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("review-run").unwrap();
         let (task, request, ran) = pending_confirmation(&gate).await;
@@ -1077,7 +1092,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_declined_review_preserves_one_shot() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("review-run").unwrap();
         gate.set_policy(
@@ -1103,7 +1118,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_policy_change_blocks_reviewed_content_write() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("review-run").unwrap();
         let (task, request, ran) = pending_confirmation(&gate).await;
@@ -1123,7 +1138,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_exact_only_requirement_blocks_legacy_executor() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("review-run").unwrap();
         gate.require_exact_action("review-run", "shell", true)
@@ -1135,7 +1150,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_kill_while_reviewing_blocks_body() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("review-run").unwrap();
         let (task, request, ran) = pending_confirmation(&gate).await;
@@ -1147,7 +1162,7 @@ mod tests {
 
     #[tokio::test]
     async fn deadbolt_approved_reviewed_content_consumes_once() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = gate_tempdir();
         let gate = harness_deadbolt::Deadbolt::open_at(dir.path(), true, 60);
         gate.ensure_agent("review-run").unwrap();
         gate.set_policy(

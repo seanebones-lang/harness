@@ -25,6 +25,14 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir(&root).unwrap();
+        // DeadBolt 2.0.2 private-state rules reject a store directory that
+        // is group/other-writable; create_dir honors the process umask, so
+        // set the private mode explicitly.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
         {
             let gate = crate::Deadbolt::open_at(&root, true, 60);
             let deadline = std::time::SystemTime::now()
