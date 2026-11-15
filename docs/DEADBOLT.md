@@ -13,21 +13,21 @@ harness deadbolt clip TOOL --agent ID
 harness deadbolt resume --agent ID
 harness deadbolt kill --agent ID
 harness deadbolt drill
-harness deadbolt policy --agent ID [--tools a,b] [--dest host1,host2] [--spend-cap USD] [--irreversible a,b]
+harness deadbolt policy --agent ID [--tools a,b] [--dest host1,host2] [--offline-tools a,b] [--spend-cap USD] [--irreversible a,b]
 harness deadbolt approve --agent ID --tool TOOL
 harness deadbolt incident --agent ID [--out PATH] [--json] [--children]
 ```
 
 `kill` requires `--agent`. It revokes that agent_id and its children, and cancels swarm tasks bound to those leases. Killing agent A does not block agent B. The lease is bound to `agent_id`, not a vendor API key.
 
-`policy` sets blast radius. Omitted flags leave the stored value. An unset list stays open. An off-list tool is deny `purpose_exceeded`. A present foreign dest is deny `purpose_exceeded`. A missing dest is deny `purpose_exceeded` only for a network-class tool (`http`, `fetch`, `browser`, `web_search`). A local tool with no host is not denied for `dest_allow` alone. Crossing `--spend-cap` pauses the lease. The next admit is `spend_cap`.
+`policy` sets blast radius. Omitted flags leave the stored value. An unset list stays open. An off-list tool or present foreign destination denies `purpose_exceeded`. With a destination allow-list set, every tool needs a declared destination unless the operator explicitly names it in `--offline-tools`. Offline exceptions default to none; an exception never overrides a foreign destination. Classify only tools you trust to have no network effects. Do not classify a general-purpose shell as offline merely to make a denied call run. These declarations do not enforce OS egress restrictions. Crossing `--spend-cap` pauses the lease; later admissions deny `spend_cap`.
 
 `approve` grants one shot for one irreversible tool. It is not a model tool. The next admit of that tool is allow. The one after that is `needs_human` again.
 
 `incident` writes the token file from the pinned crate. `--json` is the default. `--json=false` prints `agent= killed_at= children= codes=` and no prose. The file always lists children. `--children` does not strip them.
 
 Pinned crate: `github.com/seanebones-lang/deadbolt` at full revision
-`52a2085155b658f3d1dda5a73a8d95a7a1d88fad` (`1.1.0-rc.1` release source). Harness pins this reviewed revision; it does not follow a moving branch.
+`e87519f700be03c27a564ed274907649224d256f` (released `2.0.1` source). Harness pins this revision; it does not follow a moving branch. Updating Harness source does not modify already downloaded Harness binaries.
 The standalone dependency is free under Apache-2.0; Harness remains MIT.
 
 `drill` is an in-process self-check. It does not need API keys and does not touch `~/.harness`.
@@ -43,11 +43,15 @@ db_path = "~/.harness/deadbolt.db"
 events_path = "~/.harness/deadbolt-events.jsonl"
 ```
 
-If the store cannot be opened or written and `fail_closed` is true, every admit is Deny. The lease is rechecked on every tool action, including MCP adapters, which execute only through `ToolExecutor`. The executor passes `dest` when the tool arguments contain `url`, `uri`, `href`, `endpoint`, or `host`. Same parse as `deadbolt mcp-proxy`. If `dest_allow` is set and no host parses, admit is `purpose_exceeded` only for a network-class tool. A local tool with no host is not denied for that reason. A present foreign host is `purpose_exceeded`. The tool body does not run on deny. `needs_human` and `spend_cap` deny the same way. A live admit, allow or deny, renews the TTL. Silence expires the lease. For registered tools, admission runs once immediately before the effect, after
+If the store cannot be opened or written and `fail_closed` is true, every admit is Deny. The lease is rechecked on every tool action, including MCP adapters, which execute only through `ToolExecutor`. The executor passes the first host parsed from recognized `url`, `uri`, `href`, `endpoint`, or `host` argument fields. This legacy adapter is not the upstream raw MCP proxy's complete destination collector: it does not establish all actual network destinations. Keep OS egress controls separate. With a destination policy set, an absent host requires an explicit offline exception; a foreign host denies. The tool body does not run on deny. `needs_human` and `spend_cap` deny the same way.
+
+Harness explicitly preserves its existing **activity-renewed** root setup through `ensure_activity_agent`. A live activity admission, allow or deny, can renew the idle TTL; silence expires it. This is not independent supervisor liveness. Existing identities retain supervision mode, expiry, hard deadline and terminal state; startup never revives a killed or expired run or slides a hard deadline. Harness does not add deadline issuance or supervisor/grant management UI in this integration. Operators needing independent liveness must provision and renew supervision separately through the standalone engine, using the same private store.
+
+For registered tools, admission runs once immediately before the effect, after
 any interactive confirmation. If policy, kill, pause or expiry changes during
 review, that final admission sees it. Declining review does not consume a
 DeadBolt approval or record caller-reported spend. The reviewed-content write
-path uses the same final admission boundary. Confirm-gate and the workspace jail stay.
+path uses the same final admission boundary. Confirm-gate and the workspace jail stay. Caller-reported `amount`/`usd`/`cost` is recorded only after an allowed admission; denied calls do not change spend or add spend evidence. This is self-reported accounting, not a verified provider invoice or a preflight price reservation. Reaching a cap affects subsequent admissions.
 
 ## Evidence
 
@@ -76,7 +80,7 @@ Rows keep class, kind, cid, payload_sha256, premises, agent_id, tool, decision, 
 
 `harness deadbolt serve [--bind PATH]` listens on a local Unix socket only. Default bind is `~/.harness/deadbolt.sock`. `0.0.0.0` and non-loopback TCP binds are refused. It serves the same db and JSONL as the CLI. It does not shut down GPT and it is not a model tool.
 
-`POST /admit`, `POST /ensure`, `POST /register_child`, and `GET /status` return JSON tokens. `kill`, `pause`, `clip`, and `resume` stay on the CLI. The socket is mode `0600`. If `[deadbolt] token_env` is set and that variable is non-empty, or a `0600` token file is present, every request must send `X-Deadbolt-Token`. A missing or wrong token is HTTP 401 and does not admit.
+`POST /admit`, `POST /ensure`, `POST /register_child`, and `GET /status` return JSON tokens. `kill`, `pause`, `clip`, and `resume` stay on the CLI. The socket is mode `0600`. Version 2 requires an operator token for sidecar startup by default. Configure a nonempty `[deadbolt] token_env` or private mode-0600 `token_file`; operator requests must send `X-Deadbolt-Token`. A missing or wrong token does not admit. Do not enable the upstream legacy unauthenticated compatibility option to avoid setup. Keep operator credentials out of agent-held tools; use the standalone scoped-admission client where that trust split is needed.
 
 Bolt-on client: `examples/deadbolt_client.py` (stdlib only). `DEADBOLT_SOCK` overrides the socket. Not a model tool. Admit before the tool body:
 
@@ -90,15 +94,28 @@ if admit(agent, "shell")["decision"] != "allow":
 ## Sample agent
 
 ```
+# Trusted operator fixture only: configure token_env = "DEADBOLT_TOKEN" first.
+# Supply its private value through your existing secure shell workflow.
 harness deadbolt serve
 python examples/deadbolt_sample_agent.py --agent shop-bot
 # other terminal:
 harness deadbolt kill --agent shop-bot
 ```
 
-The sample agent calls `ensure` once, then `admit` before each pretend tool step. A deny prints one JSON line and exits 2. It does not import Harness and does not talk to an LLM.
+The sample is a trusted operator fixture, not an untrusted agent credential example: it needs the same operator authentication in its environment. It calls `ensure` once, then `admit` before each pretend tool step. New HTTP roots use the engine's supervisor default and expire after the idle TTL without separate renewal. A deny prints one JSON line and exits 2. It does not import Harness and does not talk to an LLM.
 
 ## Candidate integration acceptance
+
+The November 3 source migration pins released engine 2.0.1. Its focused local
+checks passed 203 tests: two wrapper contracts and 201 tool/executor tests. New
+checks cover denied calls leaving spend and spend evidence unchanged, one
+allowed call accounting once, destination policy requiring an explicit offline
+exception, a foreign destination remaining denied despite that exception, and
+activity compatibility preserving existing supervision/deadlines/terminal state.
+The prior local-tool/no-destination test expectation was changed to the new
+secure default, rather than adding implicit exceptions. Root CLI `cargo check`
+also passed. These are local source checks; published Harness binaries and the
+full platform/release matrix require their own qualification.
 
 The existing wrapper/tool suites passed with both the previous dependency and
 the pinned candidate. Seven additional executor regressions cover policy changes
@@ -123,6 +140,6 @@ executor are not proven contained by these tests. Kill gates later admission;
 any cancellation behavior remains owned by Harness.
 
 The pinned source is the integrated DeadBolt release commit. Check the
-[versioned prerelease](https://github.com/seanebones-lang/deadbolt/releases/tag/v1.1.0-rc.1)
+[versioned engine release](https://github.com/seanebones-lang/deadbolt/releases/tag/v2.0.1)
 for download availability and exact acceptance evidence. This Harness adapter
 uses legacy admission; it does not issue exact-action grants automatically.

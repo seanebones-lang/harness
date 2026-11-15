@@ -380,6 +380,9 @@ pub enum DeadboltAction {
         /// Comma-separated host allow-list.
         #[arg(long)]
         dest: Option<String>,
+        /// Trusted local-only tools that may omit a destination. Defaults to none.
+        #[arg(long)]
+        offline_tools: Option<String>,
         /// USD cap. Crossing it pauses the lease.
         #[arg(long)]
         spend_cap: Option<f64>,
